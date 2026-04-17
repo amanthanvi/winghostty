@@ -16,6 +16,11 @@ pub const HostOverlayMode = enum {
     surface_title,
     tab_title,
     tab_overview,
+    /// Non-modal Accept/Cancel prompt. Carried by `Host.confirm_payload`
+    /// which owns the title / body / button labels / severity and the
+    /// accept + cancel callbacks. Replaces the previous `MessageBoxW`
+    /// pump-blocking confirms (close-surface, paste-protection).
+    confirm,
 };
 
 // ── Structs ─────────────────────────────────────────────────────────────
@@ -101,6 +106,172 @@ pub const ProfileChromeAccent = struct {
     active_bg: u32,
     active_border: u32,
     focus: u32,
+};
+
+// ── Design tokens (metrics, motion, typography) ─────────────────────────
+//
+// These three structs give the Win32 apprt a shared source of truth for
+// chrome sizing, animation cadence, and typography. They sit alongside
+// `ThemeColors` and are consumed via the same `Theme` aggregate (see
+// `Theme` at the bottom of this file).
+//
+// All pixel values are logical (96 DPI). At paint time, every call site
+// that consumes a metric is responsible for `MulDiv(value, dpi, 96)`
+// scaling. We deliberately keep these `u16` so DPI scaling expands to
+// `i32` in the same expression — no sub-pixel strokes, no float rounding
+// at paint time.
+//
+// The component layer (values that are unique to exactly one widget,
+// e.g. `host_overlay_label_width = 110`) is intentionally NOT promoted
+// here — those stay as named `const`s on their owning module.
+
+pub const ThemeMetrics = struct {
+    // Spacing scale (px @ 96 DPI). 4 px baseline with a 2 px micro step.
+    space_0: u16 = 0,
+    space_1: u16 = 2, // hairline, focus-ring inset
+    space_2: u16 = 4, // control padding
+    space_3: u16 = 6, // tight row gap
+    space_4: u16 = 8, // default gap
+    space_5: u16 = 12, // card padding, overlay row gap
+    space_6: u16 = 16, // section separation
+    space_7: u16 = 20, // major gutter
+    space_8: u16 = 24, // dialog padding
+    space_9: u16 = 32, // vertical rhythm for settings
+    space_10: u16 = 48, // empty-state breathing room
+
+    // Corner radius (px). Never above 8 — stays orthogonal to the cell grid.
+    radius_none: u16 = 0,
+    radius_sm: u16 = 2, // focus ring, list row hover
+    radius_md: u16 = 4, // buttons, overlay inputs
+    radius_lg: u16 = 6, // overlay container, palette card
+    radius_xl: u16 = 8, // dialogs
+
+    // Stroke widths (px).
+    stroke_hairline: u16 = 1, // all control borders
+    stroke_divider: u16 = 2, // split divider
+    stroke_focus: u16 = 2, // focus ring
+    stroke_emphasis: u16 = 3, // HC mode only
+
+    // Chrome heights (px). These replace the file-scope constants at the
+    // top of src/apprt/win32.zig (host_tab_height, host_overlay_height,
+    // host_status_height). Keep those aliases until the consumers migrate.
+    height_tab: u16 = 32, // separate tab bar (Win10 / native mode)
+    height_tab_integrated: u16 = 40, // tabs-in-caption (Win11 default)
+    height_titlebar: u16 = 40, // integrated titlebar total
+    height_overlay: u16 = 58, // command palette / search
+    height_inspector: u16 = 42,
+    height_status: u16 = 42, // will slim to 28 in P5
+    height_search_bar: u16 = 40, // future docked search (P5)
+
+    // Overlay geometry (px).
+    overlay_padding: u16 = 12,
+    overlay_label_width: u16 = 110,
+    overlay_row_height: u16 = 24,
+    overlay_accept_width: u16 = 70,
+    overlay_cancel_width: u16 = 80,
+
+    // Tab geometry (px).
+    tab_min_width: u16 = 108,
+    tab_max_width: u16 = 220,
+    tab_close_zone: u16 = 22,
+    tab_small_button_width: u16 = 34,
+    tab_overflow_button_width: u16 = 34,
+    tab_label_max_len: u16 = 24, // character count, not pixels
+
+    // Pane divider (px).
+    pane_divider: u16 = 2,
+
+    // Caption buttons (integrated titlebar, Win11 default).
+    caption_button_w: u16 = 46,
+    caption_button_h: u16 = 40,
+
+    /// The metrics value used when HC mode is active. Borders bump to the
+    /// emphasis stroke; radii collapse to 0 so boundaries are pixel-sharp.
+    pub fn highContrast() ThemeMetrics {
+        var m: ThemeMetrics = .{};
+        m.stroke_hairline = m.stroke_emphasis;
+        m.stroke_divider = m.stroke_emphasis;
+        m.stroke_focus = m.stroke_emphasis;
+        m.radius_sm = 0;
+        m.radius_md = 0;
+        m.radius_lg = 0;
+        m.radius_xl = 0;
+        return m;
+    }
+};
+
+pub const ThemeMotion = struct {
+    // Durations (ms). `instant` is 0 so reduced-motion can collapse
+    // everything to it via the `reduced` helper.
+    duration_instant_ms: u16 = 0,
+    duration_quick_ms: u16 = 120, // hover, press, focus appear
+    duration_standard_ms: u16 = 180, // tab-switch, toast slide
+    duration_emphasized_ms: u16 = 240, // palette open, settings swap
+    duration_decelerate_ms: u16 = 320, // quick-terminal slide
+
+    // Cubic-Bézier easing (x1, y1, x2, y2). Fluent-aligned.
+    easing_standard: [4]f32 = .{ 0.33, 0.00, 0.67, 1.00 },
+    easing_decelerate: [4]f32 = .{ 0.10, 0.90, 0.20, 1.00 },
+    easing_accelerate: [4]f32 = .{ 0.70, 0.00, 1.00, 0.50 },
+    easing_emphasized: [4]f32 = .{ 0.30, 0.00, 0.10, 1.00 },
+
+    /// Collapse every duration to 0 and every easing to linear.
+    /// Triggered by SPI_GETCLIENTAREAANIMATION = FALSE and implicitly
+    /// by High Contrast.
+    pub fn reduced() ThemeMotion {
+        return .{
+            .duration_instant_ms = 0,
+            .duration_quick_ms = 0,
+            .duration_standard_ms = 0,
+            .duration_emphasized_ms = 0,
+            .duration_decelerate_ms = 0,
+            .easing_standard = .{ 0.0, 0.0, 1.0, 1.0 },
+            .easing_decelerate = .{ 0.0, 0.0, 1.0, 1.0 },
+            .easing_accelerate = .{ 0.0, 0.0, 1.0, 1.0 },
+            .easing_emphasized = .{ 0.0, 0.0, 1.0, 1.0 },
+        };
+    }
+};
+
+pub const ChromeType = struct {
+    // Family + fallback. `caption` and `body` live on Segoe UI Variable
+    // on Win11; collapse to Segoe UI on Win10 via the probe in
+    // recreateChromeFonts.
+    caption_family: []const u8 = "Segoe UI Variable Small",
+    caption_family_fallback: []const u8 = "Segoe UI",
+    caption_size_pt: u8 = 12,
+    caption_weight: u16 = 400,
+    caption_leading_px: u16 = 16,
+
+    body_family: []const u8 = "Segoe UI Variable Text",
+    body_family_fallback: []const u8 = "Segoe UI",
+    body_size_pt: u8 = 14,
+    body_weight: u16 = 400,
+    body_leading_px: u16 = 20,
+    body_strong_weight: u16 = 600,
+
+    subtitle_family: []const u8 = "Segoe UI Variable Display",
+    subtitle_family_fallback: []const u8 = "Segoe UI",
+    subtitle_size_pt: u8 = 16,
+    subtitle_weight: u16 = 600,
+};
+
+/// Aggregate theme record. Keep `ThemeColors` shape unchanged so every
+/// current consumer compiles unchanged; metrics/motion/type get added
+/// via the optional companion fields.
+///
+/// New call sites that need metrics should consume `Theme.metrics` /
+/// `.motion` / `.type` directly. Old call sites that read individual
+/// `ThemeColors` fields keep working via `Theme.colors`.
+pub const Theme = struct {
+    colors: ThemeColors,
+    metrics: ThemeMetrics = .{},
+    motion: ThemeMotion = .{},
+    chrome_type: ChromeType = .{},
+
+    pub fn fromColors(colors: ThemeColors) Theme {
+        return .{ .colors = colors };
+    }
 };
 
 // ── Theme palettes ──────────────────────────────────────────────────────
@@ -307,6 +478,9 @@ pub fn overlayAccentColor(mode: HostOverlayMode, is_dark: bool) u32 {
             .search => rgb(16, 124, 80),
             .surface_title, .tab_title => rgb(156, 112, 24),
             .tab_overview => rgb(102, 76, 180),
+            // Destructive warning tone — muted red so the Accept
+            // button visually reads as "something will be lost".
+            .confirm => rgb(178, 48, 56),
             .none => rgb(140, 140, 140),
         };
     }
@@ -316,6 +490,7 @@ pub fn overlayAccentColor(mode: HostOverlayMode, is_dark: bool) u32 {
         .search => rgb(118, 196, 158),
         .surface_title, .tab_title => rgb(212, 170, 92),
         .tab_overview => rgb(168, 148, 228),
+        .confirm => rgb(232, 104, 112),
         .none => rgb(72, 82, 98),
     };
 }
@@ -514,4 +689,140 @@ pub fn quickSlotChipColors(kind: windows_shell.ProfileKind, is_dark: bool, hover
 
 pub fn pinnedChipMarkerColor(kind: windows_shell.ProfileKind, is_dark: bool, hovered: bool) u32 {
     return if (hovered) profileKindLabelColor(kind, is_dark) else profileKindHintColor(kind, is_dark);
+}
+
+// ── Accent-follow helpers ───────────────────────────────────────────────
+// Registry read: win32.zig:resolveSystemAccentColor.
+// Blend: 60% system / 40% semantic, S clamped [0.45, 0.75], V clamped
+// [0.40, 0.90] — keeps the overlay readable against any system accent
+// while preserving the semantic cue.
+
+pub fn semanticOverlayHue(mode: HostOverlayMode) f32 {
+    return switch (mode) {
+        .command_palette => 215.0, // cool blue
+        .profile => 285.0, // violet
+        .search => 150.0, // teal / emerald
+        .surface_title, .tab_title => 40.0, // warm amber
+        .tab_overview => 258.0, // periwinkle
+        .confirm => 0.0, // warning red (destructive)
+        .none => 0.0,
+    };
+}
+
+pub fn blendSemanticAccent(system_rgb: u32, semantic_h_deg: f32) u32 {
+    // Neutral-black accent (e.g. registry empty, or user disabled
+    // accent colour) has no hue to blend — keep the pure semantic hue
+    // at mid saturation / value instead of washing to grey.
+    if (system_rgb == 0) {
+        return hsvToRgb(.{ .h = semantic_h_deg, .s = 0.60, .v = 0.70 });
+    }
+    const sys = rgbToHsv(system_rgb);
+    const blended_h = lerpHue(semantic_h_deg, sys.h, 0.60);
+    const blended_s = std.math.clamp((sys.s * 0.60) + (0.50 * 0.40), 0.45, 0.75);
+    const blended_v = std.math.clamp((sys.v * 0.60) + (0.70 * 0.40), 0.40, 0.90);
+    return hsvToRgb(.{ .h = blended_h, .s = blended_s, .v = blended_v });
+}
+
+const Hsv = struct { h: f32, s: f32, v: f32 };
+
+fn rgbToHsv(colorref: u32) Hsv {
+    const r: f32 = @as(f32, @floatFromInt(colorref & 0xFF)) / 255.0;
+    const g: f32 = @as(f32, @floatFromInt((colorref >> 8) & 0xFF)) / 255.0;
+    const b: f32 = @as(f32, @floatFromInt((colorref >> 16) & 0xFF)) / 255.0;
+    const max = @max(r, @max(g, b));
+    const min = @min(r, @min(g, b));
+    const delta = max - min;
+
+    var h: f32 = 0.0;
+    if (delta > 0.0) {
+        if (max == r) {
+            h = 60.0 * @mod((g - b) / delta, 6.0);
+        } else if (max == g) {
+            h = 60.0 * (((b - r) / delta) + 2.0);
+        } else {
+            h = 60.0 * (((r - g) / delta) + 4.0);
+        }
+        if (h < 0.0) h += 360.0;
+    }
+    const s: f32 = if (max == 0.0) 0.0 else delta / max;
+    return .{ .h = h, .s = s, .v = max };
+}
+
+fn hsvToRgb(hsv: Hsv) u32 {
+    const c = hsv.v * hsv.s;
+    // @mod normalises h = 360 to 0, preventing the hp = 6.0 fall-through
+    // (every `if (hp < N)` branch false → pure black).
+    const hp = @mod(hsv.h, 360.0) / 60.0;
+    const x = c * (1.0 - @abs(@mod(hp, 2.0) - 1.0));
+    var r: f32 = 0;
+    var g: f32 = 0;
+    var b: f32 = 0;
+    if (hp < 1.0) {
+        r = c;
+        g = x;
+    } else if (hp < 2.0) {
+        r = x;
+        g = c;
+    } else if (hp < 3.0) {
+        g = c;
+        b = x;
+    } else if (hp < 4.0) {
+        g = x;
+        b = c;
+    } else if (hp < 5.0) {
+        r = x;
+        b = c;
+    } else {
+        r = c;
+        b = x;
+    }
+    const m = hsv.v - c;
+    const ri: u8 = @intFromFloat(std.math.clamp((r + m) * 255.0, 0.0, 255.0));
+    const gi: u8 = @intFromFloat(std.math.clamp((g + m) * 255.0, 0.0, 255.0));
+    const bi: u8 = @intFromFloat(std.math.clamp((b + m) * 255.0, 0.0, 255.0));
+    return rgb(ri, gi, bi);
+}
+
+fn lerpHue(a: f32, b: f32, t: f32) f32 {
+    var diff = b - a;
+    if (diff > 180.0) diff -= 360.0;
+    if (diff < -180.0) diff += 360.0;
+    const out = a + diff * t;
+    return @mod(out + 360.0, 360.0);
+}
+
+test "rgbToHsv recovers grayscale" {
+    const hsv = rgbToHsv(rgb(128, 128, 128));
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0), hsv.s, 0.01);
+    try std.testing.expectApproxEqAbs(@as(f32, 128.0 / 255.0), hsv.v, 0.01);
+}
+
+test "rgbToHsv primary blue" {
+    const hsv = rgbToHsv(rgb(0, 120, 215)); // Windows default accent-ish
+    try std.testing.expect(hsv.h > 200.0 and hsv.h < 220.0);
+    try std.testing.expect(hsv.s > 0.9);
+}
+
+test "hsvToRgb round-trips primary red" {
+    const c = hsvToRgb(.{ .h = 0.0, .s = 1.0, .v = 1.0 });
+    try std.testing.expectEqual(@as(u32, rgb(255, 0, 0)), c);
+}
+
+test "lerpHue takes shortest arc" {
+    // 350 -> 10 should cross through 0, not go the long way through 180.
+    const mid = lerpHue(350.0, 10.0, 0.5);
+    // Expect midpoint to be near 0 / 360, not ~180.
+    try std.testing.expect(mid < 20.0 or mid > 340.0);
+}
+
+test "blendSemanticAccent stays in sane ranges" {
+    const system = rgb(0, 120, 215); // Windows default-ish
+    for ([_]HostOverlayMode{
+        .command_palette, .profile, .search, .surface_title, .tab_overview,
+    }) |mode| {
+        const blended = blendSemanticAccent(system, semanticOverlayHue(mode));
+        const hsv = rgbToHsv(blended);
+        try std.testing.expect(hsv.s >= 0.45 - 0.01 and hsv.s <= 0.75 + 0.01);
+        try std.testing.expect(hsv.v >= 0.40 - 0.01 and hsv.v <= 0.90 + 0.01);
+    }
 }

@@ -50,6 +50,19 @@ attachments: []const Options.Attachment,
 
 step_number: usize = 0,
 
+fn attachmentSize(attachment: Options.Attachment) struct { width: usize, height: usize } {
+    return switch (attachment.target) {
+        .target => |target| .{
+            .width = target.width,
+            .height = target.height,
+        },
+        .texture => |texture| .{
+            .width = texture.width,
+            .height = texture.height,
+        },
+    };
+}
+
 /// Begin a render pass.
 pub fn begin(
     opts: Options,
@@ -89,6 +102,18 @@ pub fn step(self: *Self, s: Step) void {
     defer fbobind.unbind();
 
     defer self.step_number += 1;
+
+    // Framebuffer binds do not update the GL viewport. When the window or
+    // render target size changes, leaving the old viewport in place causes the
+    // scene to render into the previous bottom-left sub-rect, which shows up on
+    // Win32 as black growth bands on enlarge and distorted content on shrink.
+    const viewport = attachmentSize(self.attachments[0]);
+    gl.viewport(
+        0,
+        0,
+        @intCast(viewport.width),
+        @intCast(viewport.height),
+    ) catch return;
 
     // If we have a clear color and this is the
     // first step in the pass, go ahead and clear.
@@ -148,4 +173,39 @@ pub fn step(self: *Self, s: Step) void {
 pub fn complete(self: *const Self) void {
     _ = self;
     gl.flush();
+}
+
+test "RenderPass attachmentSize uses target dimensions" {
+    const attachment: Options.Attachment = .{
+        .target = .{
+            .target = .{
+                .framebuffer = undefined,
+                .renderbuffer = undefined,
+                .width = 320,
+                .height = 240,
+            },
+        },
+    };
+
+    const size = attachmentSize(attachment);
+    try std.testing.expectEqual(@as(usize, 320), size.width);
+    try std.testing.expectEqual(@as(usize, 240), size.height);
+}
+
+test "RenderPass attachmentSize uses texture dimensions" {
+    const attachment: Options.Attachment = .{
+        .target = .{
+            .texture = .{
+                .texture = undefined,
+                .width = 640,
+                .height = 360,
+                .format = .rgba,
+                .target = .@"2D",
+            },
+        },
+    };
+
+    const size = attachmentSize(attachment);
+    try std.testing.expectEqual(@as(usize, 640), size.width);
+    try std.testing.expectEqual(@as(usize, 360), size.height);
 }

@@ -242,4 +242,39 @@ pub fn build(b: *std.Build) !void {
     // update-translations does what it sounds like and updates the "pot"
     // files. These should be committed to the repo.
     try translations_step.addError("update-translations is not supported in the Windows-only fork", .{});
+
+    // Benchmarks. Standalone `main()` exes under `bench/`, each exposed
+    // as a `bench:<name>` step that builds + runs with forwarded args.
+    //
+    //   zig build bench:palette-match -- --entries=500 --keystrokes=1000
+    //
+    // `addBenchStep` wires the shared dep graph so harnesses can import
+    // internal modules (e.g. `src/apprt/win32_palette.zig` pulls in zf
+    // and the Command catalogue).
+    try addBenchStep(b, &deps, config.baselineTarget(), "palette-match", "src/bench/palette_match.zig");
+}
+
+fn addBenchStep(
+    b: *std.Build,
+    deps: *const @import("src/build/SharedDeps.zig"),
+    target: std.Build.ResolvedTarget,
+    comptime name: []const u8,
+    comptime src: []const u8,
+) !void {
+    const exe = b.addExecutable(.{
+        .name = "bench-" ++ name,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path(src),
+            .target = target,
+            .optimize = .ReleaseFast,
+        }),
+    });
+    _ = try deps.add(exe);
+    const run = b.addRunArtifact(exe);
+    if (b.args) |args| run.addArgs(args);
+    const step = b.step(
+        "bench:" ++ name,
+        "Build and run bench/" ++ name ++ " microbench",
+    );
+    step.dependOn(&run.step);
 }

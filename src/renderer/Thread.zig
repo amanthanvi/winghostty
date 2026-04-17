@@ -572,25 +572,11 @@ fn wakeupCallback(
     t.drainMailbox() catch |err|
         log.err("error draining mailbox err={}", .{err});
 
-    // Render immediately
+    // Render immediately. Coalescing of paint requests happens downstream
+    // via Surface.renderer_repaint_requested + paint_pending on Win32
+    // (see src/apprt/win32.zig:beginRendererRepaintRequest) — there is no
+    // need for a thread-side delay timer here.
     _ = renderCallback(t, undefined, undefined, {});
-
-    // The below is not used anymore but if we ever want to introduce
-    // a configuration to introduce a delay to coalesce renders, we can
-    // use this.
-    //
-    // // If the timer is already active then we don't have to do anything.
-    // if (t.render_c.state() == .active) return .rearm;
-    //
-    // // Timer is not active, let's start it
-    // t.render_h.run(
-    //     &t.loop,
-    //     &t.render_c,
-    //     10,
-    //     Thread,
-    //     t,
-    //     renderCallback,
-    // );
 
     return .rearm;
 }

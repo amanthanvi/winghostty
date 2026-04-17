@@ -16,6 +16,12 @@ pub const Shell = enum {
     fish,
     nushell,
     zsh,
+    /// PowerShell 5.1+ / pwsh 7+. Detection covers `pwsh`, `pwsh.exe`,
+    /// `powershell`, `powershell.exe`. Current setup path does not yet
+    /// auto-inject the OSC 133 / OSC 7 wrapper — users source
+    /// `integration.ps1` from `$PROFILE` manually. Full argv-level
+    /// `-NoExit -Command "& { . '$path' }"` injection is deferred.
+    powershell,
 };
 
 /// The result of setting up a shell integration.
@@ -76,6 +82,17 @@ pub fn setup(
             if (!try setupXdgDataDirs(alloc_arena, resource_dir, env)) return null;
             break :xdg try command.clone(alloc_arena);
         },
+
+        // PowerShell integration ships `integration.ps1` in the
+        // resources tree; full argv-level auto-injection lands with a
+        // later P6 pass. Return null here so Exec logs "no automatic
+        // shell integration" rather than lying about auto-injection.
+        // Detection still recognises `.powershell` (useful for future
+        // wire-up + user-visible telemetry); users opt into the
+        // wrapper by sourcing `integration.ps1` from `$PROFILE`.
+        .powershell => blk: {
+            break :blk null;
+        },
     } orelse return null;
 
     return .{
@@ -107,7 +124,15 @@ test "force shell" {
             &env,
             shell,
         );
-        try testing.expectEqual(shell, result.?.shell);
+        // PowerShell setup intentionally returns null — argv-level
+        // auto-injection is deferred; Exec must not log "automatic
+        // shell integration" for this variant. Every other shell
+        // returns a real integration handle.
+        if (shell == .powershell) {
+            try testing.expect(result == null);
+        } else {
+            try testing.expectEqual(shell, result.?.shell);
+        }
     }
 }
 
@@ -162,6 +187,17 @@ fn detectShell(alloc: Allocator, command: config.Command) !?Shell {
     if (std.mem.eql(u8, "nu", exe)) return .nushell;
     if (std.mem.eql(u8, "zsh", exe)) return .zsh;
 
+    // PowerShell — both Windows PowerShell (5.1) and pwsh (7+). Case-
+    // insensitive match on the basename so `pwsh.EXE` from Explorer
+    // drag-drop still resolves.
+    if (std.ascii.eqlIgnoreCase(exe, "pwsh") or
+        std.ascii.eqlIgnoreCase(exe, "pwsh.exe") or
+        std.ascii.eqlIgnoreCase(exe, "powershell") or
+        std.ascii.eqlIgnoreCase(exe, "powershell.exe"))
+    {
+        return .powershell;
+    }
+
     return null;
 }
 
@@ -175,6 +211,10 @@ test detectShell {
     try testing.expectEqual(.fish, try detectShell(alloc, .{ .shell = "fish" }));
     try testing.expectEqual(.nushell, try detectShell(alloc, .{ .shell = "nu" }));
     try testing.expectEqual(.zsh, try detectShell(alloc, .{ .shell = "zsh" }));
+    try testing.expectEqual(.powershell, try detectShell(alloc, .{ .shell = "pwsh" }));
+    try testing.expectEqual(.powershell, try detectShell(alloc, .{ .shell = "pwsh.exe" }));
+    try testing.expectEqual(.powershell, try detectShell(alloc, .{ .shell = "powershell" }));
+    try testing.expectEqual(.powershell, try detectShell(alloc, .{ .shell = "PowerShell.EXE" }));
 
     if (comptime builtin.target.os.tag.isDarwin()) {
         try testing.expect(try detectShell(alloc, .{ .shell = "/bin/bash" }) == null);

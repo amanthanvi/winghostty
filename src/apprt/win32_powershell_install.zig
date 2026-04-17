@@ -1,0 +1,348 @@
+//! PowerShell shell-integration installer for winghostty.
+//!
+//! Lifecycle (called from `App.init`):
+//!   1. `resolveInstallPath` -> `%LOCALAPPDATA%\winghostty\shell-integration\
+//!      powershell\integration.ps1`, creating intermediate dirs as needed.
+//!   2. `installIfStale` compares the on-disk SHA-256 against the comptime
+//!      `integration_script_sha256`. Writes atomically (temp + rename) only
+//!      when the hash differs or the file is missing.
+//!   3. `buildInjectedArgv` wraps the user's pwsh command with
+//!      `-NoLogo -NoExit -Command "& { . '<path>'; <user-cmd> }"`.
+//!
+//! Testing: `@embedFile("../...")` needs the `src/` package root.
+//!   echo 'test { _ = @import("apprt/win32_powershell_install.zig"); }' > src/_t.zig
+//!   zig test src/_t.zig && rm src/_t.zig
+
+const std = @import("std");
+const Allocator = std.mem.Allocator;
+
+// ── Embedded script + comptime hash ─────────────────────────────────
+
+/// The bytes of `src/shell-integration/powershell/integration.ps1`
+/// embedded at compile time via `@embedFile`.
+pub const integration_script = @embedFile("../shell-integration/powershell/integration.ps1");
+
+/// SHA-256 of `integration_script`, computed at comptime. Serves as
+/// the version identifier so the installed file rewrites automatically
+/// when the script changes between builds.
+pub const integration_script_sha256: [32]u8 = blk: {
+    @setEvalBranchQuota(1_000_000);
+    var buf: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(integration_script, &buf, .{});
+    break :blk buf;
+};
+
+// ── Path resolution ─────────────────────────────────────────────────
+
+/// Resolve the install path under `%LOCALAPPDATA%`. Creates
+/// intermediate directories if missing. Returned path owned by `alloc`.
+pub fn resolveInstallPath(alloc: Allocator) ![]u8 {
+    const local_app_data = std.process.getEnvVarOwned(alloc, "LOCALAPPDATA") catch |err| switch (err) {
+        error.EnvironmentVariableNotFound => return error.EnvironmentVariableNotFound,
+        else => return err,
+    };
+    defer alloc.free(local_app_data);
+
+    const sub = "winghostty" ++ std.fs.path.sep_str ++
+        "shell-integration" ++ std.fs.path.sep_str ++ "powershell";
+
+    const dir_path = try std.fs.path.join(alloc, &.{ local_app_data, sub });
+    defer alloc.free(dir_path);
+
+    std.fs.makeDirAbsolute(dir_path) catch |err| switch (err) {
+        error.PathAlreadyExists => {},
+        else => {
+            var dir = try std.fs.openDirAbsolute(local_app_data, .{});
+            defer dir.close();
+            try dir.makePath(sub);
+        },
+    };
+
+    return std.fs.path.join(alloc, &.{ dir_path, "integration.ps1" });
+}
+
+// ── Install gate ────────────────────────────────────────────────────
+
+pub const InstallResult = enum {
+    skipped, // destination matched embedded SHA-256
+    installed, // wrote new file (first run OR hash changed)
+    failed, // couldn't write; caller logs and continues
+};
+
+/// Install `integration.ps1` at `path` unless its SHA-256 already
+/// matches the embedded blob. Atomic via temp-file + rename.
+pub fn installIfStale(alloc: Allocator, path: []const u8) InstallResult {
+    if (readAndHash(alloc, path)) |on_disk_hash| {
+        if (std.mem.eql(u8, &on_disk_hash, &integration_script_sha256)) return .skipped;
+    }
+    return writeAtomically(path) catch .failed;
+}
+
+fn readAndHash(alloc: Allocator, path: []const u8) ?[32]u8 {
+    const contents = blk: {
+        const file = std.fs.openFileAbsolute(path, .{}) catch return null;
+        defer file.close();
+        break :blk file.readToEndAlloc(alloc, 1024 * 1024) catch return null;
+    };
+    defer alloc.free(contents);
+    var hash: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(contents, &hash, .{});
+    return hash;
+}
+
+/// Atomic write: temp file + rename. Falls back to direct overwrite
+/// if rename fails (Windows `std.fs.Dir.rename` uses
+/// `NtSetInformationFile` / `FileRenameInformation` with replace
+/// semantics -- no `MoveFileExW` needed).
+fn writeAtomically(path: []const u8) !InstallResult {
+    const dir_path = std.fs.path.dirname(path) orelse return error.InvalidPath;
+    var dir = try std.fs.openDirAbsolute(dir_path, .{});
+    defer dir.close();
+    const basename = std.fs.path.basename(path);
+
+    if (atomicWriteViaTemp(dir, basename)) return .installed;
+
+    // Fallback: direct overwrite.
+    const file = try dir.createFile(basename, .{ .truncate = true });
+    defer file.close();
+    try file.writeAll(integration_script);
+    return .installed;
+}
+
+fn atomicWriteViaTemp(dir: std.fs.Dir, basename: []const u8) bool {
+    const tmp = ".integration.ps1.tmp";
+    const f = dir.createFile(tmp, .{ .truncate = true }) catch return false;
+    f.writeAll(integration_script) catch {
+        f.close();
+        dir.deleteFile(tmp) catch {};
+        return false;
+    };
+    f.close();
+    dir.rename(tmp, basename) catch {
+        dir.deleteFile(tmp) catch {};
+        return false;
+    };
+    return true;
+}
+
+// ── Argv injection builder ──────────────────────────────────────────
+
+pub const InjectError = error{ OutOfMemory, EmptyCommand };
+
+/// Build an argv that sources integration.ps1 before the user's
+/// command. Structure:
+///   [original_prefix...] -NoLogo -NoExit -Command "& { . '<path>' }"
+/// Returns `[][]u8` -- caller owns both outer slice and inner strings.
+pub fn buildInjectedArgv(
+    alloc: Allocator,
+    pwsh_argv: []const []const u8,
+    integration_path: []const u8,
+) InjectError![][]u8 {
+    if (pwsh_argv.len == 0) return InjectError.EmptyCommand;
+
+    const escaped = escapeForPwshSingleQuote(alloc, integration_path) catch
+        return InjectError.OutOfMemory;
+    defer alloc.free(escaped);
+
+    const info = findCommandArg(pwsh_argv);
+    const cmd_val = buildCommandValue(alloc, escaped, info.user_body) catch
+        return InjectError.OutOfMemory;
+
+    const n = info.prefix_end;
+    const result = alloc.alloc([]u8, n + 4) catch return InjectError.OutOfMemory;
+    errdefer alloc.free(result);
+
+    var i: usize = 0;
+    while (i < n) : (i += 1)
+        result[i] = alloc.dupe(u8, pwsh_argv[i]) catch return InjectError.OutOfMemory;
+
+    result[i] = alloc.dupe(u8, "-NoLogo") catch return InjectError.OutOfMemory;
+    result[i + 1] = alloc.dupe(u8, "-NoExit") catch return InjectError.OutOfMemory;
+    result[i + 2] = alloc.dupe(u8, "-Command") catch return InjectError.OutOfMemory;
+    result[i + 3] = cmd_val;
+    return result;
+}
+
+const CommandArgInfo = struct {
+    prefix_end: usize,
+    user_body: ?[]const u8,
+};
+
+fn findCommandArg(argv: []const []const u8) CommandArgInfo {
+    for (argv[1..], 1..) |arg, idx| {
+        if (isCommandFlag(arg)) {
+            if (idx + 1 < argv.len)
+                return .{ .prefix_end = idx, .user_body = argv[idx + 1] };
+            return .{ .prefix_end = idx, .user_body = null };
+        }
+    }
+    return .{ .prefix_end = argv.len, .user_body = null };
+}
+
+fn isCommandFlag(arg: []const u8) bool {
+    if (arg.len < 2 or arg[0] != '-') return false;
+    const flag = arg[1..];
+    const full = "Command";
+    if (flag.len > full.len) return false;
+    for (flag, full[0..flag.len]) |a, b| {
+        if (std.ascii.toLower(a) != std.ascii.toLower(b)) return false;
+    }
+    return true;
+}
+
+fn buildCommandValue(alloc: Allocator, escaped: []const u8, body: ?[]const u8) ![]u8 {
+    if (body) |b|
+        return std.fmt.allocPrint(alloc, "& {{ . '{s}'; {s} }}", .{ escaped, b });
+    return std.fmt.allocPrint(alloc, "& {{ . '{s}' }}", .{escaped});
+}
+
+/// Escape a path for a PowerShell single-quoted string (`'` -> `''`).
+pub fn escapeForPwshSingleQuote(alloc: Allocator, input: []const u8) ![]u8 {
+    var extra: usize = 0;
+    for (input) |c| {
+        if (c == '\'') extra += 1;
+    }
+    if (extra == 0) return alloc.dupe(u8, input);
+
+    const out = try alloc.alloc(u8, input.len + extra);
+    var j: usize = 0;
+    for (input) |c| {
+        if (c == '\'') {
+            out[j] = '\'';
+            j += 1;
+        }
+        out[j] = c;
+        j += 1;
+    }
+    return out;
+}
+
+// ── Tests ───────────────────────────────────────────────────────────
+
+test "integration_script is non-empty" {
+    try std.testing.expect(integration_script.len > 0);
+}
+
+test "integration_script_sha256 is not all zero" {
+    const zero: [32]u8 = .{0} ** 32;
+    try std.testing.expect(!std.mem.eql(u8, &integration_script_sha256, &zero));
+}
+
+test "escapeForPwshSingleQuote: empty string" {
+    const r = try escapeForPwshSingleQuote(std.testing.allocator, "");
+    defer std.testing.allocator.free(r);
+    try std.testing.expectEqualStrings("", r);
+}
+
+test "escapeForPwshSingleQuote: no quotes" {
+    const r = try escapeForPwshSingleQuote(std.testing.allocator, "hello");
+    defer std.testing.allocator.free(r);
+    try std.testing.expectEqualStrings("hello", r);
+}
+
+test "escapeForPwshSingleQuote: mid-string quote" {
+    const r = try escapeForPwshSingleQuote(std.testing.allocator, "it's");
+    defer std.testing.allocator.free(r);
+    try std.testing.expectEqualStrings("it''s", r);
+}
+
+test "escapeForPwshSingleQuote: leading quote" {
+    const r = try escapeForPwshSingleQuote(std.testing.allocator, "'start");
+    defer std.testing.allocator.free(r);
+    try std.testing.expectEqualStrings("''start", r);
+}
+
+test "escapeForPwshSingleQuote: consecutive quotes" {
+    const r = try escapeForPwshSingleQuote(std.testing.allocator, "a''b");
+    defer std.testing.allocator.free(r);
+    try std.testing.expectEqualStrings("a''''b", r);
+}
+
+test "buildInjectedArgv: single arg" {
+    const argv = [_][]const u8{"pwsh.exe"};
+    const r = try buildInjectedArgv(std.testing.allocator, &argv, "C:\\Users\\test\\integration.ps1");
+    defer {
+        for (r) |s| std.testing.allocator.free(s);
+        std.testing.allocator.free(r);
+    }
+    try std.testing.expectEqual(@as(usize, 5), r.len);
+    try std.testing.expectEqualStrings("pwsh.exe", r[0]);
+    try std.testing.expectEqualStrings("-NoLogo", r[1]);
+    try std.testing.expectEqualStrings("-NoExit", r[2]);
+    try std.testing.expectEqualStrings("-Command", r[3]);
+    try std.testing.expectEqualStrings("& { . 'C:\\Users\\test\\integration.ps1' }", r[4]);
+}
+
+test "buildInjectedArgv: multi arg" {
+    const argv = [_][]const u8{ "pwsh.exe", "-ExecutionPolicy", "Bypass" };
+    const r = try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1");
+    defer {
+        for (r) |s| std.testing.allocator.free(s);
+        std.testing.allocator.free(r);
+    }
+    try std.testing.expectEqual(@as(usize, 7), r.len);
+    try std.testing.expectEqualStrings("pwsh.exe", r[0]);
+    try std.testing.expectEqualStrings("-ExecutionPolicy", r[1]);
+    try std.testing.expectEqualStrings("Bypass", r[2]);
+    try std.testing.expectEqualStrings("-NoLogo", r[3]);
+    try std.testing.expectEqualStrings("-NoExit", r[4]);
+    try std.testing.expectEqualStrings("-Command", r[5]);
+    try std.testing.expectEqualStrings("& { . 'C:\\int.ps1' }", r[6]);
+}
+
+test "buildInjectedArgv: path with single quote" {
+    const argv = [_][]const u8{"pwsh.exe"};
+    const r = try buildInjectedArgv(std.testing.allocator, &argv, "C:\\don't\\integration.ps1");
+    defer {
+        for (r) |s| std.testing.allocator.free(s);
+        std.testing.allocator.free(r);
+    }
+    try std.testing.expectEqualStrings("& { . 'C:\\don''t\\integration.ps1' }", r[4]);
+}
+
+test "buildInjectedArgv: empty argv" {
+    const argv = [_][]const u8{};
+    try std.testing.expectError(InjectError.EmptyCommand, buildInjectedArgv(std.testing.allocator, &argv, "p"));
+}
+
+test "installIfStale: first install writes" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dp = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(dp);
+    const fp = try std.fs.path.join(std.testing.allocator, &.{ dp, "integration.ps1" });
+    defer std.testing.allocator.free(fp);
+    try std.testing.expectEqual(InstallResult.installed, installIfStale(std.testing.allocator, fp));
+}
+
+test "installIfStale: same content skips" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dp = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(dp);
+    const fp = try std.fs.path.join(std.testing.allocator, &.{ dp, "integration.ps1" });
+    defer std.testing.allocator.free(fp);
+    _ = installIfStale(std.testing.allocator, fp);
+    try std.testing.expectEqual(InstallResult.skipped, installIfStale(std.testing.allocator, fp));
+}
+
+test "installIfStale: different content on disk triggers reinstall" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const dp = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(dp);
+    const fp = try std.fs.path.join(std.testing.allocator, &.{ dp, "integration.ps1" });
+    defer std.testing.allocator.free(fp);
+
+    const f = try tmp.dir.createFile("integration.ps1", .{ .truncate = true });
+    try f.writeAll("# stale");
+    f.close();
+
+    try std.testing.expectEqual(InstallResult.installed, installIfStale(std.testing.allocator, fp));
+
+    const verify = try tmp.dir.openFile("integration.ps1", .{});
+    defer verify.close();
+    const contents = try verify.readToEndAlloc(std.testing.allocator, 1024 * 1024);
+    defer std.testing.allocator.free(contents);
+    try std.testing.expectEqualStrings(integration_script, contents);
+}

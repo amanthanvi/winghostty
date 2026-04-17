@@ -1,0 +1,1581 @@
+//! Native Win32 settings window (P3 scaffold).
+//!
+//! First-pass surface: singleton top-level HWND owned by `App`. The
+//! action rerouting (`open_config` → `SettingsWindow.open`) is live,
+//! but the content pane is a placeholder while the section catalogue,
+//! custom controls, diff preview, and atomic save path land in
+//! subsequent passes. `App` invokes this module via a thin handle so
+//! the module doesn't need to know `Host`, `Surface`, or the other
+//! win32 apprt internals.
+//!
+//! Lifecycle:
+//!   * `SettingsWindow.open(app)` — creates the HWND if absent,
+//!     otherwise `SetForegroundWindow`s the existing one. Idempotent.
+//!   * `SettingsWindow.close(self)` — called from WM_CLOSE; hides
+//!     the HWND (kept around so reopen is cheap) and nulls `open`.
+//!   * `SettingsWindow.destroy(self)` — called from App.terminate;
+//!     `DestroyWindow` + free the struct.
+//!
+//! Config draft (the `pending` shallow clone for diff / Apply / Cancel)
+//! and all the per-field controls arrive with later passes. Per
+//! AGENTS.md:49, the shallow-clone invariant matters here: the clone
+//! MUST NOT deinit an inherited `command` override.
+
+const std = @import("std");
+const windows = std.os.windows;
+const configpkg = @import("../config.zig");
+const Config = configpkg.Config;
+
+/// Minimal set of Win32 types + externs we need here. Duplicated from
+/// `win32.zig` to keep this module free of an `*App` type dependency
+/// that would force a cycle. Keeping them local is cheaper than
+/// threading every extern through a shared module just yet.
+const HWND = windows.HWND;
+const HINSTANCE = windows.HINSTANCE;
+const LPCWSTR = [*:0]const u16;
+const UINT = u32;
+const LRESULT = isize;
+const WPARAM = usize;
+const LPARAM = isize;
+const BOOL = windows.BOOL;
+const LONG_PTR = isize;
+const ATOM = u16;
+const COLORREF = u32;
+const RECT = extern struct { left: i32, top: i32, right: i32, bottom: i32 };
+
+const WS_OVERLAPPEDWINDOW: u32 = 0x00CF0000;
+const WS_MAXIMIZEBOX: u32 = 0x00010000;
+const WS_EX_APPWINDOW: u32 = 0x00040000;
+const SW_HIDE: i32 = 0;
+const SW_SHOWNORMAL: i32 = 1;
+const SW_RESTORE: i32 = 9;
+const GWLP_USERDATA: i32 = -21;
+const CS_HREDRAW: u32 = 0x2;
+const CS_VREDRAW: u32 = 0x1;
+const IDC_ARROW: usize = 32512;
+const CW_USEDEFAULT: i32 = @bitCast(@as(u32, 0x80000000));
+
+const WM_CLOSE: UINT = 0x0010;
+const WM_NCCREATE: UINT = 0x0081;
+const WM_PAINT: UINT = 0x000F;
+const WM_ERASEBKGND: UINT = 0x0014;
+const WM_NCDESTROY: UINT = 0x0082;
+const WM_COMMAND: UINT = 0x0111;
+const WM_SIZE: UINT = 0x0005;
+const WS_CHILD: u32 = 0x40000000;
+const WS_VISIBLE: u32 = 0x10000000;
+const WS_TABSTOP: u32 = 0x00010000;
+const BS_PUSHBUTTON: u32 = 0x0;
+const BS_OWNERDRAW: u32 = 0xB;
+const BTN_OPEN_EDITOR: usize = 101;
+const BTN_SECTION_APPEARANCE: usize = 201;
+const BTN_SECTION_TERMINAL: usize = 202;
+const BTN_SECTION_SHELL: usize = 203;
+const BTN_SECTION_KEYBINDINGS: usize = 204;
+const BTN_SECTION_ADVANCED: usize = 205;
+const BTN_SAVE: usize = 301;
+const EDIT_SCROLLBACK: usize = 401;
+const EDIT_FONT_SIZE: usize = 402;
+const COMBO_CONFIRM_CLOSE: usize = 403;
+const COMBO_COPY_ON_SELECT: usize = 404;
+const COMBO_WINDOW_THEME: usize = 405;
+const COMBO_SHELL_INTEG: usize = 406;
+const CHK_TRIM_TRAIL: usize = 407;
+const EDIT_BG_OPACITY: usize = 408;
+const COMBO_CURSOR_STYLE: usize = 409;
+const CHK_BG_BLUR: usize = 410;
+const COMBO_PAD_BALANCE: usize = 411;
+const ES_NUMBER: u32 = 0x2000;
+const ES_AUTOHSCROLL: u32 = 0x80;
+const EN_CHANGE: u16 = 0x0300;
+const CBN_SELCHANGE: u16 = 0x0001;
+const BN_CLICKED: u16 = 0x0000;
+const WM_SETTEXT: UINT = 0x000C;
+const BS_AUTOCHECKBOX: u32 = 0x3;
+const BM_SETCHECK: UINT = 0x00F1;
+const BM_GETCHECK: UINT = 0x00F0;
+const BST_CHECKED: usize = 1;
+const BST_UNCHECKED: usize = 0;
+const CB_ADDSTRING: UINT = 0x0143;
+const CB_SETCURSEL: UINT = 0x014E;
+const CB_GETCURSEL: UINT = 0x0147;
+const CB_RESETCONTENT: UINT = 0x014B;
+const CBS_DROPDOWNLIST: u32 = 0x3;
+const CBS_HASSTRINGS: u32 = 0x200;
+
+/// Sections on the left rail. Section-specific controls (e.g. the
+/// "Open in default editor" button in Advanced) are shown / hidden on
+/// the active section; non-specific controls stay visible across
+/// sections.
+pub const Section = enum(u32) {
+    appearance,
+    terminal,
+    shell,
+    keybindings,
+    advanced,
+
+    fn fromButtonId(id: usize) ?Section {
+        return switch (id) {
+            BTN_SECTION_APPEARANCE => .appearance,
+            BTN_SECTION_TERMINAL => .terminal,
+            BTN_SECTION_SHELL => .shell,
+            BTN_SECTION_KEYBINDINGS => .keybindings,
+            BTN_SECTION_ADVANCED => .advanced,
+            else => null,
+        };
+    }
+
+    fn label(self: Section) [*:0]const u16 {
+        return switch (self) {
+            .appearance => std.unicode.utf8ToUtf16LeStringLiteral("Appearance"),
+            .terminal => std.unicode.utf8ToUtf16LeStringLiteral("Terminal"),
+            .shell => std.unicode.utf8ToUtf16LeStringLiteral("Shell"),
+            .keybindings => std.unicode.utf8ToUtf16LeStringLiteral("Keybindings"),
+            .advanced => std.unicode.utf8ToUtf16LeStringLiteral("Advanced"),
+        };
+    }
+
+    fn headerText(self: Section) []const u8 {
+        return switch (self) {
+            .appearance => "Appearance",
+            .terminal => "Terminal",
+            .shell => "Shell",
+            .keybindings => "Keybindings",
+            .advanced => "Advanced",
+        };
+    }
+
+    fn placeholderText(self: Section) []const u8 {
+        return switch (self) {
+            .appearance => "Font size, background opacity, window theme, cursor style, padding balance, background blur.",
+            .terminal => "Scrollback, copy-on-select, clipboard trimming, close confirmation.",
+            .shell => "Shell integration detection mode.",
+            .keybindings => "Keybindings view lands with the chord recorder.",
+            .advanced => "Use the text editor escape hatch for config keys that don't yet have native controls (keybinds, window-padding-x/y, font-family, command, custom shaders, RepeatableString lists, etc).",
+        };
+    }
+};
+
+extern "user32" fn RegisterClassExW(lpwcx: *const WNDCLASSEXW) callconv(.winapi) ATOM;
+extern "user32" fn CreateWindowExW(
+    dwExStyle: u32,
+    lpClassName: LPCWSTR,
+    lpWindowName: LPCWSTR,
+    dwStyle: u32,
+    X: i32,
+    Y: i32,
+    nWidth: i32,
+    nHeight: i32,
+    hWndParent: ?HWND,
+    hMenu: ?*anyopaque,
+    hInstance: HINSTANCE,
+    lpParam: ?*anyopaque,
+) callconv(.winapi) ?HWND;
+extern "user32" fn DefWindowProcW(hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.winapi) LRESULT;
+extern "user32" fn ShowWindow(hWnd: HWND, nCmdShow: i32) callconv(.winapi) BOOL;
+extern "user32" fn SetForegroundWindow(hWnd: HWND) callconv(.winapi) BOOL;
+extern "user32" fn DestroyWindow(hWnd: HWND) callconv(.winapi) BOOL;
+extern "user32" fn GetClientRect(hWnd: HWND, lpRect: *RECT) callconv(.winapi) BOOL;
+extern "user32" fn LoadCursorW(hInstance: ?HINSTANCE, lpCursorName: LPCWSTR) callconv(.winapi) ?*anyopaque;
+extern "user32" fn SetWindowLongPtrW(hWnd: HWND, nIndex: i32, dwNewLong: LONG_PTR) callconv(.winapi) LONG_PTR;
+extern "user32" fn GetWindowLongPtrW(hWnd: HWND, nIndex: i32) callconv(.winapi) LONG_PTR;
+extern "user32" fn BeginPaint(hWnd: HWND, lpPaint: *PAINTSTRUCT) callconv(.winapi) ?*anyopaque;
+extern "user32" fn EndPaint(hWnd: HWND, lpPaint: *const PAINTSTRUCT) callconv(.winapi) BOOL;
+extern "user32" fn IsWindow(hWnd: ?HWND) callconv(.winapi) BOOL;
+extern "user32" fn IsIconic(hWnd: HWND) callconv(.winapi) BOOL;
+extern "user32" fn InvalidateRect(hWnd: HWND, lpRect: ?*const RECT, bErase: BOOL) callconv(.winapi) BOOL;
+extern "user32" fn GetWindowTextW(hWnd: HWND, lpString: [*]u16, nMaxCount: i32) callconv(.winapi) i32;
+extern "user32" fn SendMessageW(hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.winapi) LRESULT;
+extern "gdi32" fn FillRect(hdc: ?*anyopaque, lprc: *const RECT, hbr: ?*anyopaque) callconv(.winapi) i32;
+extern "gdi32" fn GetStockObject(i: i32) callconv(.winapi) ?*anyopaque;
+extern "gdi32" fn SetDCBrushColor(hdc: ?*anyopaque, color: COLORREF) callconv(.winapi) COLORREF;
+extern "gdi32" fn SetTextColor(hdc: ?*anyopaque, color: COLORREF) callconv(.winapi) COLORREF;
+extern "gdi32" fn SetBkMode(hdc: ?*anyopaque, mode: i32) callconv(.winapi) i32;
+extern "user32" fn DrawTextW(hDC: ?*anyopaque, lpchText: LPCWSTR, cchText: i32, lprc: *RECT, format: UINT) callconv(.winapi) i32;
+
+const DC_BRUSH: i32 = 18;
+const TRANSPARENT: i32 = 1;
+const DT_CENTER: UINT = 0x1;
+const DT_VCENTER: UINT = 0x4;
+const DT_SINGLELINE: UINT = 0x20;
+const DT_NOPREFIX: UINT = 0x800;
+
+const PAINTSTRUCT = extern struct {
+    hdc: ?*anyopaque,
+    fErase: BOOL,
+    rcPaint: RECT,
+    fRestore: BOOL,
+    fIncUpdate: BOOL,
+    rgbReserved: [32]u8,
+};
+
+const CREATESTRUCTW = extern struct {
+    lpCreateParams: ?*anyopaque,
+    hInstance: HINSTANCE,
+    hMenu: ?*anyopaque,
+    hwndParent: ?HWND,
+    cy: i32,
+    cx: i32,
+    y: i32,
+    x: i32,
+    style: i32,
+    lpszName: ?LPCWSTR,
+    lpszClass: ?LPCWSTR,
+    dwExStyle: u32,
+};
+
+const WNDCLASSEXW = extern struct {
+    cbSize: u32,
+    style: u32,
+    lpfnWndProc: *const fn (HWND, UINT, WPARAM, LPARAM) callconv(.winapi) LRESULT,
+    cbClsExtra: i32,
+    cbWndExtra: i32,
+    hInstance: HINSTANCE,
+    hIcon: ?*anyopaque,
+    hCursor: ?*anyopaque,
+    hbrBackground: ?*anyopaque,
+    lpszMenuName: ?LPCWSTR,
+    lpszClassName: LPCWSTR,
+    hIconSm: ?*anyopaque,
+};
+
+const class_name = std.unicode.utf8ToUtf16LeStringLiteral("winghostty.win32.settings");
+
+/// Error set returned from `AppHandle.saveAndReload`. The settings
+/// window surfaces these inline so users can re-try without losing
+/// edits.
+pub const SaveError = error{
+    PathResolveFailed,
+    TempCreateFailed,
+    SerializeFailed,
+    ReplaceFailed,
+    ReloadFailed,
+    OutOfMemory,
+    /// Write + reload both succeeded, but at least one GUI-edited
+    /// field is masked by a later layer (included `config-file`,
+    /// subsequent `--config-file`, `--config-default-files=false`
+    /// with no remaining base). The persisted bytes on disk are
+    /// correct; the effective runtime value doesn't match. UI
+    /// should surface this as a distinct warning, NOT as a
+    /// generic write failure.
+    SavedButMasked,
+};
+
+/// Minimal hook into the apprt `App` so the settings module can fetch
+/// the chrome brush colors without pulling in the whole app type.
+pub const AppHandle = struct {
+    ctx: *anyopaque,
+    /// Allocator used for `Config.shallowClone` on the pending draft.
+    /// The clone's `_arena` is owned by this allocator; `Config.deinit`
+    /// on the clone frees it.
+    alloc: std.mem.Allocator,
+    /// HINSTANCE used for window class registration + creation.
+    hinstance: HINSTANCE,
+    /// Chrome background color (COLORREF) to paint into the settings
+    /// content pane. Queried per paint so theme swaps propagate.
+    chromeBg: *const fn (ctx: *anyopaque) COLORREF,
+    /// Primary text color.
+    textPrimary: *const fn (ctx: *anyopaque) COLORREF,
+    /// Fire-and-forget shell-out to the OS default text editor with
+    /// the resolved `ghostty.conf` path. Used by the Advanced-pane
+    /// escape hatch.
+    openInEditor: *const fn (ctx: *anyopaque) void,
+    /// Snapshot the currently-active Config. The returned pointer is
+    /// only valid until the next config reload; the settings window
+    /// holds it as `original` for the duration of the pending-clone
+    /// session.
+    currentConfig: *const fn (ctx: *anyopaque) *const Config,
+    /// Serialise `pending` to disk (atomic-rename via `ReplaceFileW`
+    /// where supported, falling back to `MoveFileExW`) and refresh
+    /// the live app config + all surfaces. `original` is the
+    /// snapshot captured when the settings window opened; the save
+    /// path diffs pending against it (NOT against `App.config`) so
+    /// an external `reload_config` or file edit that fires while the
+    /// window is open doesn't get silently reverted by our save.
+    /// Caller owns both.
+    saveAndReload: *const fn (
+        ctx: *anyopaque,
+        pending: *const Config,
+        original: *const Config,
+    ) SaveError!void,
+    /// Fire-and-forget success toast for the app-level in-app stack
+    /// (e.g. "Settings saved"). Borrowed title + body — caller must
+    /// keep them alive only for the duration of the call; the stack
+    /// copies internally.
+    notifySuccess: *const fn (ctx: *anyopaque, title: []const u8, body: []const u8) void,
+    /// Fired after the settings window's HWND is destroyed. Lets the
+    /// app re-evaluate its quit-timer policy (the settings HWND
+    /// participates in the "has live UI windows" count so closing
+    /// the last terminal while settings is open does not auto-quit;
+    /// once settings itself closes the timer can kick in).
+    onClosed: *const fn (ctx: *anyopaque) void,
+};
+
+pub const SettingsWindow = struct {
+    handle: AppHandle,
+    hwnd: ?HWND = null,
+    btn_open_editor: ?HWND = null,
+    btn_section_appearance: ?HWND = null,
+    btn_section_terminal: ?HWND = null,
+    btn_section_shell: ?HWND = null,
+    btn_section_keybindings: ?HWND = null,
+    btn_section_advanced: ?HWND = null,
+    btn_save: ?HWND = null,
+    edit_scrollback: ?HWND = null,
+    edit_font_size: ?HWND = null,
+    edit_bg_opacity: ?HWND = null,
+    combo_confirm_close: ?HWND = null,
+    combo_copy_on_select: ?HWND = null,
+    combo_window_theme: ?HWND = null,
+    combo_shell_integ: ?HWND = null,
+    chk_trim_trail: ?HWND = null,
+    combo_cursor_style: ?HWND = null,
+    chk_bg_blur: ?HWND = null,
+    combo_pad_balance: ?HWND = null,
+    active_section: Section = .appearance,
+    /// Class atom lazily registered the first time `open` runs.
+    class_atom: ATOM = 0,
+
+    /// Frozen snapshot of the config at the moment the window last
+    /// opened. Owned by this struct via `Config.shallowClone` so an
+    /// external `reload_config` that fires while the window is open
+    /// does not mutate our diff baseline. Only valid while
+    /// `pending != null`.
+    original: ?Config = null,
+    /// Editable draft owned by `handle.alloc`. Created on open via
+    /// `Config.shallowClone(handle.alloc)`; freed on close/save. Per
+    /// AGENTS.md:49, we must NOT deinit an inherited `command` field
+    /// on this clone — `Config.deinit` already honours that because
+    /// the clone owns only its `_arena`, not the inherited pointers.
+    pending: ?Config = null,
+    /// Guard flag so the EN_CHANGE handler doesn't fire a cascade
+    /// when we programmatically set the EDIT text on open.
+    suppress_edit_events: bool = false,
+
+    pub fn init(handle: AppHandle) SettingsWindow {
+        return .{ .handle = handle };
+    }
+
+    pub fn deinit(self: *SettingsWindow) void {
+        if (self.hwnd) |h| {
+            if (IsWindow(h) != 0) _ = DestroyWindow(h);
+        }
+        self.hwnd = null;
+        self.btn_open_editor = null;
+        self.btn_section_appearance = null;
+        self.btn_section_terminal = null;
+        self.btn_section_shell = null;
+        self.btn_section_keybindings = null;
+        self.btn_section_advanced = null;
+        self.btn_save = null;
+        self.edit_scrollback = null;
+        self.edit_font_size = null;
+        self.edit_bg_opacity = null;
+        self.combo_confirm_close = null;
+        self.combo_copy_on_select = null;
+        self.combo_window_theme = null;
+        self.combo_shell_integ = null;
+        self.chk_trim_trail = null;
+        self.combo_cursor_style = null;
+        self.chk_bg_blur = null;
+        self.combo_pad_balance = null;
+        self.clearPending();
+    }
+
+    /// Drop the pending draft (if any) and its arena. Safe to call
+    /// multiple times. Called from close paths and after Save so the
+    /// next `open` starts with a fresh clone of the (possibly just-
+    /// reloaded) app config.
+    fn clearPending(self: *SettingsWindow) void {
+        if (self.pending) |*p| p.deinit();
+        self.pending = null;
+        if (self.original) |*o| o.deinit();
+        self.original = null;
+    }
+
+    /// Null out child HWND references + drop pending. Called from
+    /// both WM_CLOSE and WM_NCDESTROY so the next `open()` recreates
+    /// fresh children and clones.
+    fn clearChildRefs(self: *SettingsWindow) void {
+        self.hwnd = null;
+        self.btn_open_editor = null;
+        self.btn_section_appearance = null;
+        self.btn_section_terminal = null;
+        self.btn_section_shell = null;
+        self.btn_section_keybindings = null;
+        self.btn_section_advanced = null;
+        self.btn_save = null;
+        self.edit_scrollback = null;
+        self.edit_font_size = null;
+        self.edit_bg_opacity = null;
+        self.combo_confirm_close = null;
+        self.combo_copy_on_select = null;
+        self.combo_window_theme = null;
+        self.combo_shell_integ = null;
+        self.chk_trim_trail = null;
+        self.combo_cursor_style = null;
+        self.chk_bg_blur = null;
+        self.combo_pad_balance = null;
+        self.clearPending();
+    }
+
+    fn sectionButton(self: *const SettingsWindow, section: Section) ?HWND {
+        return switch (section) {
+            .appearance => self.btn_section_appearance,
+            .terminal => self.btn_section_terminal,
+            .shell => self.btn_section_shell,
+            .keybindings => self.btn_section_keybindings,
+            .advanced => self.btn_section_advanced,
+        };
+    }
+
+    fn setActiveSection(self: *SettingsWindow, next: Section) void {
+        if (self.active_section == next and self.hwnd != null) return;
+        self.active_section = next;
+        self.applySectionVisibility();
+        if (self.hwnd) |h| _ = InvalidateRect(h, null, 1);
+    }
+
+    fn applySectionVisibility(self: *SettingsWindow) void {
+        const show_advanced: i32 = if (self.active_section == .advanced) SW_SHOWNORMAL else SW_HIDE;
+        const show_terminal: i32 = if (self.active_section == .terminal) SW_SHOWNORMAL else SW_HIDE;
+        const show_appearance: i32 = if (self.active_section == .appearance) SW_SHOWNORMAL else SW_HIDE;
+        const show_shell: i32 = if (self.active_section == .shell) SW_SHOWNORMAL else SW_HIDE;
+
+        if (self.btn_open_editor) |btn| _ = ShowWindow(btn, show_advanced);
+        if (self.edit_scrollback) |e| _ = ShowWindow(e, show_terminal);
+        if (self.combo_confirm_close) |e| _ = ShowWindow(e, show_terminal);
+        if (self.combo_copy_on_select) |e| _ = ShowWindow(e, show_terminal);
+        if (self.chk_trim_trail) |e| _ = ShowWindow(e, show_terminal);
+        if (self.edit_font_size) |e| _ = ShowWindow(e, show_appearance);
+        if (self.edit_bg_opacity) |e| _ = ShowWindow(e, show_appearance);
+        if (self.combo_window_theme) |e| _ = ShowWindow(e, show_appearance);
+        if (self.combo_cursor_style) |e| _ = ShowWindow(e, show_appearance);
+        if (self.chk_bg_blur) |e| _ = ShowWindow(e, show_appearance);
+        if (self.combo_pad_balance) |e| _ = ShowWindow(e, show_appearance);
+        if (self.combo_shell_integ) |e| _ = ShowWindow(e, show_shell);
+    }
+
+    /// Read the current EDIT text and write the parsed integer into
+    /// the pending draft. Called from EN_CHANGE. Swallows parse
+    /// errors silently — ES_NUMBER style means the text is already
+    /// digits-only, but the empty-string case needs to map to 0 (or
+    /// be ignored).
+    fn syncScrollbackFromEdit(self: *SettingsWindow) void {
+        if (self.suppress_edit_events) return;
+        const p = &(self.pending orelse return);
+        const edit = self.edit_scrollback orelse return;
+
+        var buf_w: [32]u16 = undefined;
+        const n = GetWindowTextW(edit, &buf_w, @intCast(buf_w.len));
+        if (n <= 0) return;
+        var utf8_buf: [64]u8 = undefined;
+        const utf8 = std.unicode.utf16LeToUtf8(&utf8_buf, buf_w[0..@intCast(n)]) catch return;
+        const trimmed = std.mem.trim(u8, utf8_buf[0..utf8], " \t");
+        if (trimmed.len == 0) return;
+        const parsed = std.fmt.parseInt(usize, trimmed, 10) catch return;
+        p.*.@"scrollback-limit" = parsed;
+    }
+
+    fn displayScrollbackInEdit(self: *SettingsWindow) void {
+        const edit = self.edit_scrollback orelse return;
+        const p = self.pending orelse return;
+        var buf: [32]u8 = undefined;
+        const text = std.fmt.bufPrintZ(&buf, "{d}", .{p.@"scrollback-limit"}) catch return;
+        var buf_w: [32]u16 = undefined;
+        const w = utf8ToW(&buf_w, text);
+        self.suppress_edit_events = true;
+        _ = SendMessageW(edit, WM_SETTEXT, 0, @bitCast(@intFromPtr(w)));
+        self.suppress_edit_events = false;
+    }
+
+    fn syncFontSizeFromEdit(self: *SettingsWindow) void {
+        if (self.suppress_edit_events) return;
+        const p = &(self.pending orelse return);
+        const edit = self.edit_font_size orelse return;
+        var buf_w: [32]u16 = undefined;
+        const n = GetWindowTextW(edit, &buf_w, @intCast(buf_w.len));
+        if (n <= 0) return;
+        var utf8_buf: [64]u8 = undefined;
+        const utf8 = std.unicode.utf16LeToUtf8(&utf8_buf, buf_w[0..@intCast(n)]) catch return;
+        const trimmed = std.mem.trim(u8, utf8_buf[0..utf8], " \t");
+        if (trimmed.len == 0) return;
+        const parsed = std.fmt.parseFloat(f32, trimmed) catch return;
+        // Range-clamp: Ghostty Config default is 12 pt; our range is
+        // the same the GUI spinner catalogue will offer (6..72).
+        if (parsed < 6.0 or parsed > 72.0) return;
+        p.*.@"font-size" = parsed;
+    }
+
+    fn displayFontSizeInEdit(self: *SettingsWindow) void {
+        const edit = self.edit_font_size orelse return;
+        const p = self.pending orelse return;
+        var buf: [32]u8 = undefined;
+        const text = std.fmt.bufPrintZ(&buf, "{d:.1}", .{p.@"font-size"}) catch return;
+        var buf_w: [32]u16 = undefined;
+        const w = utf8ToW(&buf_w, text);
+        self.suppress_edit_events = true;
+        _ = SendMessageW(edit, WM_SETTEXT, 0, @bitCast(@intFromPtr(w)));
+        self.suppress_edit_events = false;
+    }
+
+    fn syncBgOpacityFromEdit(self: *SettingsWindow) void {
+        if (self.suppress_edit_events) return;
+        const p = &(self.pending orelse return);
+        const edit = self.edit_bg_opacity orelse return;
+        var buf_w: [32]u16 = undefined;
+        const n = GetWindowTextW(edit, &buf_w, @intCast(buf_w.len));
+        if (n <= 0) return;
+        var utf8_buf: [64]u8 = undefined;
+        const utf8 = std.unicode.utf16LeToUtf8(&utf8_buf, buf_w[0..@intCast(n)]) catch return;
+        const trimmed = std.mem.trim(u8, utf8_buf[0..utf8], " \t");
+        if (trimmed.len == 0) return;
+        const parsed = std.fmt.parseFloat(f64, trimmed) catch return;
+        if (parsed < 0.0 or parsed > 1.0) return;
+        p.*.@"background-opacity" = parsed;
+    }
+
+    fn displayBgOpacityInEdit(self: *SettingsWindow) void {
+        const edit = self.edit_bg_opacity orelse return;
+        const p = self.pending orelse return;
+        var buf: [32]u8 = undefined;
+        const text = std.fmt.bufPrintZ(&buf, "{d:.2}", .{p.@"background-opacity"}) catch return;
+        var buf_w: [32]u16 = undefined;
+        const w = utf8ToW(&buf_w, text);
+        self.suppress_edit_events = true;
+        _ = SendMessageW(edit, WM_SETTEXT, 0, @bitCast(@intFromPtr(w)));
+        self.suppress_edit_events = false;
+    }
+
+    fn syncTrimTrailFromCheckbox(self: *SettingsWindow) void {
+        if (self.suppress_edit_events) return;
+        const p = &(self.pending orelse return);
+        const chk = self.chk_trim_trail orelse return;
+        const state = SendMessageW(chk, BM_GETCHECK, 0, 0);
+        p.*.@"clipboard-trim-trailing-spaces" = (state == BST_CHECKED);
+    }
+
+    fn displayTrimTrailInCheckbox(self: *SettingsWindow) void {
+        const chk = self.chk_trim_trail orelse return;
+        const p = self.pending orelse return;
+        self.suppress_edit_events = true;
+        _ = SendMessageW(
+            chk,
+            BM_SETCHECK,
+            if (p.@"clipboard-trim-trailing-spaces") BST_CHECKED else BST_UNCHECKED,
+            0,
+        );
+        self.suppress_edit_events = false;
+    }
+
+    /// Enum combo helpers. `fromIndex` maps combobox selection to
+    /// config enum value; `toIndex` goes the other direction for
+    /// initial display.
+    fn syncConfirmCloseFromCombo(self: *SettingsWindow) void {
+        if (self.suppress_edit_events) return;
+        const p = &(self.pending orelse return);
+        const combo = self.combo_confirm_close orelse return;
+        const idx = SendMessageW(combo, CB_GETCURSEL, 0, 0);
+        if (idx < 0) return;
+        p.*.@"confirm-close-surface" = switch (idx) {
+            0 => .false,
+            1 => .true,
+            2 => .always,
+            else => return,
+        };
+    }
+
+    fn displayConfirmCloseInCombo(self: *SettingsWindow) void {
+        const combo = self.combo_confirm_close orelse return;
+        const p = self.pending orelse return;
+        const idx: usize = switch (p.@"confirm-close-surface") {
+            .false => 0,
+            .true => 1,
+            .always => 2,
+        };
+        self.suppress_edit_events = true;
+        _ = SendMessageW(combo, CB_SETCURSEL, idx, 0);
+        self.suppress_edit_events = false;
+    }
+
+    fn syncCopyOnSelectFromCombo(self: *SettingsWindow) void {
+        if (self.suppress_edit_events) return;
+        const p = &(self.pending orelse return);
+        const combo = self.combo_copy_on_select orelse return;
+        const idx = SendMessageW(combo, CB_GETCURSEL, 0, 0);
+        if (idx < 0) return;
+        p.*.@"copy-on-select" = switch (idx) {
+            0 => .false,
+            1 => .true,
+            2 => .clipboard,
+            else => return,
+        };
+    }
+
+    fn displayCopyOnSelectInCombo(self: *SettingsWindow) void {
+        const combo = self.combo_copy_on_select orelse return;
+        const p = self.pending orelse return;
+        const idx: usize = switch (p.@"copy-on-select") {
+            .false => 0,
+            .true => 1,
+            .clipboard => 2,
+        };
+        self.suppress_edit_events = true;
+        _ = SendMessageW(combo, CB_SETCURSEL, idx, 0);
+        self.suppress_edit_events = false;
+    }
+
+    fn syncWindowThemeFromCombo(self: *SettingsWindow) void {
+        if (self.suppress_edit_events) return;
+        const p = &(self.pending orelse return);
+        const combo = self.combo_window_theme orelse return;
+        const idx = SendMessageW(combo, CB_GETCURSEL, 0, 0);
+        if (idx < 0) return;
+        p.*.@"window-theme" = switch (idx) {
+            0 => .auto,
+            1 => .system,
+            2 => .light,
+            3 => .dark,
+            4 => .ghostty,
+            else => return,
+        };
+    }
+
+    fn displayWindowThemeInCombo(self: *SettingsWindow) void {
+        const combo = self.combo_window_theme orelse return;
+        const p = self.pending orelse return;
+        const idx: usize = switch (p.@"window-theme") {
+            .auto => 0,
+            .system => 1,
+            .light => 2,
+            .dark => 3,
+            .ghostty => 4,
+        };
+        self.suppress_edit_events = true;
+        _ = SendMessageW(combo, CB_SETCURSEL, idx, 0);
+        self.suppress_edit_events = false;
+    }
+
+    fn syncShellIntegFromCombo(self: *SettingsWindow) void {
+        if (self.suppress_edit_events) return;
+        const p = &(self.pending orelse return);
+        const combo = self.combo_shell_integ orelse return;
+        const idx = SendMessageW(combo, CB_GETCURSEL, 0, 0);
+        if (idx < 0) return;
+        p.*.@"shell-integration" = switch (idx) {
+            0 => .none,
+            1 => .detect,
+            2 => .bash,
+            3 => .elvish,
+            4 => .fish,
+            5 => .nushell,
+            6 => .zsh,
+            else => return,
+        };
+    }
+
+    fn displayShellIntegInCombo(self: *SettingsWindow) void {
+        const combo = self.combo_shell_integ orelse return;
+        const p = self.pending orelse return;
+        const idx: usize = switch (p.@"shell-integration") {
+            .none => 0,
+            .detect => 1,
+            .bash => 2,
+            .elvish => 3,
+            .fish => 4,
+            .nushell => 5,
+            .zsh => 6,
+        };
+        self.suppress_edit_events = true;
+        _ = SendMessageW(combo, CB_SETCURSEL, idx, 0);
+        self.suppress_edit_events = false;
+    }
+
+    fn syncCursorStyleFromCombo(self: *SettingsWindow) void {
+        if (self.suppress_edit_events) return;
+        const p = &(self.pending orelse return);
+        const combo = self.combo_cursor_style orelse return;
+        const idx = SendMessageW(combo, CB_GETCURSEL, 0, 0);
+        if (idx < 0) return;
+        p.*.@"cursor-style" = switch (idx) {
+            0 => .bar,
+            1 => .block,
+            2 => .underline,
+            3 => .block_hollow,
+            else => return,
+        };
+    }
+
+    fn displayCursorStyleInCombo(self: *SettingsWindow) void {
+        const combo = self.combo_cursor_style orelse return;
+        const p = self.pending orelse return;
+        const idx: usize = switch (p.@"cursor-style") {
+            .bar => 0,
+            .block => 1,
+            .underline => 2,
+            .block_hollow => 3,
+        };
+        self.suppress_edit_events = true;
+        _ = SendMessageW(combo, CB_SETCURSEL, idx, 0);
+        self.suppress_edit_events = false;
+    }
+
+    /// background-blur is a union (false / true / { radius: u8 }). The
+    /// GUI exposes only the boolean path — true/false. A user who has
+    /// set a numeric radius in their config file will see the checkbox
+    /// as checked, and unchecking then saving clobbers the radius back
+    /// to the plain `true` variant. Inline note in the paint path
+    /// should eventually surface this.
+    fn syncBgBlurFromCheckbox(self: *SettingsWindow) void {
+        if (self.suppress_edit_events) return;
+        const p = &(self.pending orelse return);
+        const chk = self.chk_bg_blur orelse return;
+        const state = SendMessageW(chk, BM_GETCHECK, 0, 0);
+        p.*.@"background-blur" = if (state == BST_CHECKED) .true else .false;
+    }
+
+    fn displayBgBlurInCheckbox(self: *SettingsWindow) void {
+        const chk = self.chk_bg_blur orelse return;
+        const p = self.pending orelse return;
+        const enabled = switch (p.@"background-blur") {
+            .false => false,
+            .true => true,
+            .radius => |r| r > 0,
+        };
+        self.suppress_edit_events = true;
+        _ = SendMessageW(
+            chk,
+            BM_SETCHECK,
+            if (enabled) BST_CHECKED else BST_UNCHECKED,
+            0,
+        );
+        self.suppress_edit_events = false;
+    }
+
+    fn syncPadBalanceFromCombo(self: *SettingsWindow) void {
+        if (self.suppress_edit_events) return;
+        const p = &(self.pending orelse return);
+        const combo = self.combo_pad_balance orelse return;
+        const idx = SendMessageW(combo, CB_GETCURSEL, 0, 0);
+        if (idx < 0) return;
+        p.*.@"window-padding-balance" = switch (idx) {
+            0 => .false,
+            1 => .true,
+            2 => .equal,
+            else => return,
+        };
+    }
+
+    fn displayPadBalanceInCombo(self: *SettingsWindow) void {
+        const combo = self.combo_pad_balance orelse return;
+        const p = self.pending orelse return;
+        const idx: usize = switch (p.@"window-padding-balance") {
+            .false => 0,
+            .true => 1,
+            .equal => 2,
+        };
+        self.suppress_edit_events = true;
+        _ = SendMessageW(combo, CB_SETCURSEL, idx, 0);
+        self.suppress_edit_events = false;
+    }
+
+    /// Refresh every control from the pending draft. Called after
+    /// `adoptCurrentConfig` and after a successful save.
+    fn refreshAllControls(self: *SettingsWindow) void {
+        self.displayScrollbackInEdit();
+        self.displayFontSizeInEdit();
+        self.displayBgOpacityInEdit();
+        self.displayTrimTrailInCheckbox();
+        self.displayConfirmCloseInCombo();
+        self.displayCopyOnSelectInCombo();
+        self.displayWindowThemeInCombo();
+        self.displayShellIntegInCombo();
+        self.displayCursorStyleInCombo();
+        self.displayBgBlurInCheckbox();
+        self.displayPadBalanceInCombo();
+    }
+
+    fn save(self: *SettingsWindow) void {
+        const p = self.pending orelse return;
+        const o = self.original orelse return;
+        const result = self.handle.saveAndReload(self.handle.ctx, &p, &o);
+        if (result) |_| {
+            // Success path: refresh baseline so subsequent edits
+            // diff correctly against the new saved state.
+            self.clearPending();
+            self.adoptCurrentConfig();
+            self.refreshAllControls();
+            self.handle.notifySuccess(self.handle.ctx, "Settings saved", "");
+        } else |err| switch (err) {
+            error.SavedButMasked => {
+                // Persisted bytes are correct but a later config
+                // layer is masking one or more edits. Same baseline
+                // refresh as success since the file IS written.
+                // The toast copy tells the user the bytes made it
+                // to disk but the effective value differs.
+                self.clearPending();
+                self.adoptCurrentConfig();
+                self.refreshAllControls();
+                self.handle.notifySuccess(
+                    self.handle.ctx,
+                    "Settings saved — some values are masked by a later config-file layer",
+                    "Check the log for which fields.",
+                );
+            },
+            else => {
+                // Write failed. DO NOT discard `pending` — the user's
+                // edits are still in memory; losing them on every
+                // transient disk error (permission denied, sharing
+                // violation when another editor has the file open)
+                // would be destructive. Leave `pending` alone so
+                // the user can retry Save once the underlying issue
+                // is fixed, or close the window to discard.
+                std.log.warn("settings: save failed err={}; draft preserved", .{err});
+            },
+        }
+    }
+
+    fn adoptCurrentConfig(self: *SettingsWindow) void {
+        const current = self.handle.currentConfig(self.handle.ctx);
+        // Two independent shallow clones so each struct has its own
+        // arena. The `original` clone is a frozen baseline for the
+        // save-path diff; the `pending` clone is the editable draft.
+        // Mutations to `pending` go through its arena; `original`
+        // stays byte-identical to the config at window-open time
+        // even if `App.config` mutates via an external reload.
+        self.original = current.shallowClone(self.handle.alloc);
+        self.pending = current.shallowClone(self.handle.alloc);
+    }
+
+    /// Bring the settings window up. Idempotent: a subsequent open
+    /// with a live HWND brings the existing window to the foreground
+    /// instead of duplicating it.
+    pub fn open(self: *SettingsWindow) !void {
+        if (self.hwnd) |h| {
+            if (IsWindow(h) != 0) {
+                if (IsIconic(h) != 0) _ = ShowWindow(h, SW_RESTORE) else _ = ShowWindow(h, SW_SHOWNORMAL);
+                _ = SetForegroundWindow(h);
+                return;
+            }
+            self.hwnd = null;
+        }
+
+        // Fresh pending clone of the live config. Discarded on close
+        // or refreshed after a successful save.
+        self.clearPending();
+        self.adoptCurrentConfig();
+
+        if (self.class_atom == 0) {
+            const wc: WNDCLASSEXW = .{
+                .cbSize = @sizeOf(WNDCLASSEXW),
+                .style = CS_HREDRAW | CS_VREDRAW,
+                .lpfnWndProc = &wndProc,
+                .cbClsExtra = 0,
+                .cbWndExtra = 0,
+                .hInstance = self.handle.hinstance,
+                .hIcon = null,
+                .hCursor = LoadCursorW(null, @ptrFromInt(IDC_ARROW)),
+                .hbrBackground = null,
+                .lpszMenuName = null,
+                .lpszClassName = class_name,
+                .hIconSm = null,
+            };
+            self.class_atom = RegisterClassExW(&wc);
+            if (self.class_atom == 0) {
+                return windows.unexpectedError(windows.kernel32.GetLastError());
+            }
+        }
+
+        const title = std.unicode.utf8ToUtf16LeStringLiteral("winghostty settings");
+        const hwnd = CreateWindowExW(
+            WS_EX_APPWINDOW,
+            class_name,
+            title,
+            WS_OVERLAPPEDWINDOW & ~WS_MAXIMIZEBOX,
+            CW_USEDEFAULT,
+            CW_USEDEFAULT,
+            960,
+            720,
+            null,
+            null,
+            self.handle.hinstance,
+            self,
+        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+        self.hwnd = hwnd;
+
+        const btn_class = std.unicode.utf8ToUtf16LeStringLiteral("BUTTON");
+
+        // Left-rail section buttons. Clicks arrive via WM_COMMAND on
+        // the parent; the id maps back to a `Section` via
+        // `Section.fromButtonId`.
+        self.btn_section_appearance = makeSectionButton(hwnd, self.handle.hinstance, btn_class, Section.appearance);
+        self.btn_section_terminal = makeSectionButton(hwnd, self.handle.hinstance, btn_class, Section.terminal);
+        self.btn_section_shell = makeSectionButton(hwnd, self.handle.hinstance, btn_class, Section.shell);
+        self.btn_section_keybindings = makeSectionButton(hwnd, self.handle.hinstance, btn_class, Section.keybindings);
+        self.btn_section_advanced = makeSectionButton(hwnd, self.handle.hinstance, btn_class, Section.advanced);
+
+        // "Open in default editor" button — escape hatch for users
+        // who prefer text-editing the config file directly. Lives
+        // in the Advanced section; hidden when another section is
+        // active.
+        const btn_label = std.unicode.utf8ToUtf16LeStringLiteral("Open in default editor");
+        self.btn_open_editor = CreateWindowExW(
+            0,
+            btn_class,
+            btn_label,
+            WS_CHILD | WS_TABSTOP | BS_PUSHBUTTON,
+            0,
+            0,
+            220,
+            32,
+            hwnd,
+            @ptrFromInt(BTN_OPEN_EDITOR),
+            self.handle.hinstance,
+            null,
+        );
+        // "Save" button — always visible; writes `pending` to disk
+        // and fires a hard reload. Error surfaces via std.log.warn
+        // for now; inline banner is P3 polish.
+        const btn_save_label = std.unicode.utf8ToUtf16LeStringLiteral("Save");
+        self.btn_save = CreateWindowExW(
+            0,
+            btn_class,
+            btn_save_label,
+            WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+            0,
+            0,
+            90,
+            32,
+            hwnd,
+            @ptrFromInt(BTN_SAVE),
+            self.handle.hinstance,
+            null,
+        );
+
+        // Scrollback limit EDIT. Lives in the Terminal section. Digit-
+        // only input via ES_NUMBER; EN_CHANGE syncs into `pending`.
+        const edit_class = std.unicode.utf8ToUtf16LeStringLiteral("EDIT");
+        self.edit_scrollback = CreateWindowExW(
+            0,
+            edit_class,
+            std.unicode.utf8ToUtf16LeStringLiteral(""),
+            WS_CHILD | WS_TABSTOP | ES_NUMBER | ES_AUTOHSCROLL,
+            0,
+            0,
+            200,
+            28,
+            hwnd,
+            @ptrFromInt(EDIT_SCROLLBACK),
+            self.handle.hinstance,
+            null,
+        );
+
+        // font-size EDIT. Appearance section. We accept floats via a
+        // plain EDIT (not ES_NUMBER — which rejects '.') and validate
+        // on EN_CHANGE.
+        self.edit_font_size = CreateWindowExW(
+            0,
+            edit_class,
+            std.unicode.utf8ToUtf16LeStringLiteral(""),
+            WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
+            0,
+            0,
+            160,
+            28,
+            hwnd,
+            @ptrFromInt(EDIT_FONT_SIZE),
+            self.handle.hinstance,
+            null,
+        );
+
+        // background-opacity EDIT. Appearance section. 0.0..1.0.
+        self.edit_bg_opacity = CreateWindowExW(
+            0,
+            edit_class,
+            std.unicode.utf8ToUtf16LeStringLiteral(""),
+            WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
+            0,
+            0,
+            160,
+            28,
+            hwnd,
+            @ptrFromInt(EDIT_BG_OPACITY),
+            self.handle.hinstance,
+            null,
+        );
+
+        // clipboard-trim-trailing-spaces checkbox. Terminal section.
+        self.chk_trim_trail = CreateWindowExW(
+            0,
+            btn_class,
+            std.unicode.utf8ToUtf16LeStringLiteral("Trim trailing spaces on copy"),
+            WS_CHILD | WS_TABSTOP | BS_AUTOCHECKBOX,
+            0,
+            0,
+            260,
+            24,
+            hwnd,
+            @ptrFromInt(CHK_TRIM_TRAIL),
+            self.handle.hinstance,
+            null,
+        );
+
+        // Comboboxes for enum fields.
+        const combo_class = std.unicode.utf8ToUtf16LeStringLiteral("COMBOBOX");
+
+        self.combo_confirm_close = CreateWindowExW(
+            0,
+            combo_class,
+            std.unicode.utf8ToUtf16LeStringLiteral(""),
+            WS_CHILD | WS_TABSTOP | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
+            0,
+            0,
+            200,
+            160,
+            hwnd,
+            @ptrFromInt(COMBO_CONFIRM_CLOSE),
+            self.handle.hinstance,
+            null,
+        );
+        populateCombo(self.combo_confirm_close, &.{ "false", "true", "always" });
+
+        self.combo_copy_on_select = CreateWindowExW(
+            0,
+            combo_class,
+            std.unicode.utf8ToUtf16LeStringLiteral(""),
+            WS_CHILD | WS_TABSTOP | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
+            0,
+            0,
+            200,
+            160,
+            hwnd,
+            @ptrFromInt(COMBO_COPY_ON_SELECT),
+            self.handle.hinstance,
+            null,
+        );
+        populateCombo(self.combo_copy_on_select, &.{ "false", "true", "clipboard" });
+
+        self.combo_window_theme = CreateWindowExW(
+            0,
+            combo_class,
+            std.unicode.utf8ToUtf16LeStringLiteral(""),
+            WS_CHILD | WS_TABSTOP | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
+            0,
+            0,
+            200,
+            180,
+            hwnd,
+            @ptrFromInt(COMBO_WINDOW_THEME),
+            self.handle.hinstance,
+            null,
+        );
+        populateCombo(self.combo_window_theme, &.{ "auto", "system", "light", "dark", "ghostty" });
+
+        self.combo_shell_integ = CreateWindowExW(
+            0,
+            combo_class,
+            std.unicode.utf8ToUtf16LeStringLiteral(""),
+            WS_CHILD | WS_TABSTOP | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
+            0,
+            0,
+            200,
+            200,
+            hwnd,
+            @ptrFromInt(COMBO_SHELL_INTEG),
+            self.handle.hinstance,
+            null,
+        );
+        populateCombo(
+            self.combo_shell_integ,
+            &.{ "none", "detect", "bash", "elvish", "fish", "nushell", "zsh" },
+        );
+
+        self.combo_cursor_style = CreateWindowExW(
+            0,
+            combo_class,
+            std.unicode.utf8ToUtf16LeStringLiteral(""),
+            WS_CHILD | WS_TABSTOP | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
+            0,
+            0,
+            200,
+            160,
+            hwnd,
+            @ptrFromInt(COMBO_CURSOR_STYLE),
+            self.handle.hinstance,
+            null,
+        );
+        populateCombo(
+            self.combo_cursor_style,
+            &.{ "bar", "block", "underline", "block_hollow" },
+        );
+
+        self.chk_bg_blur = CreateWindowExW(
+            0,
+            btn_class,
+            std.unicode.utf8ToUtf16LeStringLiteral("Enable background blur"),
+            WS_CHILD | WS_TABSTOP | BS_AUTOCHECKBOX,
+            0,
+            0,
+            260,
+            24,
+            hwnd,
+            @ptrFromInt(CHK_BG_BLUR),
+            self.handle.hinstance,
+            null,
+        );
+
+        self.combo_pad_balance = CreateWindowExW(
+            0,
+            combo_class,
+            std.unicode.utf8ToUtf16LeStringLiteral(""),
+            WS_CHILD | WS_TABSTOP | CBS_DROPDOWNLIST | CBS_HASSTRINGS,
+            0,
+            0,
+            200,
+            160,
+            hwnd,
+            @ptrFromInt(COMBO_PAD_BALANCE),
+            self.handle.hinstance,
+            null,
+        );
+        populateCombo(self.combo_pad_balance, &.{ "false", "true", "equal" });
+
+        self.refreshAllControls();
+
+        self.applySectionVisibility();
+
+        _ = ShowWindow(hwnd, SW_SHOWNORMAL);
+        layoutChildren(self);
+    }
+};
+
+fn populateCombo(combo_opt: ?HWND, items: []const []const u8) void {
+    const combo = combo_opt orelse return;
+    _ = SendMessageW(combo, CB_RESETCONTENT, 0, 0);
+    for (items) |item| {
+        var buf_w: [64]u16 = undefined;
+        const w = utf8ToW(&buf_w, item);
+        _ = SendMessageW(combo, CB_ADDSTRING, 0, @bitCast(@intFromPtr(w)));
+    }
+}
+
+fn makeSectionButton(
+    parent: HWND,
+    hinstance: HINSTANCE,
+    class: LPCWSTR,
+    section: Section,
+) ?HWND {
+    const id: usize = switch (section) {
+        .appearance => BTN_SECTION_APPEARANCE,
+        .terminal => BTN_SECTION_TERMINAL,
+        .shell => BTN_SECTION_SHELL,
+        .keybindings => BTN_SECTION_KEYBINDINGS,
+        .advanced => BTN_SECTION_ADVANCED,
+    };
+    return CreateWindowExW(
+        0,
+        class,
+        section.label(),
+        WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON,
+        0,
+        0,
+        100,
+        36,
+        parent,
+        @ptrFromInt(id),
+        hinstance,
+        null,
+    );
+}
+
+const left_rail_width: i32 = 200;
+const section_btn_height: i32 = 36;
+const section_btn_top_pad: i32 = 16;
+const section_btn_gap: i32 = 4;
+const side_pad: i32 = 16;
+
+fn layoutChildren(self: *SettingsWindow) void {
+    const hwnd = self.hwnd orelse return;
+    var rect: RECT = undefined;
+    if (GetClientRect(hwnd, &rect) == 0) return;
+
+    // Left rail — stack section buttons top-down.
+    const btn_x: i32 = side_pad;
+    const btn_w: i32 = left_rail_width - side_pad - side_pad;
+    var y: i32 = section_btn_top_pad;
+    for ([_]?HWND{
+        self.btn_section_appearance,
+        self.btn_section_terminal,
+        self.btn_section_shell,
+        self.btn_section_keybindings,
+        self.btn_section_advanced,
+    }) |btn_opt| {
+        if (btn_opt) |btn| {
+            _ = MoveWindow(btn, btn_x, y, btn_w, section_btn_height, 1);
+        }
+        y += section_btn_height + section_btn_gap;
+    }
+
+    const pane_left = left_rail_width + side_pad;
+    const pane_top = section_btn_top_pad;
+    const row_gap: i32 = 48;
+
+    // Terminal section stack. All rows share this section and are
+    // hidden by `applySectionVisibility` when another section is
+    // active. Layout is a single-column flow from the content-pane
+    // header down.
+    {
+        var ty: i32 = pane_top + 72;
+        if (self.edit_scrollback) |e| {
+            _ = MoveWindow(e, pane_left, ty, 200, 28, 1);
+            ty += row_gap;
+        }
+        if (self.combo_confirm_close) |e| {
+            _ = MoveWindow(e, pane_left, ty, 200, 160, 1);
+            ty += row_gap;
+        }
+        if (self.combo_copy_on_select) |e| {
+            _ = MoveWindow(e, pane_left, ty, 200, 160, 1);
+            ty += row_gap;
+        }
+        if (self.chk_trim_trail) |e| {
+            _ = MoveWindow(e, pane_left, ty, 260, 24, 1);
+        }
+    }
+
+    // Appearance section stack.
+    {
+        var ty: i32 = pane_top + 72;
+        if (self.edit_font_size) |e| {
+            _ = MoveWindow(e, pane_left, ty, 160, 28, 1);
+            ty += row_gap;
+        }
+        if (self.edit_bg_opacity) |e| {
+            _ = MoveWindow(e, pane_left, ty, 160, 28, 1);
+            ty += row_gap;
+        }
+        if (self.combo_window_theme) |e| {
+            _ = MoveWindow(e, pane_left, ty, 200, 180, 1);
+            ty += row_gap;
+        }
+        if (self.combo_cursor_style) |e| {
+            _ = MoveWindow(e, pane_left, ty, 200, 160, 1);
+            ty += row_gap;
+        }
+        if (self.combo_pad_balance) |e| {
+            _ = MoveWindow(e, pane_left, ty, 200, 160, 1);
+            ty += row_gap;
+        }
+        if (self.chk_bg_blur) |e| {
+            _ = MoveWindow(e, pane_left, ty, 260, 24, 1);
+        }
+    }
+
+    // Shell section.
+    if (self.combo_shell_integ) |e| {
+        _ = MoveWindow(e, pane_left, pane_top + 72, 200, 200, 1);
+    }
+
+    // Advanced-section "Open in default editor" button — anchored
+    // under the content-pane header.
+    if (self.btn_open_editor) |btn| {
+        const w: i32 = 220;
+        const h: i32 = 32;
+        _ = MoveWindow(
+            btn,
+            pane_left,
+            pane_top + 72,
+            w,
+            h,
+            1,
+        );
+    }
+
+    // Save button — always-visible, bottom-right of window.
+    if (self.btn_save) |btn| {
+        const w: i32 = 90;
+        const h: i32 = 32;
+        _ = MoveWindow(
+            btn,
+            rect.right - w - side_pad,
+            rect.bottom - h - side_pad,
+            w,
+            h,
+            1,
+        );
+    }
+}
+
+extern "user32" fn MoveWindow(
+    hWnd: HWND,
+    X: i32,
+    Y: i32,
+    nWidth: i32,
+    nHeight: i32,
+    bRepaint: BOOL,
+) callconv(.winapi) BOOL;
+
+fn wndProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.winapi) LRESULT {
+    if (msg == WM_NCCREATE) {
+        const cs: *const CREATESTRUCTW = @ptrFromInt(@as(usize, @bitCast(lParam)));
+        if (cs.lpCreateParams) |ptr| {
+            _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, @intCast(@intFromPtr(ptr)));
+        }
+    }
+
+    const owner = recoverOwner(hwnd);
+    switch (msg) {
+        WM_ERASEBKGND => return 1,
+        WM_PAINT => {
+            if (owner) |o| paint(hwnd, o);
+            return 0;
+        },
+        WM_SIZE => {
+            if (owner) |o| layoutChildren(o);
+            return 0;
+        },
+        WM_COMMAND => {
+            const id: usize = wParam & 0xFFFF;
+            const notify: u16 = @intCast((wParam >> 16) & 0xFFFF);
+            if (id == BTN_OPEN_EDITOR) {
+                if (owner) |o| o.handle.openInEditor(o.handle.ctx);
+                return 0;
+            }
+            if (id == BTN_SAVE) {
+                if (owner) |o| o.save();
+                return 0;
+            }
+            if (id == EDIT_SCROLLBACK and notify == EN_CHANGE) {
+                if (owner) |o| o.syncScrollbackFromEdit();
+                return 0;
+            }
+            if (id == EDIT_FONT_SIZE and notify == EN_CHANGE) {
+                if (owner) |o| o.syncFontSizeFromEdit();
+                return 0;
+            }
+            if (id == EDIT_BG_OPACITY and notify == EN_CHANGE) {
+                if (owner) |o| o.syncBgOpacityFromEdit();
+                return 0;
+            }
+            if (id == CHK_TRIM_TRAIL and notify == BN_CLICKED) {
+                if (owner) |o| o.syncTrimTrailFromCheckbox();
+                return 0;
+            }
+            if (id == COMBO_CONFIRM_CLOSE and notify == CBN_SELCHANGE) {
+                if (owner) |o| o.syncConfirmCloseFromCombo();
+                return 0;
+            }
+            if (id == COMBO_COPY_ON_SELECT and notify == CBN_SELCHANGE) {
+                if (owner) |o| o.syncCopyOnSelectFromCombo();
+                return 0;
+            }
+            if (id == COMBO_WINDOW_THEME and notify == CBN_SELCHANGE) {
+                if (owner) |o| o.syncWindowThemeFromCombo();
+                return 0;
+            }
+            if (id == COMBO_SHELL_INTEG and notify == CBN_SELCHANGE) {
+                if (owner) |o| o.syncShellIntegFromCombo();
+                return 0;
+            }
+            if (id == COMBO_CURSOR_STYLE and notify == CBN_SELCHANGE) {
+                if (owner) |o| o.syncCursorStyleFromCombo();
+                return 0;
+            }
+            if (id == CHK_BG_BLUR and notify == BN_CLICKED) {
+                if (owner) |o| o.syncBgBlurFromCheckbox();
+                return 0;
+            }
+            if (id == COMBO_PAD_BALANCE and notify == CBN_SELCHANGE) {
+                if (owner) |o| o.syncPadBalanceFromCombo();
+                return 0;
+            }
+            if (Section.fromButtonId(id)) |section| {
+                if (owner) |o| o.setActiveSection(section);
+                return 0;
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+        WM_CLOSE => {
+            _ = ShowWindow(hwnd, SW_HIDE);
+            if (owner) |o| {
+                o.clearChildRefs();
+                // Let the app re-evaluate its quit-timer policy. If
+                // we were the last live UI window, the timer kicks in
+                // now; otherwise this is a no-op.
+                o.handle.onClosed(o.handle.ctx);
+            }
+            _ = DestroyWindow(hwnd);
+            return 0;
+        },
+        WM_NCDESTROY => {
+            // Clear back-pointer; the settings wndproc will no longer
+            // dereference a freed owner even if a late paint slips
+            // through. `onClosed` already fired from WM_CLOSE in the
+            // user-initiated close path; avoid firing again here so
+            // `App.deinit → settings_window.deinit` (which destroys
+            // the HWND without the user closing it) doesn't re-enter
+            // the quit-timer path during teardown.
+            if (owner) |o| o.clearChildRefs();
+            _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+        else => return DefWindowProcW(hwnd, msg, wParam, lParam),
+    }
+}
+
+fn recoverOwner(hwnd: HWND) ?*SettingsWindow {
+    const raw = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    if (raw == 0) return null;
+    return @ptrFromInt(@as(usize, @intCast(raw)));
+}
+
+const DT_LEFT: UINT = 0x0;
+const DT_WORDBREAK: UINT = 0x10;
+const DT_TOP: UINT = 0x0;
+
+fn paint(hwnd: HWND, owner: *SettingsWindow) void {
+    var ps: PAINTSTRUCT = undefined;
+    const hdc = BeginPaint(hwnd, &ps);
+    defer _ = EndPaint(hwnd, &ps);
+
+    var rect: RECT = undefined;
+    if (GetClientRect(hwnd, &rect) == 0) return;
+
+    const bg = owner.handle.chromeBg(owner.handle.ctx);
+    const fg = owner.handle.textPrimary(owner.handle.ctx);
+
+    const brush = GetStockObject(DC_BRUSH);
+    _ = SetDCBrushColor(hdc, bg);
+    _ = FillRect(hdc, &rect, brush);
+
+    // Left rail gets a subtle tint so the section buttons visually
+    // separate from the content pane. We darken `bg` toward black;
+    // in light mode this becomes a slightly darker shade, in dark
+    // mode a slightly lighter one (from the DCBrushColor clamp).
+    var rail_rect = rect;
+    rail_rect.right = left_rail_width;
+    _ = SetDCBrushColor(hdc, tintBg(bg));
+    _ = FillRect(hdc, &rail_rect, brush);
+
+    _ = SetBkMode(hdc, TRANSPARENT);
+    _ = SetTextColor(hdc, fg);
+
+    // Content pane: header + placeholder body describing the section.
+    const pane_left = left_rail_width + side_pad;
+    const pane_right = rect.right - side_pad;
+    const pane_top = section_btn_top_pad;
+
+    // Section header at top-left of the content pane.
+    var header_buf_w: [128]u16 = undefined;
+    const header_w = utf8ToW(&header_buf_w, owner.active_section.headerText());
+    var header_rect: RECT = .{
+        .left = pane_left,
+        .top = pane_top,
+        .right = pane_right,
+        .bottom = pane_top + 40,
+    };
+    _ = DrawTextW(
+        hdc,
+        header_w,
+        -1,
+        &header_rect,
+        DT_LEFT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX,
+    );
+
+    // Placeholder body below the header (section summary in 1 line).
+    var body_buf_w: [256]u16 = undefined;
+    const body_w = utf8ToW(&body_buf_w, owner.active_section.placeholderText());
+    var body_rect: RECT = .{
+        .left = pane_left,
+        .top = pane_top + 48,
+        .right = pane_right,
+        .bottom = pane_top + 68,
+    };
+    _ = DrawTextW(
+        hdc,
+        body_w,
+        -1,
+        &body_rect,
+        DT_LEFT | DT_TOP | DT_WORDBREAK | DT_NOPREFIX,
+    );
+
+    // Per-field labels painted just above each control. Labels are
+    // only drawn for the active section's controls to avoid clutter.
+    // The y-values match the layout stack in `layoutChildren` minus
+    // the label_pad.
+    const label_pad: i32 = 18;
+    const row_gap: i32 = 48;
+    switch (owner.active_section) {
+        .terminal => {
+            const labels = [_][]const u8{
+                "Scrollback limit (rows, 0 = unlimited)",
+                "Close confirmation",
+                "Copy on select",
+            };
+            var ly: i32 = pane_top + 72;
+            for (labels) |lbl| {
+                drawLabel(hdc, pane_left, ly - label_pad, pane_right, lbl);
+                ly += row_gap;
+            }
+        },
+        .appearance => {
+            const labels = [_][]const u8{
+                "Font size (pt)",
+                "Background opacity (0.0 .. 1.0)",
+                "Window theme",
+                "Cursor style",
+                "Window padding balance",
+            };
+            var ly: i32 = pane_top + 72;
+            for (labels) |lbl| {
+                drawLabel(hdc, pane_left, ly - label_pad, pane_right, lbl);
+                ly += row_gap;
+            }
+        },
+        .shell => {
+            drawLabel(hdc, pane_left, pane_top + 72 - label_pad, pane_right, "Shell integration");
+        },
+        else => {},
+    }
+}
+
+fn drawLabel(hdc: ?*anyopaque, x: i32, y: i32, right: i32, text: []const u8) void {
+    var buf: [128]u16 = undefined;
+    const w = utf8ToW(&buf, text);
+    var rect: RECT = .{ .left = x, .top = y, .right = right, .bottom = y + 16 };
+    _ = DrawTextW(hdc, w, -1, &rect, DT_LEFT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX);
+}
+
+fn utf8ToW(buf: []u16, text: []const u8) [*:0]const u16 {
+    const written = std.unicode.utf8ToUtf16Le(buf, text) catch buf.len;
+    const n: usize = @min(written, buf.len - 1);
+    buf[n] = 0;
+    return @ptrCast(buf.ptr);
+}
+
+/// Lighten (in dark mode) or darken (in light mode) a COLORREF by a
+/// fixed delta. Used for the left-rail tint. Color is packed as
+/// 0x00BBGGRR (COLORREF) so we decompose and recompose per channel.
+fn tintBg(color: COLORREF) COLORREF {
+    const r: u32 = color & 0xFF;
+    const g: u32 = (color >> 8) & 0xFF;
+    const b: u32 = (color >> 16) & 0xFF;
+    // Heuristic: if the average channel is bright, darken; else lighten.
+    const avg = (r + g + b) / 3;
+    if (avg > 128) {
+        return packColor(sat8(r, -16), sat8(g, -16), sat8(b, -16));
+    }
+    return packColor(sat8(r, 16), sat8(g, 16), sat8(b, 16));
+}
+
+fn sat8(ch: u32, delta: i32) u32 {
+    const signed: i32 = @intCast(ch);
+    const out = signed + delta;
+    if (out < 0) return 0;
+    if (out > 255) return 255;
+    return @intCast(out);
+}
+
+fn packColor(r: u32, g: u32, b: u32) COLORREF {
+    return r | (g << 8) | (b << 16);
+}

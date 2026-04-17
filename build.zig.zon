@@ -1,8 +1,8 @@
 .{
-    .name = .ghostty,
+    .name = .winghostty,
     .version = "1.3.2-dev",
     .paths = .{""},
-    .fingerprint = 0x64407a2a0b4147e5,
+    .fingerprint = 0x3b92d6b5a312488b,
     .minimum_zig_version = "0.15.2",
     .dependencies = .{
         // Zig libs
