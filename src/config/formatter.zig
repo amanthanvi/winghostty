@@ -31,6 +31,23 @@ pub const EntryFormatter = struct {
     }
 };
 
+/// Allocator-backed companion to `formatEntry`. Serialises the entry
+/// into a freshly-allocated byte slice owned by `alloc`. Intended for
+/// chrome-side code (the Win32 settings diff preview) that needs the
+/// serialised text as a value, not a writer destination. Existing
+/// writer-based callers are unaffected.
+pub fn formatEntryAlloc(
+    comptime T: type,
+    alloc: Allocator,
+    name: []const u8,
+    value: T,
+) Allocator.Error![]u8 {
+    var buf: std.Io.Writer.Allocating = .init(alloc);
+    defer buf.deinit();
+    formatEntry(T, name, value, &buf.writer) catch return error.OutOfMemory;
+    return alloc.dupe(u8, buf.written()) catch return error.OutOfMemory;
+}
+
 /// Format a single type with the given name and value.
 pub fn formatEntry(
     comptime T: type,
@@ -122,6 +139,20 @@ pub fn formatEntry(
     // Compile error so that we can catch missing cases.
     @compileLog(T);
     @compileError("missing case for type");
+}
+
+test "formatEntryAlloc returns owned slice" {
+    const testing = std.testing;
+    const out = try formatEntryAlloc(bool, testing.allocator, "a", true);
+    defer testing.allocator.free(out);
+    try testing.expectEqualStrings("a = true\n", out);
+}
+
+test "formatEntryAlloc round-trips int" {
+    const testing = std.testing;
+    const out = try formatEntryAlloc(i32, testing.allocator, "scrollback-limit", 10_000);
+    defer testing.allocator.free(out);
+    try testing.expectEqualStrings("scrollback-limit = 10000\n", out);
 }
 
 test "formatEntry bool" {

@@ -1202,8 +1202,38 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
                     state.terminal.scrollViewport(.bottom);
                 }
 
+                // Snapshot the grid dimensions before updating so we
+                // can detect a resize (overlay open/close, window
+                // resize, font-size change) and drop stale search
+                // matches below.
+                const pre_update_rows = self.terminal_state.rows;
+                const pre_update_cols = self.terminal_state.cols;
+
                 // Update our terminal state
                 try self.terminal_state.update(self.alloc, state.terminal);
+
+                // If the grid dimensions changed, any cached search
+                // matches reference PIN coordinates from the PRE-resize
+                // viewport. Applying them against the NEW row_pins can
+                // light up the wrong row when the viewport scroll shifts
+                // by a few lines to keep the cursor visible (task #45 —
+                // "highlight paints 2-3 rows below the actual match"
+                // matches ceil(overlay_height / cell_height)). Clear
+                // the cached matches, raise `search_matches_dirty` so
+                // the highlight application loop erases old paint, and
+                // nudge the search thread to recompute against the
+                // fresh viewport.
+                const dims_changed =
+                    self.terminal_state.rows != pre_update_rows or
+                    self.terminal_state.cols != pre_update_cols;
+                if (dims_changed) {
+                    if (self.search_matches) |*m| m.arena.deinit();
+                    self.search_matches = null;
+                    if (self.search_selected_match) |*m| m.arena.deinit();
+                    self.search_selected_match = null;
+                    self.search_matches_dirty = true;
+                    state.terminal.flags.search_viewport_dirty = true;
+                }
 
                 // If our terminal state is dirty at all we need to redo
                 // the viewport search.
@@ -1949,6 +1979,23 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
             self.markDirty();
 
             const blending_changed = old_blending != config.blending;
+
+            // Propagate `window-vsync` to the graphics API if the
+            // backend exposes the toggle. Without this, runtime config
+            // changes to `window-vsync` get stored on `self.config`
+            // but never reach `self.api.vsync_enabled`, which on Win32
+            // leaves `ensureWin32SwapInterval` stuck at the startup
+            // value until restart. The `swap_interval_configured`
+            // cache gate is cleared too so the new interval actually
+            // ships on the next present.
+            if (@hasField(@TypeOf(self.api), "vsync_enabled")) {
+                if (self.api.vsync_enabled != config.vsync) {
+                    self.api.vsync_enabled = config.vsync;
+                    if (@hasField(@TypeOf(self.api), "swap_interval_configured")) {
+                        self.api.swap_interval_configured = false;
+                    }
+                }
+            }
 
             if (blending_changed) {
                 // We update our API's blending mode.

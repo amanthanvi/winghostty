@@ -2018,6 +2018,7 @@ keybind: Keybinds = .{},
 /// Supported in the Windows-only fork.
 @"window-theme": WindowTheme = .auto,
 
+
 /// The color space to use when interpreting terminal colors. "Terminal colors"
 /// refers to colors specified in your configuration and colors produced by
 /// direct-color SGR sequences.

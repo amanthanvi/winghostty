@@ -18,6 +18,31 @@ const updatepkg = @import("../update/github_releases.zig");
 const SplitTree = @import("../datastruct/split_tree.zig").SplitTree;
 
 const win32_theme = @import("win32_theme.zig");
+const win32_tween = @import("win32_tween.zig");
+const win32_uia = @import("win32_uia/mod.zig");
+const win32_palette = @import("win32_palette.zig");
+const win32_settings = @import("win32_settings.zig");
+const win32_aumid = @import("win32_aumid.zig");
+const win32_clipboard_html = @import("win32_clipboard_html.zig");
+const win32_undo = @import("win32_undo.zig");
+const win32_toast = @import("win32_toast.zig");
+const win32_toast_winrt = @import("win32_toast_winrt.zig");
+const win32_powershell_install = @import("win32_powershell_install.zig");
+const win32_link_preview = @import("win32_link_preview.zig");
+const win32_quick_terminal = @import("win32_quick_terminal.zig");
+const win32_surface_drop = @import("win32_surface_drop.zig");
+const win32_surface_drop_target = @import("win32_surface_drop_target.zig");
+const win32_toast_activation = @import("win32_toast_activation.zig");
+const win32_tab_drag = @import("win32_tab_drag.zig");
+const win32_tab_drag_ole = @import("win32_tab_drag_ole.zig");
+const win32_search_bar = @import("win32_search_bar.zig");
+const win32_icons = @import("win32_icons.zig");
+const win32_paste_protection = @import("win32_paste_protection.zig");
+const win32_scrollbar_geometry = @import("win32_scrollbar_geometry.zig");
+const win32_nc_layout = @import("win32_nc_layout.zig");
+const win32_status_bar = @import("win32_status_bar.zig");
+const win32_tab_visual = @import("win32_tab_visual.zig");
+const win32_focus_ring = @import("win32_focus_ring.zig");
 
 // Re-export types from theme module
 const ThemeColors = win32_theme.ThemeColors;
@@ -80,10 +105,25 @@ const GWLP_WNDPROC = -4;
 const GWL_STYLE = -16;
 const GWL_EXSTYLE = -20;
 const IDC_ARROW = @as(INTRESOURCE, @ptrFromInt(32512));
+const HTNOWHERE = 0;
 const HTCLIENT = 1;
+const HTCAPTION = 2;
+const HTSYSMENU = 3;
+const HTMINBUTTON = 8;
+const HTMAXBUTTON = 9;
+const HTLEFT = 10;
+const HTRIGHT = 11;
+const HTTOP = 12;
+const HTTOPLEFT = 13;
+const HTTOPRIGHT = 14;
+const HTBOTTOM = 15;
+const HTBOTTOMLEFT = 16;
+const HTBOTTOMRIGHT = 17;
+const HTCLOSE = 20;
 const HWND_TOPMOST: ?*anyopaque = @ptrFromInt(@as(usize, @bitCast(@as(isize, -1))));
 const HWND_NOTOPMOST: ?*anyopaque = @ptrFromInt(@as(usize, @bitCast(@as(isize, -2))));
 const SW_SHOW = 5;
+const SW_SHOWNOACTIVATE = 4;
 const SW_RESTORE = 9;
 const SW_MAXIMIZE = 3;
 const SW_HIDE = 0;
@@ -120,11 +160,25 @@ const WM_MOUSELEAVE = 0x02A3;
 const WM_POINTERHWHEEL = 0x024F;
 const WM_POINTERWHEEL = 0x024E;
 const WM_NCCREATE = 0x0081;
+const WM_NCCALCSIZE = 0x0083;
+const WM_NCHITTEST = 0x0084;
+const WM_NCPAINT = 0x0085;
+const WM_NCACTIVATE = 0x0086;
+const WM_NCMOUSEMOVE = 0x00A0;
+const WM_NCLBUTTONDOWN = 0x00A1;
+const WM_NCLBUTTONUP = 0x00A2;
+const WM_NCMOUSELEAVE = 0x02A2;
+const WM_SYSCOMMAND = 0x0112;
+const SC_CLOSE: WPARAM = 0xF060;
+const SC_MINIMIZE: WPARAM = 0xF020;
+const SC_MAXIMIZE: WPARAM = 0xF030;
+const SC_RESTORE: WPARAM = 0xF120;
 const WM_PAINT = 0x000F;
 const WM_TIMER = 0x0113;
 const WM_CTLCOLOREDIT = 0x0133;
 const WM_CTLCOLORBTN = 0x0135;
 const WM_CTLCOLORSTATIC = 0x0138;
+const WM_GETOBJECT: UINT = 0x003D;
 const WM_RBUTTONDOWN = 0x0204;
 const WM_XBUTTONDOWN = 0x020B;
 const WM_XBUTTONUP = 0x020C;
@@ -135,6 +189,10 @@ const WM_SETCURSOR = 0x0020;
 const WM_SETFOCUS = 0x0007;
 const WM_SETTINGCHANGE = 0x001A;
 const WM_SIZE = 0x0005;
+const WM_ENTERSIZEMOVE = 0x0231;
+const WM_EXITSIZEMOVE = 0x0232;
+const SIZE_MAXIMIZED: u32 = 2;
+const SIZE_MINIMIZED: u32 = 1;
 const WM_SYSKEYDOWN = 0x0104;
 const WM_SYSKEYUP = 0x0105;
 const WM_WINHOSTTY_WAKE = WM_APP + 1;
@@ -166,8 +224,14 @@ const SWP_NOZORDER = 0x0004;
 const SWP_NOACTIVATE = 0x0010;
 const SWP_FRAMECHANGED = 0x0020;
 const MONITOR_DEFAULTTONEAREST = 0x00000002;
+const MONITOR_DEFAULTTOPRIMARY = 0x00000001;
+const HRESULT = i32;
 const COLOR_WINDOW = 5;
 const CF_UNICODETEXT = 13;
+/// CF_HTML: registered clipboard format name is the literal string
+/// "HTML Format". The ID is process-local — we cache it on App.
+const CF_HTML_NAME = std.unicode.utf8ToUtf16LeStringLiteral("HTML Format");
+extern "user32" fn RegisterClipboardFormatW(lpszFormat: [*:0]const u16) callconv(.winapi) UINT;
 const GMEM_MOVEABLE = 0x0002;
 const GMEM_ZEROINIT = 0x0040;
 const LWA_ALPHA = 0x00000002;
@@ -179,6 +243,8 @@ const IDCANCEL = 2;
 const MB_ICONWARNING = 0x00000030;
 const MB_ICONINFORMATION = 0x00000040;
 const MB_OK = 0x00000000;
+const MB_OKCANCEL = 0x00000001;
+const MB_DEFBUTTON2 = 0x00000100;
 const MB_YESNO = 0x00000004;
 const MK_CONTROL = 0x0008;
 const MK_LBUTTON = 0x0001;
@@ -200,55 +266,51 @@ const ODS_SELECTED = 0x0001;
 const ODS_DISABLED = 0x0004;
 const ODS_FOCUS = 0x0010;
 const TME_LEAVE = 0x00000002;
+const TME_NONCLIENT = 0x00000010;
 const DT_CENTER = 0x00000001;
 const DT_VCENTER = 0x00000004;
 const DT_SINGLELINE = 0x00000020;
 const DT_NOPREFIX = 0x00000800;
 const DT_END_ELLIPSIS = 0x00008000;
-const host_tab_height = 32;
-const host_overlay_height = 58;
-const host_inspector_panel_height = 42;
-const host_status_height = 42;
-const host_overlay_padding = 12;
-const host_overlay_label_width = 110;
-const host_overlay_row_height = 24;
-const host_overlay_accept_width = 70;
-const host_overlay_cancel_width = 80;
-const host_tab_small_button_width = 34;
-const host_tab_overflow_button_width = 34;
-const host_tab_label_max_len = 24;
-const host_tab_min_button_width = 108;
-const curated_command_palette_actions = [_][]const u8{
-    "new_tab",
-    "new_window",
-    "new_split:right",
-    "new_split:down",
-    "new_split:left",
-    "new_split:up",
-    "goto_split:right",
-    "goto_split:left",
-    "goto_split:up",
-    "goto_split:down",
-    "toggle_split_zoom",
-    "equalize_splits",
-    "close_tab",
-    "close_window",
-    "toggle_fullscreen",
-    "toggle_window_decorations",
-    "toggle_command_palette",
-    "toggle_tab_overview",
-    "start_search",
-    "copy_to_clipboard",
-    "paste_from_clipboard",
-    "select_all",
-    "open_config",
-    "reload_config",
-    "inspector:toggle",
-    "reset_window_size",
-};
+const DT_LEFT = 0x00000000;
+// ── Chrome metric constants ─────────────────────────────────────────────
+//
+// These pull from `win32_theme.ThemeMetrics` defaults so there is a single
+// source of truth. Old call sites that read `host_tab_height`, etc.
+// keep compiling; new code should consume `ThemeMetrics` via `Theme`.
+// See C:\Users\amant\.claude\plans\twinkling-watching-wren.md §7.1 for
+// the token taxonomy.
+const default_metrics: win32_theme.ThemeMetrics = .{};
+const host_tab_height: i32 = default_metrics.height_tab;
+const host_tab_height_integrated: i32 = default_metrics.height_tab_integrated;
+const host_caption_button_w: i32 = default_metrics.caption_button_w;
+const host_caption_button_h: i32 = default_metrics.caption_button_h;
+const host_overlay_height: i32 = default_metrics.height_overlay;
+const host_inspector_panel_height: i32 = default_metrics.height_inspector;
+const host_status_height: i32 = default_metrics.height_status;
+const host_overlay_padding: i32 = default_metrics.overlay_padding;
+const host_overlay_label_width: i32 = default_metrics.overlay_label_width;
+const host_overlay_row_height: i32 = default_metrics.overlay_row_height;
+const host_overlay_accept_width: i32 = default_metrics.overlay_accept_width;
+const host_overlay_cancel_width: i32 = default_metrics.overlay_cancel_width;
+const host_tab_small_button_width: i32 = default_metrics.tab_small_button_width;
+const host_tab_overflow_button_width: i32 = default_metrics.tab_overflow_button_width;
+const host_tab_label_max_len: usize = default_metrics.tab_label_max_len;
+const host_tab_min_button_width: i32 = default_metrics.tab_min_width;
+/// Non-owning view over the palette's command lists. Points into
+/// config arena storage — lifetime matches `app.config`. Re-exported
+/// from `win32_palette.zig` so it can be shared with the bench harness.
+const PaletteSnapshot = win32_palette.Snapshot;
+const RankedIndex = win32_palette.RankedIndex;
+const palette_max_tokens = win32_palette.max_tokens;
+const palette_max_ranked = win32_palette.max_ranked;
+const tokenizePaletteQuery = win32_palette.tokenizeQuery;
+const rankPaletteEntry = win32_palette.rankEntry;
+const rankedIndicesForQuery = win32_palette.rankedForQuery;
 const releases_url = updatepkg.releases_url;
 const WM_THEMECHANGED = 0x031A;
 const WM_SYSCOLORCHANGE = 0x0015;
+const WM_DWMCOLORIZATIONCOLORCHANGED: UINT = 0x0320;
 const WM_DPICHANGED: UINT = 0x02E0;
 const DWMWA_USE_IMMERSIVE_DARK_MODE_V1: DWORD = 19;
 const DWMWA_USE_IMMERSIVE_DARK_MODE: DWORD = 20;
@@ -257,14 +319,28 @@ const DWMWA_TEXT_COLOR: DWORD = 36;
 const DWMWA_SYSTEMBACKDROP_TYPE: DWORD = 38;
 const DWMSBT_NONE: u32 = 1;
 const DWMSBT_MAINWINDOW: u32 = 2;
+/// Acrylic-style transient backdrop for popups / overlays / toasts.
+/// Win11 22H2+ only; on older builds `DwmSetWindowAttribute` returns
+/// `E_INVALIDARG` and we fall back to `DWMSBT_NONE`.
+const DWMSBT_TRANSIENTWINDOW: u32 = 3;
+/// Mica-tabbed backdrop for main windows with visible tab strips.
+/// Win11 22H2+ (build ≥ 22621); older Win11 (≥ 22000) accepts
+/// `DWMSBT_MAINWINDOW` but not this variant.
+const DWMSBT_TABBEDWINDOW: u32 = 4;
+const OS_BUILD_WIN11_22H2: u32 = 22621;
 const DC_BRUSH: i32 = 18;
 const DC_PEN: i32 = 19;
 const PS_SOLID: i32 = 0;
-const host_tab_max_button_width = 220;
-const host_tab_close_zone_width = 22; // per-tab close button hit zone width
-const host_pane_divider_width = 2;
+const host_tab_max_button_width: i32 = default_metrics.tab_max_width;
+const host_tab_close_zone_width: i32 = default_metrics.tab_close_zone; // per-tab close button hit zone width
+const host_pane_divider_width: i32 = default_metrics.pane_divider;
 const SPI_GETHIGHCONTRAST: UINT = 0x0042;
 const SPI_GETNONCLIENTMETRICS: UINT = 0x0029;
+const SPI_GETCLIENTAREAANIMATION: UINT = 0x1042;
+
+/// See src/apprt/win32_tween.zig for the scheduler contract.
+const TWEEN_TIMER_ID: UINT_PTR = 0x77684701; // "whgT1" in 32-bit hex
+const TWEEN_TIMER_INTERVAL_MS: UINT = 16;
 const FW_NORMAL: i32 = 400;
 const DEFAULT_CHARSET: u8 = 1;
 const OUT_DEFAULT_PRECIS: u8 = 0;
@@ -275,6 +351,7 @@ const FF_DONTCARE: u8 = 0;
 const LF_FACESIZE = 32;
 const HCF_HIGHCONTRASTON: DWORD = 0x00000001;
 const COLOR_WINDOWTEXT = 8;
+const COLOR_WINDOWFRAME = 6;
 const COLOR_BTNFACE = 15;
 const COLOR_BTNTEXT = 18;
 const COLOR_GRAYTEXT = 17;
@@ -482,6 +559,21 @@ const TRACKMOUSEEVENT = extern struct {
     dwHoverTime: DWORD,
 };
 
+const WINDOWPOS = extern struct {
+    hwnd: HWND,
+    hwndInsertAfter: ?HWND,
+    x: i32,
+    y: i32,
+    cx: i32,
+    cy: i32,
+    flags: UINT,
+};
+
+const NCCALCSIZE_PARAMS = extern struct {
+    rgrc: [3]RECT,
+    lppos: *WINDOWPOS,
+};
+
 const WNDCLASSEXW = extern struct {
     cbSize: u32,
     style: u32,
@@ -623,6 +715,9 @@ extern "user32" fn SetTimer(hWnd: ?HWND, nIDEvent: UINT_PTR, uElapse: UINT, lpTi
 extern "user32" fn SetCursor(hCursor: HCURSOR) callconv(.winapi) HCURSOR;
 extern "user32" fn SetCapture(hWnd: HWND) callconv(.winapi) ?HWND;
 extern "user32" fn SetForegroundWindow(hWnd: HWND) callconv(.winapi) BOOL;
+extern "user32" fn GetForegroundWindow() callconv(.winapi) ?HWND;
+extern "user32" fn GetCursorPos(lpPoint: *POINT) callconv(.winapi) BOOL;
+extern "user32" fn MonitorFromPoint(pt: POINT, dwFlags: u32) callconv(.winapi) ?*anyopaque;
 extern "user32" fn SetLayeredWindowAttributes(hwnd: HWND, crKey: u32, bAlpha: BYTE, dwFlags: u32) callconv(.winapi) BOOL;
 extern "user32" fn SetWindowLongPtrW(hWnd: HWND, nIndex: i32, dwNewLong: LONG_PTR) callconv(.winapi) LONG_PTR;
 extern "user32" fn SetWindowPos(hWnd: HWND, hWndInsertAfter: ?*anyopaque, X: i32, Y: i32, cx: i32, cy: i32, uFlags: UINT) callconv(.winapi) BOOL;
@@ -653,7 +748,88 @@ extern "user32" fn UnregisterHotKey(hWnd: ?HWND, id: i32) callconv(.winapi) BOOL
 extern "user32" fn UpdateWindow(hWnd: HWND) callconv(.winapi) BOOL;
 extern "user32" fn KillTimer(hWnd: ?HWND, uIDEvent: UINT_PTR) callconv(.winapi) BOOL;
 extern "kernel32" fn GetModuleHandleW(lpModuleName: ?LPCWSTR) callconv(.winapi) HINSTANCE;
+const HTHEME = ?*anyopaque;
+const WINDOW_THEME_CLASS = std.unicode.utf8ToUtf16LeStringLiteral("WINDOW");
+const WP_MINBUTTON: i32 = 15;
+const WP_MAXBUTTON: i32 = 17;
+const WP_CLOSEBUTTON: i32 = 18;
+const WP_RESTOREBUTTON: i32 = 21;
+const CBS_NORMAL: i32 = 1;
+const CBS_HOT: i32 = 2;
+extern "uxtheme" fn OpenThemeData(hwnd: HWND, pszClassList: [*:0]const u16) callconv(.winapi) HTHEME;
+extern "uxtheme" fn CloseThemeData(theme: HTHEME) callconv(.winapi) HRESULT;
+extern "uxtheme" fn DrawThemeBackground(
+    theme: HTHEME,
+    hdc: HDC,
+    iPartId: i32,
+    iStateId: i32,
+    pRect: *const RECT,
+    pClipRect: ?*const RECT,
+) callconv(.winapi) HRESULT;
+
+/// Main-thread COM apartment for in-process STA clients (settings path
+/// picker, WinRT toast factory, OLE drag-drop targets). `S_FALSE` and
+/// `RPC_E_CHANGED_MODE` are success values per the MS contract — they
+/// mean the thread already had an apartment in the desired mode.
+const COINIT_APARTMENTTHREADED: u32 = 0x2;
+const RPC_E_CHANGED_MODE: i32 = @bitCast(@as(u32, 0x80010106));
+extern "ole32" fn CoInitializeEx(pvReserved: ?*anyopaque, dwCoInit: u32) callconv(.winapi) i32;
+extern "ole32" fn CoUninitialize() callconv(.winapi) void;
+
+/// RTL_OSVERSIONINFOW for `RtlGetVersion`. `GetVersionExW` shims are
+/// manifest-gated and lie about build numbers on anything newer than
+/// Win8.1 unless the exe carries a Win10 application-manifest GUID.
+/// `RtlGetVersion` is unshimmed and returns the real kernel build.
+const RTL_OSVERSIONINFOW = extern struct {
+    dwOSVersionInfoSize: u32,
+    dwMajorVersion: u32,
+    dwMinorVersion: u32,
+    dwBuildNumber: u32,
+    dwPlatformId: u32,
+    szCSDVersion: [128]u16,
+};
+extern "ntdll" fn RtlGetVersion(lpVersionInformation: *RTL_OSVERSIONINFOW) callconv(.winapi) i32;
+
+/// Probe the Windows build number once; cache on `App.os_build`. Build
+/// 22000+ is Win11 (integrated-titlebar / Mica / Snap Layouts); <22000
+/// is Win10 (native caption). Failure returns 0 so downstream gates
+/// fall through to Win10 behaviour (the safe default).
+fn probeWindowsBuild() u32 {
+    var info: RTL_OSVERSIONINFOW = .{
+        .dwOSVersionInfoSize = @sizeOf(RTL_OSVERSIONINFOW),
+        .dwMajorVersion = 0,
+        .dwMinorVersion = 0,
+        .dwBuildNumber = 0,
+        .dwPlatformId = 0,
+        .szCSDVersion = .{0} ** 128,
+    };
+    const rc = RtlGetVersion(&info);
+    if (rc < 0) return 0;
+    return info.dwBuildNumber;
+}
+
+/// Atomic replace of an existing file. Used by the settings save path
+/// so a crash between write + rename can't corrupt `ghostty.conf`.
+/// Returns non-zero on success. `dwReplaceFlags = 0` gives the default
+/// (non-write-through) behaviour, which is fine for a user config file.
+extern "kernel32" fn ReplaceFileW(
+    lpReplacedFileName: LPCWSTR,
+    lpReplacementFileName: LPCWSTR,
+    lpBackupFileName: ?LPCWSTR,
+    dwReplaceFlags: DWORD,
+    lpExclude: ?*anyopaque,
+    lpReserved: ?*anyopaque,
+) callconv(.winapi) BOOL;
+/// Fallback when the target doesn't yet exist (first-time save). Unlike
+/// `ReplaceFileW`, `MoveFileExW` works on a missing target.
+const MOVEFILE_REPLACE_EXISTING: u32 = 0x1;
+extern "kernel32" fn MoveFileExW(
+    lpExistingFileName: LPCWSTR,
+    lpNewFileName: ?LPCWSTR,
+    dwFlags: u32,
+) callconv(.winapi) BOOL;
 extern "kernel32" fn GetCurrentThreadId() callconv(.winapi) DWORD;
+extern "kernel32" fn GetTickCount64() callconv(.winapi) u64;
 extern "kernel32" fn CreateNamedPipeW(
     lpName: LPCWSTR,
     dwOpenMode: DWORD,
@@ -753,6 +929,12 @@ const WS_EX_ACCEPTFILES: u32 = 0x00000010;
 
 const class_name = std.unicode.utf8ToUtf16LeStringLiteral("winghostty.win32");
 const host_class_name = std.unicode.utf8ToUtf16LeStringLiteral("winghostty.win32.host");
+const palette_list_class_name = std.unicode.utf8ToUtf16LeStringLiteral("winghostty.win32.palette_list");
+
+/// Palette list row height at 96 DPI. Scaled via `Host.scaled` at paint.
+const palette_row_height: i32 = 36;
+/// Max rows visible at once; beyond this, mouse wheel scrolls.
+const palette_max_visible_rows: usize = 7;
 const default_title = std.unicode.utf8ToUtf16LeStringLiteral("winghostty");
 const quick_terminal_title = std.unicode.utf8ToUtf16LeStringLiteral("winghostty quick terminal");
 const prompt_label_class = std.unicode.utf8ToUtf16LeStringLiteral("STATIC");
@@ -1321,6 +1503,7 @@ pub const App = struct {
     hinstance: HINSTANCE,
     class_atom: ATOM = 0,
     host_class_atom: ATOM = 0,
+    palette_list_class_atom: ATOM = 0,
     hosts: std.ArrayListUnmanaged(*Host) = .empty,
     windows: std.ArrayListUnmanaged(*Surface) = .empty,
     next_host_id: u32 = 1,
@@ -1343,6 +1526,79 @@ pub const App = struct {
     update_check_running: std.atomic.Value(bool) = .init(false),
     update_notice: ?UpdateNotice = null,
     update_auto_check_started: bool = false,
+    /// Most-recently-used command palette actions; newest first. Strings
+    /// are owned by `core_app.alloc` and freed in `App.deinit`. Surfaced
+    /// by `commandPaletteBannerText` when the query is empty so users
+    /// see their own recent picks instead of the static onboarding hint.
+    palette_mru: [5]?[:0]const u8 = .{null} ** 5,
+    /// Singleton settings window. Lazily created by the `open_config`
+    /// action; `App.terminate` destroys the HWND if still alive.
+    settings_window: win32_settings.SettingsWindow = undefined,
+    /// Whether `CoInitializeEx` actually took responsibility for the
+    /// apartment on this thread. `CoUninitialize` only pairs with a
+    /// successful init (`S_OK` / `S_FALSE`) — `RPC_E_CHANGED_MODE`
+    /// means another component already set up COM and we must not
+    /// touch it on the way down.
+    com_initialized: bool = false,
+    /// Kernel build number from `RtlGetVersion`. 0 if probe failed.
+    /// 22000 = Win11 21H2 (first Mica build); 22621 = Win11 22H2
+    /// (Snap Layouts; `DWMSBT_TABBEDWINDOW`). Future chrome gates
+    /// read this directly; no runtime config flag, per §12 Q1.
+    os_build: u32 = 0,
+    /// Derived from `os_build >= 22000`. Top-level switch for the
+    /// integrated-titlebar path (`WM_NCCALCSIZE` / `WM_NCHITTEST`
+    /// state machine). Currently queried by log lines only; the
+    /// actual titlebar rework lands in a later P5 pass.
+    use_integrated_titlebar: bool = false,
+    // Live-resize state is tracked PER HOST (`Host.is_live_resize`),
+    // not per App. Dragging window A must NOT freeze renderer
+    // invalidations for unrelated background windows B/C.
+    /// Cached CF_HTML clipboard format ID — lazy-registered on
+    /// first HTML copy. Process-local so one cache per App is
+    /// enough; re-registering on every copy is documented as
+    /// cheap by MS but still pointless work.
+    cf_html_format: UINT = 0,
+    /// In-app toast stack (P4.4). Owned here so toasts survive
+    /// Host tear-down — a notification fired from a just-closed
+    /// tab still belongs on screen until it expires. HWND wire-up
+    /// (per-toast `WS_POPUP` + `UpdateLayeredWindow` + tween-driven
+    /// y-offset animation) lands in a later P4 pass; for now the
+    /// stack is infrastructure with `push` / `tick` consumed by the
+    /// App message loop.
+    toast_stack: win32_toast.ToastStack = undefined,
+    /// Hyperlink hover-dwell tracker (P6.6). Reset via `dismiss()`
+    /// whenever focus leaves a surface or a click arrives. The
+    /// tooltip HWND + 100 ms `SetTimer` polling loop land with the
+    /// wire-up pass; the tracker itself is allocation-free so
+    /// shipping it early is cheap.
+    link_hover_tracker: win32_link_preview.HoverTracker = undefined,
+    /// Windows Action Center toast notifier. `null` when WinRT init
+    /// fails (e.g. corporate lockdown, missing combase.dll), in which
+    /// case `showDesktopNotification` falls back to the in-app banner
+    /// path. One notifier per App, released in `App.terminate`.
+    winrt_toast: ?win32_toast_winrt.WinrtToast = null,
+    /// Absolute path supplied via `--config-file <path>` on the CLI.
+    /// Resolved ONCE against the startup cwd during `App.init` — that's
+    /// important because `run()` later calls `sanitizeCurrentDirectory()`,
+    /// which can reset cwd to `%USERPROFILE%`. If we resolved the
+    /// relative path at save time, we'd end up writing to a different
+    /// file than the one `Config.load()` used at launch.
+    cli_config_override_path: ?[]u8 = null,
+    /// Startup-time cwd snapshot. `Config.load()` resolves relative
+    /// `--config-file` argv entries via realpath-against-cwd, so any
+    /// reload that happens after `sanitizeCurrentDirectory()` would
+    /// resolve those entries against the sanitized cwd and end up
+    /// reading a different file than launch did. We `std.fs.cwd()`
+    /// chdir back to this value around `settingsSaveAndReload`'s
+    /// reload so argv-relative paths re-resolve identically.
+    startup_cwd: ?[]u8 = null,
+    /// Parsed `wgh://activate?...` launch argument from a cold-start
+    /// toast activation. `null` when no such argv entry is present.
+    /// Consumed once after the first window spawns; the focus-to-
+    /// surface dispatch lands alongside a stable surface-id scheme
+    /// in a future pass. Today it just logs so telemetry confirms
+    /// cold-start activations arrive end-to-end.
+    pending_toast_activation: ?win32_toast_activation.ActivationTarget = null,
 
     pub fn init(
         self: *App,
@@ -1360,8 +1616,130 @@ pub const App = struct {
             .launcher_profile_target = detectDefaultProfileTarget(core_app.alloc),
             .startup_profile_picker = detectStartupProfilePicker(core_app.alloc),
         };
+        // Snapshot the CLI --config-file override BEFORE any code has
+        // a chance to chdir. See the field comment above.
+        self.cli_config_override_path = cliConfigFileOverride(core_app.alloc) catch null;
+        // Snapshot the startup cwd for reload-time restoration.
+        self.startup_cwd = std.process.getCwdAlloc(core_app.alloc) catch null;
+        // Scan argv for a cold-start toast activation arg. Silent on
+        // absence or malformed input — activation is opt-in.
+        self.pending_toast_activation = scanToastActivationArg(core_app.alloc);
+        if (self.pending_toast_activation) |target| {
+            log.info("toast activation received surface={?} tab={?} window={?} action={?}", .{
+                target.surface_id,
+                target.tab_id,
+                target.window_id,
+                target.action,
+            });
+        }
+        // AUMID registration MUST precede any HWND creation so
+        // taskbar-grouping / toast attribution picks up our identity
+        // on the first window. Both calls swallow failures (warn +
+        // continue) — toasts and taskbar grouping are non-essential
+        // for basic terminal function.
+        win32_aumid.setProcessAumid();
+        win32_aumid.registerAumidDisplayName();
+
+        // Boot the WinRT toast notifier. Failure is silent — the
+        // in-app banner / toast stack covers the functional gap.
+        // MUST run AFTER `setProcessAumid` so `CreateToastNotifierWithId`
+        // attributes toasts to our AUMID.
+        const aumid_utf16 = std.unicode.utf8ToUtf16LeStringLiteral("com.ghostty.winghostty");
+        self.winrt_toast = win32_toast_winrt.WinrtToast.init(core_app.alloc, aumid_utf16) catch |err| blk: {
+            std.log.warn("winrt toast init failed err={}; falling back to in-app notifications", .{err});
+            break :blk null;
+        };
+
+        // Install the PowerShell shell-integration script into
+        // %LOCALAPPDATA%\winghostty\shell-integration\powershell\
+        // if missing or the on-disk hash doesn't match the embedded
+        // payload (forces updates when we ship a new version). The
+        // script itself is opt-in at the shell level — users source
+        // it from $PROFILE. Argv-level auto-injection is deferred.
+        if (win32_powershell_install.resolveInstallPath(core_app.alloc)) |ps1_path| {
+            defer core_app.alloc.free(ps1_path);
+            const result = win32_powershell_install.installIfStale(core_app.alloc, ps1_path);
+            log.info("powershell integration install path={s} result={s}", .{ ps1_path, @tagName(result) });
+        } else |err| {
+            std.log.warn("powershell integration install path resolve failed err={}", .{err});
+        }
+
+        // Windows version probe. Keep the integrated-titlebar path
+        // hard-disabled for now so Win32 uses the stock non-client
+        // caption/buttons path on every build while the redesign work
+        // on this branch settles.
+        self.os_build = probeWindowsBuild();
+        self.use_integrated_titlebar = false;
+        log.info("win32 os_build={d} integrated_titlebar={}", .{
+            self.os_build,
+            self.use_integrated_titlebar,
+        });
+
+        self.initComApartment();
         self.refreshSystemWheelSettings();
         self.resolved_theme = resolveTheme(&self.config);
+        self.loadPaletteMru();
+        self.settings_window = win32_settings.SettingsWindow.init(.{
+            .ctx = @ptrCast(self),
+            .alloc = core_app.alloc,
+            .hinstance = self.hinstance,
+            .chromeBg = &settingsChromeBgThunk,
+            .textPrimary = &settingsTextPrimaryThunk,
+            .openInEditor = &settingsOpenInEditorThunk,
+            .currentConfig = &settingsCurrentConfigThunk,
+            .saveAndReload = &settingsSaveAndReloadThunk,
+            .notifySuccess = &settingsNotifySuccessThunk,
+            .onClosed = &settingsOnClosedThunk,
+        });
+        self.toast_stack = win32_toast.ToastStack.init(core_app.alloc);
+        self.link_hover_tracker = win32_link_preview.HoverTracker.init();
+    }
+
+    /// Bring the STA apartment online for in-process COM consumers
+    /// (settings path picker via `IFileOpenDialog`, future WinRT toast
+    /// factory, future OLE drag-drop). Safe to call multiple times —
+    /// `S_FALSE` means "already initialised in this mode", and
+    /// `RPC_E_CHANGED_MODE` means "already initialised in a different
+    /// mode" (a library probably did it first; still usable for STA
+    /// interop paths that don't care about the apartment type).
+    fn initComApartment(self: *App) void {
+        const hr = CoInitializeEx(null, COINIT_APARTMENTTHREADED);
+        switch (hr) {
+            0, 1 => self.com_initialized = true, // S_OK, S_FALSE
+            RPC_E_CHANGED_MODE => {
+                std.log.warn("COM apartment: already MTA on this thread; STA consumers may fail", .{});
+            },
+            else => {
+                std.log.warn("COM apartment: CoInitializeEx failed hr=0x{x:0>8}", .{@as(u32, @bitCast(hr))});
+            },
+        }
+    }
+
+    /// Push a transient in-app toast onto the stack. Safe to call from
+    /// any app-thread context (message handlers, action dispatch). The
+    /// per-toast HWND + paint path lands with a later P4 pass; for now
+    /// the stack holds the message in memory and expires on schedule
+    /// so `tickToasts` logging gives visible confirmation the plumbing
+    /// works end-to-end.
+    pub fn showToast(
+        self: *App,
+        title: []const u8,
+        body: []const u8,
+        severity: win32_toast.Severity,
+    ) !void {
+        const now: u64 = @intCast(std.time.milliTimestamp());
+        const id = try self.toast_stack.push(title, body, severity, now);
+        std.log.info("toast pushed id={d} severity={s} title={s}", .{ id, @tagName(severity), title });
+    }
+
+    /// Advance the toast stack: expire old toasts, promote pending,
+    /// recompute y-offsets. Called from the message-loop idle path
+    /// (once per WM_TIMER or WM_WINHOSTTY_WAKE tick). Cheap when the
+    /// stack is empty.
+    pub fn tickToasts(self: *App) void {
+        if (!self.toast_stack.hasAny()) return;
+        const now: u64 = @intCast(std.time.milliTimestamp());
+        _ = self.toast_stack.tick(now);
     }
 
     pub fn run(self: *App) !void {
@@ -1444,7 +1822,7 @@ pub const App = struct {
                 if (self.quit_timer_id) |timer_id| {
                     if (msg.wParam == timer_id) {
                         self.stopQuitTimer();
-                        if (self.running and self.windows.items.len == 0 and self.config.@"quit-after-last-window-closed") {
+                        if (self.running and !self.hasLiveUiWindows() and self.config.@"quit-after-last-window-closed") {
                             self.running = false;
                             PostQuitMessage(0);
                         }
@@ -1469,6 +1847,7 @@ pub const App = struct {
             }
 
             try self.core_app.tick(self);
+            self.tickToasts();
 
             if (!self.running and self.windows.items.len == 0) break;
         }
@@ -1493,7 +1872,163 @@ pub const App = struct {
         for (self.launcher_quick_slot_keys) |value| {
             if (value) |owned| self.core_app.alloc.free(owned);
         }
+        self.savePaletteMru();
+        for (&self.palette_mru) |*slot| {
+            if (slot.*) |owned| self.core_app.alloc.free(owned);
+            slot.* = null;
+        }
+        self.settings_window.deinit();
+        self.toast_stack.deinit();
+        if (self.winrt_toast) |*toast| {
+            toast.deinit();
+            self.winrt_toast = null;
+        }
+        if (self.cli_config_override_path) |path| {
+            self.core_app.alloc.free(path);
+            self.cli_config_override_path = null;
+        }
+        if (self.startup_cwd) |path| {
+            self.core_app.alloc.free(path);
+            self.startup_cwd = null;
+        }
         self.config.deinit();
+        if (self.com_initialized) {
+            CoUninitialize();
+            self.com_initialized = false;
+        }
+    }
+
+    /// Resolve `%LOCALAPPDATA%\winghostty\palette-mru.txt`. Caller frees
+    /// with `core_app.alloc`. Returns null if `LOCALAPPDATA` is
+    /// unreadable or allocation fails.
+    fn paletteMruPath(self: *const App) ?[]u8 {
+        const local = std.process.getEnvVarOwned(
+            self.core_app.alloc,
+            "LOCALAPPDATA",
+        ) catch return null;
+        defer self.core_app.alloc.free(local);
+        const dir = std.fs.path.join(self.core_app.alloc, &.{
+            local,
+            "winghostty",
+        }) catch return null;
+        defer self.core_app.alloc.free(dir);
+        return std.fs.path.join(self.core_app.alloc, &.{
+            dir,
+            "palette-mru.txt",
+        }) catch null;
+    }
+
+    /// Populate `palette_mru` from the on-disk file, one action per line
+    /// (newest first). Missing file, I/O errors, and parse failures all
+    /// degrade to "start empty" — the MRU is a UX nicety, not a
+    /// correctness invariant.
+    fn loadPaletteMru(self: *App) void {
+        const path = self.paletteMruPath() orelse return;
+        defer self.core_app.alloc.free(path);
+
+        const file = std.fs.openFileAbsolute(path, .{}) catch return;
+        defer file.close();
+
+        // Cap read size at 64 KB — way more than the 5 × ~200-char
+        // actions we expect, but bounded so a corrupted file can't OOM.
+        const raw = file.readToEndAlloc(self.core_app.alloc, 64 * 1024) catch return;
+        defer self.core_app.alloc.free(raw);
+
+        var it = std.mem.tokenizeAny(u8, raw, "\r\n");
+        var slot: usize = 0;
+        while (it.next()) |line| {
+            if (slot >= self.palette_mru.len) break;
+            const trimmed = std.mem.trim(u8, line, " \t");
+            if (trimmed.len == 0) continue;
+            const duped = self.core_app.alloc.dupeZ(u8, trimmed) catch continue;
+            self.palette_mru[slot] = duped;
+            slot += 1;
+        }
+    }
+
+    /// Write `palette_mru` to the on-disk file (newest first). Failure
+    /// is silently logged — losing recent history is fine, blocking
+    /// termination on file-system problems is not.
+    fn savePaletteMru(self: *const App) void {
+        // Fast path: nothing to persist.
+        if (self.palette_mru[0] == null) return;
+
+        const path = self.paletteMruPath() orelse return;
+        defer self.core_app.alloc.free(path);
+
+        if (std.fs.path.dirname(path)) |dir| {
+            std.fs.makeDirAbsolute(dir) catch |err| switch (err) {
+                error.PathAlreadyExists => {},
+                else => {
+                    std.log.warn("palette MRU: mkdir failed path={s} err={}", .{ dir, err });
+                    return;
+                },
+            };
+        }
+
+        const file = std.fs.createFileAbsolute(path, .{ .truncate = true }) catch |err| {
+            std.log.warn("palette MRU: create failed path={s} err={}", .{ path, err });
+            return;
+        };
+        defer file.close();
+
+        var fbuf: [1024]u8 = undefined;
+        var fw = file.writer(&fbuf);
+        for (self.palette_mru) |slot| {
+            if (slot) |owned| {
+                fw.interface.print("{s}\n", .{owned}) catch return;
+            }
+        }
+        fw.interface.flush() catch {};
+    }
+
+    /// Push an action string onto the palette MRU list, dedup'd by
+    /// exact match, rotating the oldest slot out. `action` is not owned
+    /// by the caller; this dups it into the app allocator. Safe to call
+    /// with an action that may be the same as an existing MRU entry —
+    /// that entry is moved to the front without reallocating.
+    fn pushPaletteMru(self: *App, action: []const u8) !void {
+        // If action already exists, move it to slot 0.
+        var existing_index: ?usize = null;
+        for (self.palette_mru, 0..) |slot, i| {
+            if (slot) |owned| {
+                if (std.mem.eql(u8, owned, action)) {
+                    existing_index = i;
+                    break;
+                }
+            }
+        }
+        if (existing_index) |i| {
+            if (i == 0) return;
+            const top = self.palette_mru[i];
+            var j: usize = i;
+            while (j > 0) : (j -= 1) self.palette_mru[j] = self.palette_mru[j - 1];
+            self.palette_mru[0] = top;
+            return;
+        }
+        // Insert as new head. Free whatever falls off the end.
+        const duped = try self.core_app.alloc.dupeZ(u8, action);
+        errdefer self.core_app.alloc.free(duped);
+        if (self.palette_mru[self.palette_mru.len - 1]) |oldest| {
+            self.core_app.alloc.free(oldest);
+        }
+        var j: usize = self.palette_mru.len - 1;
+        while (j > 0) : (j -= 1) self.palette_mru[j] = self.palette_mru[j - 1];
+        self.palette_mru[0] = duped;
+    }
+
+    /// View of the MRU list as a slice of non-null entries, newest first.
+    /// Shared storage; caller must not free or retain past the next
+    /// `pushPaletteMru` call.
+    fn paletteMruSlice(self: *const App, buf: *[5][]const u8) []const []const u8 {
+        var n: usize = 0;
+        for (self.palette_mru) |slot| {
+            if (slot) |owned| {
+                buf[n] = owned;
+                n += 1;
+            }
+        }
+        return buf[0..n];
     }
 
     fn tryForwardStartupToExistingInstance(self: *App) !bool {
@@ -1745,9 +2280,21 @@ pub const App = struct {
         try self.showInfoMessage(.app, "winghostty", message);
     }
 
+    /// True when any user-facing top-level UI window is still alive —
+    /// either a terminal Host or the settings window. The quit timer
+    /// and message-loop exit check both use this so the app doesn't
+    /// tear down while the settings window holds an unsaved pending
+    /// draft. Palette / confirm overlays are owned by their Host and
+    /// therefore don't need their own count.
+    fn hasLiveUiWindows(self: *const App) bool {
+        if (self.windows.items.len != 0) return true;
+        if (self.settings_window.hwnd != null) return true;
+        return false;
+    }
+
     pub fn startQuitTimer(self: *App) void {
         if (!self.running) return;
-        if (self.windows.items.len != 0) {
+        if (self.hasLiveUiWindows()) {
             self.stopQuitTimer();
             return;
         }
@@ -1911,8 +2458,48 @@ pub const App = struct {
                     try self.core_app.updateConfig(self, &self.config);
                     if (self.config.@"app-notifications".@"config-reload") {
                         try self.showDesktopNotification(.app, "winghostty", "Configuration reloaded");
+                        self.showToast("Config reloaded", "", .success) catch |err| {
+                            std.log.warn("toast push failed err={}", .{err});
+                        };
                     }
                     return true;
+                }
+
+                // Same startup-cwd restoration dance as
+                // `settingsSaveAndReload`: `Config.load` calls
+                // `loadCliArgs`, which realpaths `--config-file
+                // <relative>` against current cwd. After
+                // `sanitizeCurrentDirectory()` ran, relative overrides
+                // would resolve to a different file than launch used,
+                // silently swapping the config source on every manual
+                // reload. Scoped to this path — non-reload code keeps
+                // seeing the sanitized cwd.
+                const cwd_before: ?[]u8 = std.process.getCwdAlloc(self.core_app.alloc) catch null;
+                defer if (cwd_before) |p| self.core_app.alloc.free(p);
+
+                // `defer` + flag so the restore fires even when
+                // `Config.load` returns an error — otherwise a
+                // broken include leaves the process pinned to
+                // `startup_cwd` (same class of bug as the one
+                // fixed in `settingsSaveAndReload`). Relative-path
+                // lookups + child processes spawned after a failed
+                // reload would inherit the wrong cwd.
+                var did_chdir_to_startup: bool = false;
+                if (self.startup_cwd) |cwd| {
+                    if (std.process.changeCurDir(cwd)) |_| {
+                        did_chdir_to_startup = true;
+                    } else |err| {
+                        std.log.warn("reload_config: couldn't restore startup cwd path={s} err={}", .{ cwd, err });
+                    }
+                }
+                defer {
+                    if (did_chdir_to_startup) {
+                        if (cwd_before) |cwd| {
+                            std.process.changeCurDir(cwd) catch |err| {
+                                std.log.warn("reload_config: couldn't restore sanitized cwd path={s} err={}", .{ cwd, err });
+                            };
+                        }
+                    }
                 }
 
                 var config = try configpkg.Config.load(self.core_app.alloc);
@@ -1920,6 +2507,9 @@ pub const App = struct {
                 try self.core_app.updateConfig(self, &config);
                 if (self.config.@"app-notifications".@"config-reload") {
                     try self.showDesktopNotification(.app, "winghostty", "Configuration reloaded");
+                    self.showToast("Config reloaded", "", .success) catch |err| {
+                        std.log.warn("toast push failed err={}", .{err});
+                    };
                 }
                 return true;
             },
@@ -2206,10 +2796,24 @@ pub const App = struct {
             .start_search => {
                 if (self.findSurfaceForTarget(target)) |surface| {
                     try surface.setSearchActive(true, value.needle);
+                    // Open the overlay FIRST so the surface HWND
+                    // resizes + the terminal reflows BEFORE the
+                    // search thread starts computing viewport
+                    // matches. Without this order, the search
+                    // thread computes pins against the pre-resize
+                    // viewport; then the surface shrinks by ~40 px
+                    // (overlay height), rows reflow, and the
+                    // renderer paints those stale pins on post-
+                    // resize row coordinates — producing the
+                    // user-reported "search highlight off by
+                    // 2–3 rows" (task #45). Opening the overlay
+                    // before `setSearchText` guarantees the search
+                    // thread's first compute runs against the
+                    // post-resize viewport.
+                    try surface.showSearchOverlay(value.needle);
                     if (value.needle.len > 0) {
                         _ = try surface.core_surface.setSearchText(value.needle);
                     }
-                    try surface.showSearchOverlay(value.needle);
                     return true;
                 }
                 return false;
@@ -2289,18 +2893,34 @@ pub const App = struct {
             },
 
             .undo => {
-                if (try self.showHostBanner(target, .info, "Undo is not implemented on the native Win32 runtime yet.")) {
+                // UndoStack is wired; snapshot capture on destructive
+                // actions is the P6 follow-up, so the stack is
+                // currently always empty and undo is a no-op. The
+                // banner now communicates *why* instead of pretending
+                // the action is entirely unimplemented, and the stack
+                // gating keeps this a real (if trivial) consumer of
+                // the per-surface infrastructure.
+                //
+                // popForUndo returns a borrowed const pointer into
+                // redo_entries — the snapshot is owned by the redo
+                // stack, not by us. Never deinit it here or we'll
+                // double-free when the stack deinits later.
+                const surface = self.findSurfaceForTarget(target) orelse return false;
+                if (surface.undo_stack.popForUndo()) |_| {
+                    _ = try self.showHostBanner(target, .info, "Undo replay is pending; the snapshot moved to the redo stack.");
                     return true;
                 }
-                try self.showInfoMessage(target, "winghostty", "Undo is not implemented on the native Win32 runtime yet.");
+                _ = try self.showHostBanner(target, .info, "Nothing to undo.");
                 return true;
             },
 
             .redo => {
-                if (try self.showHostBanner(target, .info, "Redo is not implemented on the native Win32 runtime yet.")) {
+                const surface = self.findSurfaceForTarget(target) orelse return false;
+                if (surface.undo_stack.popForRedo()) |_| {
+                    _ = try self.showHostBanner(target, .info, "Redo replay is pending; the snapshot moved back to the undo stack.");
                     return true;
                 }
-                try self.showInfoMessage(target, "winghostty", "Redo is not implemented on the native Win32 runtime yet.");
+                _ = try self.showHostBanner(target, .info, "Nothing to redo.");
                 return true;
             },
 
@@ -2454,6 +3074,30 @@ pub const App = struct {
         }
     }
 
+    fn ensurePaletteListClass(self: *App) !void {
+        if (self.palette_list_class_atom != 0) return;
+
+        var wc: WNDCLASSEXW = .{
+            .cbSize = @sizeOf(WNDCLASSEXW),
+            .style = 0,
+            .lpfnWndProc = &paletteListProc,
+            .cbClsExtra = 0,
+            .cbWndExtra = 0,
+            .hInstance = self.hinstance,
+            .hIcon = null,
+            .hCursor = LoadCursorW(null, IDC_ARROW),
+            .hbrBackground = null,
+            .lpszMenuName = null,
+            .lpszClassName = palette_list_class_name,
+            .hIconSm = null,
+        };
+
+        self.palette_list_class_atom = RegisterClassExW(&wc);
+        if (self.palette_list_class_atom == 0) {
+            return windows.unexpectedError(windows.kernel32.GetLastError());
+        }
+    }
+
     fn createWindowSurface(
         self: *App,
         config: *const configpkg.Config,
@@ -2522,7 +3166,7 @@ pub const App = struct {
         for (self.hosts.items) |host| {
             host.rebuildThemeBrushes();
             host.recreateChromeFont();
-            if (host.hwnd) |hwnd| applyDwmTheme(hwnd, &self.resolved_theme, &self.config);
+            if (host.hwnd) |hwnd| applyDwmThemeWithBuild(hwnd, &self.resolved_theme, &self.config, self.os_build);
         }
     }
 
@@ -2599,8 +3243,9 @@ pub const App = struct {
         return id;
     }
 
-    fn createHost(self: *App, title: LPCWSTR, clone_state_from: ?*const Surface) !*Host {
+    fn createHost(self: *App, title: LPCWSTR, clone_state_from: ?*const Surface, passive_show: bool) !*Host {
         try self.ensureHostWindowClass();
+        try self.ensurePaletteListClass();
 
         const host = try self.core_app.alloc.create(Host);
         errdefer self.core_app.alloc.destroy(host);
@@ -2608,6 +3253,7 @@ pub const App = struct {
             .app = self,
             .id = self.allocateHostId(),
         };
+        host.tween_sched.init(self.core_app.alloc);
         if (self.launcher_profile_key) |key| {
             try appendOwnedString(self.core_app.alloc, &host.selected_profile_key, key);
         }
@@ -2629,7 +3275,7 @@ pub const App = struct {
             host,
         ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
         host.hwnd = hwnd;
-        applyDwmTheme(hwnd, &self.resolved_theme, &self.config);
+        applyDwmThemeWithBuild(hwnd, &self.resolved_theme, &self.config, self.os_build);
         host.current_dpi = GetDpiForWindow(hwnd);
         if (host.current_dpi == 0) host.current_dpi = 96;
         host.chrome_font = host.createChromeFont();
@@ -2640,7 +3286,12 @@ pub const App = struct {
             if (source.host) |existing| try self.inheritHostWindowState(host, existing);
         }
 
-        _ = ShowWindow(hwnd, SW_SHOW);
+        // Passive first-show for quick-terminal-keyboard-interactivity
+        // = none: `SW_SHOWNOACTIVATE` makes the window visible but
+        // does NOT bring it to the foreground, so the user's current
+        // typing context stays intact. `SW_SHOW` would activate the
+        // new HWND and steal focus.
+        _ = ShowWindow(hwnd, if (passive_show) SW_SHOWNOACTIVATE else SW_SHOW);
         _ = UpdateWindow(hwnd);
         self.maybeScheduleAutomaticUpdateCheck();
         return host;
@@ -3021,13 +3672,58 @@ pub const App = struct {
     }
 
     fn toggleQuickTerminal(self: *App) !void {
+        // `quick-terminal-keyboard-interactivity`:
+        //   * on-demand → show + focus (our `.present()` path)
+        //   * exclusive → show + focus (future: grab global input)
+        //   * none      → show WITHOUT stealing focus; the window
+        //                 becomes a visible passive log / reference
+        //                 the user can glance at without losing their
+        //                 typing context.
+        // The snapshot + branch below centralises the focus-or-not
+        // decision so both the reuse path and the create path honour
+        // the config.
+        const want_focus = switch (self.config.@"quick-terminal-keyboard-interactivity") {
+            .@"on-demand", .exclusive => true,
+            .none => false,
+        };
+
         if (self.quickTerminalSurface()) |surface| {
-            const hwnd = surface.hwnd orelse return;
-            const visible = IsWindowVisible(hwnd) != 0;
-            surface.setVisible(!visible);
-            if (!visible) {
+            // The quick terminal is a child surface inside a real
+            // top-level host window. Visibility + geometry must be
+            // applied to the HOST hwnd (the outer frame); the child
+            // surface HWND is only the GL content area. Using the
+            // child hwnd would leave an empty host window on screen
+            // when hidden, and would run `MonitorFromWindow` /
+            // `SetWindowPos` against the wrong target when showing.
+            const top_level = surface.windowHwnd() orelse return;
+            const visible = IsWindowVisible(top_level) != 0;
+            if (visible) {
+                // Raw `ShowWindow(SW_HIDE)` on the top-level HWND
+                // is not enough — the child Surface still tracks
+                // `window_visible = true` and keeps the renderer
+                // thread waking, and `core_surface.occlusionCallback`
+                // never fires. Per AGENTS.md 2026-04-14, that can
+                // crash the WGL/NVIDIA present path. Route through
+                // `setVisible` which: updates `window_visible`,
+                // hides via `applyChildVisibility`, and calls
+                // `occlusionCallback(false)`. The outer top-level
+                // HWND is separately hidden below.
+                surface.setVisible(false);
+                _ = ShowWindow(top_level, SW_HIDE);
+            } else {
                 self.windows_hidden = false;
-                surface.present();
+                self.applyQuickTerminalGeometry(top_level) catch |err| {
+                    std.log.warn("QT geometry failed err={}", .{err});
+                };
+                _ = ShowWindow(
+                    top_level,
+                    if (want_focus) SW_SHOW else SW_SHOWNOACTIVATE,
+                );
+                // Mirror the hide-side invariant: tell the surface
+                // it's visible so the renderer wakes and the
+                // occlusion callback flips back to "not occluded".
+                surface.setVisible(true);
+                if (want_focus) surface.present();
             }
             return;
         }
@@ -3040,9 +3736,125 @@ pub const App = struct {
         defer config.deinit();
         const surface = try self.createWindowSurface(&config, quick_terminal_title, .{
             .quick_terminal = true,
+            // Passive first-show: `createHost` uses `SW_SHOWNOACTIVATE`
+            // so the new HWND appears without taking focus. Without
+            // this, the very first toggle-on with
+            // `keyboard-interactivity = none` would still activate
+            // the window even though the later `present()` call is
+            // skipped.
+            .passive_show = !want_focus,
         });
         try surface.setFloatWindow(.on);
-        surface.present();
+        if (surface.windowHwnd()) |top_level| {
+            self.applyQuickTerminalGeometry(top_level) catch |err| {
+                std.log.warn("QT geometry failed err={}", .{err});
+            };
+        }
+        if (want_focus) surface.present();
+    }
+
+    /// Resolve the 7 `quick-terminal-*` config fields into a concrete
+    /// end rect via `win32_quick_terminal` and apply it immediately
+    /// with `SetWindowPos`. The full animation / tween path lands
+    /// with a later P4.5 pass; this snap-to-final version already
+    /// honours position / size / screen / keyboard-interactivity.
+    fn applyQuickTerminalGeometry(self: *App, hwnd: HWND) !void {
+        const qt_cfg = win32_quick_terminal.QuickTerminalConfig{
+            .position = switch (self.config.@"quick-terminal-position") {
+                .top => .top,
+                .bottom => .bottom,
+                .left => .left,
+                .right => .right,
+                .center => .center,
+            },
+            .size = sizeFromConfig(self.config.@"quick-terminal-size"),
+            .size_secondary = sizeSecondaryFromConfig(self.config.@"quick-terminal-size"),
+            .screen = switch (self.config.@"quick-terminal-screen") {
+                .main => .main,
+                // `mouse` config value → our module's `.focused` semantic:
+                // pick the monitor containing the current input focus /
+                // cursor. Matches the documented config intent.
+                .mouse => .focused,
+            },
+            .animation_duration_s = self.config.@"quick-terminal-animation-duration",
+            .autohide = self.config.@"quick-terminal-autohide",
+            .space_behavior = switch (self.config.@"quick-terminal-space-behavior") {
+                .move => .move,
+                // `remain` config value → our module's `.ignore`:
+                // don't follow virtual-desktop changes.
+                .remain => .ignore,
+            },
+            .keyboard_interactivity = switch (self.config.@"quick-terminal-keyboard-interactivity") {
+                .@"on-demand" => .on_demand,
+                .exclusive => .always,
+                .none => .never,
+            },
+        };
+
+        // Resolve monitor per the config's documented semantic:
+        //   * `.main`   → the OS PRIMARY monitor, regardless of
+        //                 where this window last was. Uses
+        //                 `MonitorFromPoint({0,0}, MONITOR_DEFAULTTOPRIMARY)`;
+        //                 the primary monitor's work-area always
+        //                 contains origin. `MonitorFromWindow(hwnd)`
+        //                 would return the window's current
+        //                 monitor, which re-selects whatever
+        //                 display the QT last landed on — wrong
+        //                 semantic.
+        //   * `.focused` (config's `mouse`) → the monitor under
+        //                 the cursor via `GetCursorPos` +
+        //                 `MonitorFromPoint(MONITOR_DEFAULTTONEAREST)`.
+        //   * `.all`    → caller's current monitor for now; a
+        //                 virtual-desktop union via
+        //                 `EnumDisplayMonitors` lands later.
+        const monitor = switch (qt_cfg.screen) {
+            .focused => blk: {
+                var pt: POINT = .{ .x = 0, .y = 0 };
+                if (GetCursorPos(&pt) == 0) {
+                    break :blk MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) orelse
+                        return error.MonitorLookupFailed;
+                }
+                break :blk MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST) orelse
+                    return error.MonitorLookupFailed;
+            },
+            .main => MonitorFromPoint(.{ .x = 0, .y = 0 }, MONITOR_DEFAULTTOPRIMARY) orelse
+                return error.MonitorLookupFailed,
+            .all => MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST) orelse
+                return error.MonitorLookupFailed,
+        };
+        var info: MONITORINFO = .{
+            .cbSize = @sizeOf(MONITORINFO),
+            .rcMonitor = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
+            .rcWork = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
+            .dwFlags = 0,
+        };
+        if (GetMonitorInfoW(monitor, &info) == 0) return error.MonitorInfoFailed;
+
+        const mi = win32_quick_terminal.MonitorInfo{
+            .work_area = .{
+                .left = info.rcWork.left,
+                .top = info.rcWork.top,
+                .right = info.rcWork.right,
+                .bottom = info.rcWork.bottom,
+            },
+            .full_rect = .{
+                .left = info.rcMonitor.left,
+                .top = info.rcMonitor.top,
+                .right = info.rcMonitor.right,
+                .bottom = info.rcMonitor.bottom,
+            },
+        };
+
+        const end = win32_quick_terminal.computeEndRect(qt_cfg, mi);
+        _ = SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            end.left,
+            end.top,
+            end.right - end.left,
+            end.bottom - end.top,
+            SWP_NOACTIVATE,
+        );
     }
 
     fn showOnScreenKeyboard(self: *App) !void {
@@ -3100,6 +3912,16 @@ pub const App = struct {
             .width = @max(0, rect.right - rect.left),
             .height = @max(0, rect.bottom - rect.top),
         };
+    }
+
+    fn resolveSurfaceSizeWithContext(
+        ctx: anytype,
+        fallback: apprt.SurfaceSize,
+        hwnd: ?HWND,
+        client_size_fn: anytype,
+    ) !apprt.SurfaceSize {
+        const live_hwnd = hwnd orelse return fallback;
+        return try client_size_fn(ctx, live_hwnd);
     }
 
     fn defaultPixelFormatDescriptor() PIXELFORMATDESCRIPTOR {
@@ -3169,7 +3991,339 @@ pub const App = struct {
     }
 
     fn openConfig(self: *App) !void {
-        const path = try config_edit.openPath(self.core_app.alloc);
+        // Route to the in-app settings window. Users who prefer a text
+        // editor can still reach `config.ghostty` via the Advanced
+        // section's "Open in default editor" button.
+        //
+        // Fallback: if the settings window can't be brought up (e.g.
+        // headless / service session with no desktop, `CreateWindowExW`
+        // refusing window creation, etc.), fall back to the legacy
+        // shell-out path so `open_config` never becomes a dead action.
+        // Skipping the fallback would regress CI / sandboxed flows
+        // that previously worked.
+        self.settings_window.open() catch |err| {
+            std.log.warn("settings window unavailable (err={}); falling back to editor", .{err});
+            try self.openConfigInEditor();
+        };
+    }
+
+    /// Serialise `pending` into a temp file adjacent to the target,
+    /// then atomic-rename via `ReplaceFileW` (falls back to
+    /// `MoveFileExW` when the target is new). Finally re-load the
+    /// config from disk and push it through `CoreApp.updateConfig`
+    /// so every surface picks up the change on its next repaint.
+    ///
+    /// Returns on error; caller (settings window) is responsible for
+    /// surfacing the failure. `pending` is borrowed, not consumed —
+    /// the caller still owns its arena.
+    fn settingsSaveAndReload(self: *App, pending: *const configpkg.Config, original: *const configpkg.Config) win32_settings.SaveError!void {
+        const alloc = self.core_app.alloc;
+
+        // Target file selection:
+        //   1. If the process was started with `--config-file <path>`
+        //      on the CLI, write to THAT file. Writing to the default
+        //      `ghostty.conf` when the user explicitly specified a
+        //      custom config is the regression Codex caught in
+        //      round 7: the user either edits the wrong file OR the
+        //      CLI-provided config masks the saved value on reload.
+        //   2. Otherwise, fall back to the per-user default path
+        //      (`config_edit.openPath`), which also handles the
+        //      first-run "create the file" case.
+        const target_path = blk: {
+            // Use the startup-time resolved override — never call
+            // `cliConfigFileOverride` from here, because cwd may have
+            // been reset by `sanitizeCurrentDirectory` and a relative
+            // CLI path would resolve to the wrong absolute file.
+            if (self.cli_config_override_path) |cli_path| break :blk try alloc.dupe(u8, cli_path);
+            break :blk config_edit.openPath(alloc) catch return error.PathResolveFailed;
+        };
+        defer alloc.free(target_path);
+
+        const tmp_path = try std.fmt.allocPrint(alloc, "{s}.tmp", .{target_path});
+        defer alloc.free(tmp_path);
+
+        // Build a file-only baseline: `Config.default()` merged with
+        // `loadDefaultFiles()` but WITHOUT `loadCliArgs()` or
+        // `loadRecursiveFiles()`. This avoids three previously
+        // shipping-day bugs:
+        //   1. `-e`, `--working-directory`, `--class` and similar CLI
+        //      overrides from the current process launch would bake
+        //      into `ghostty.conf` the first time the user saved
+        //      (`Config.load()` already applied them to `pending`).
+        //   2. `config-file` includes would get flattened into the
+        //      primary file, leaving duplicate directives that fight
+        //      each other on the next reload.
+        //   3. Future new CLI-only flags would silently persist.
+        //
+        // Then copy every field the GUI user actually edited from
+        // `pending` into `file_cfg`, and serialise `file_cfg`. This
+        // guarantees the written bytes reflect file-resident state +
+        // explicit GUI edits only. Comments + formatting in the
+        // original file are still lost (comment-preserving serialiser
+        // is a later pass); that's documented inline in the Advanced
+        // section.
+        //
+        // Field types we currently support as GUI edits are all value
+        // types (bool, int, float, enum, packed struct, tagged union
+        // with no pointer variants). Assigning via `@field` is a
+        // shallow bit-copy and is safe without arena-transfer. If a
+        // future GUI field adds a pointer (string / slice), the inline
+        // for below needs an explicit string-dupe branch.
+        var file_cfg = configpkg.Config.default(alloc) catch return error.SerializeFailed;
+        defer file_cfg.deinit();
+        // Seed the baseline from the ACTUAL target file, not the
+        // per-user default search path. When launched with
+        // `--config-file custom.conf`, `target_path` resolves to
+        // `custom.conf` (see `cliConfigFileOverride`), and we must
+        // load THAT file — loading `loadDefaultFiles` would write
+        // back a merge of `ghostty.conf` defaults + GUI edits into
+        // the custom file, dropping every key that existed only in
+        // the custom file.
+        //
+        // `loadFile` accepts an absolute path and merges its
+        // contents on top of `file_cfg` (already `default()`), so
+        // we get: defaults + target-file overrides, then the GUI
+        // edits patched on top below. If the target file doesn't
+        // exist yet (first-save case), `loadFile` returns early
+        // with a warn; `file_cfg` stays at defaults, which is the
+        // intended behaviour.
+        blk: {
+            const path_abs = std.fs.realpathAlloc(alloc, target_path) catch |err| {
+                if (err == error.FileNotFound) break :blk;
+                // Other real-path errors (permission denied, not-a-
+                // dir) leave us with the default-only baseline; log
+                // and proceed rather than erroring the save.
+                std.log.warn("settings: couldn't realpath target_path err={}; using default baseline", .{err});
+                break :blk;
+            };
+            defer alloc.free(path_abs);
+            file_cfg.loadFile(alloc, path_abs) catch |err| {
+                std.log.warn("settings: loadFile on target failed err={}; using default baseline", .{err});
+            };
+        }
+
+        const ConfigKey = @import("../config/key.zig").Key;
+        // Diff pending against `original` (the snapshot from when
+        // the settings window opened), NOT against the live
+        // `self.config`. Otherwise a concurrent `reload_config` or
+        // external file edit that happens while the window is open
+        // would cause this save to silently revert the newer values
+        // for every GUI-exposed field whose stale draft differs
+        // from the refreshed runtime config.
+        // Determine which fields the GUI user explicitly edited so
+        // we can force-emit them below even when they happen to
+        // equal `Config.default()`. Without this, resetting an
+        // included `config-file`'s override back to the stock
+        // default in Settings would NOT stick — FileFormatter's
+        // default-drop would strip the reset line, and the include
+        // would re-apply its non-default value on next reload.
+        var user_edited: std.StaticBitSet(std.enums.values(ConfigKey).len) = .initEmpty();
+        var any_edit = false;
+        inline for (@typeInfo(configpkg.Config).@"struct".fields) |field| {
+            if (field.name[0] == '_') continue;
+            switch (@typeInfo(field.type)) {
+                .bool, .int, .float, .@"enum", .@"struct", .@"union" => {
+                    const key = @field(ConfigKey, field.name);
+                    if (original.changed(pending, key)) {
+                        @field(file_cfg, field.name) = @field(pending, field.name);
+                        user_edited.set(@intFromEnum(key));
+                        any_edit = true;
+                    }
+                },
+                else => {}, // skip pointer / optional-pointer / array fields
+            }
+        }
+        // No-op short-circuit: if the user pressed Save without
+        // changing anything, don't touch the filesystem. On a
+        // first-run machine with no existing config file, the write
+        // would otherwise create a zero-byte file that then fires
+        // `error.FileIsEmpty` warnings on every subsequent load.
+        // On an existing file, skipping also avoids an unnecessary
+        // mtime bump.
+        if (!any_edit) return;
+
+        // SURGICAL SAVE: read the raw target file text and patch
+        // only GUI-edited field lines in place. This preserves
+        // (a) comments, (b) relative `config-file` paths (not
+        // canonicalised), (c) the user's formatting / blank lines,
+        // (d) fields we can't round-trip through the Config type
+        // (RepeatableString, etc).
+        //
+        // For each GUI-edited field: scan the raw text for a line
+        // matching `^<key> =` at column 0 (PLUS optional leading
+        // whitespace) and replace the WHOLE line with the new
+        // serialised `key = value` emission. If no matching line
+        // exists, append to the file end.
+        //
+        // For fields NOT on disk but in `file_cfg` non-default
+        // (first-save case with no prior file content), emit them
+        // after the preserved content. `file_cfg` retains this
+        // information because `loadFile` already applied the
+        // target file; subtracting the raw-text lines from what
+        // `file_cfg` holds tells us what needs appending.
+        const raw_before: []u8 = blk: {
+            const f = std.fs.cwd().openFile(target_path, .{}) catch |err| switch (err) {
+                error.FileNotFound => break :blk try alloc.dupe(u8, ""),
+                else => return error.SerializeFailed,
+            };
+            defer f.close();
+            const stat = f.stat() catch return error.SerializeFailed;
+            const size = @min(stat.size, 16 * 1024 * 1024);
+            const slice = alloc.alloc(u8, @intCast(size)) catch return error.OutOfMemory;
+            errdefer alloc.free(slice);
+            const n = f.readAll(slice) catch return error.SerializeFailed;
+            break :blk try alloc.realloc(slice, n);
+        };
+        defer alloc.free(raw_before);
+
+        var patched: std.ArrayListUnmanaged(u8) = .{};
+        defer patched.deinit(alloc);
+        patchOrAppendEdits(
+            alloc,
+            raw_before,
+            pending,
+            user_edited,
+            &patched,
+        ) catch return error.SerializeFailed;
+
+        // Ensure target's parent directory exists. `config_edit.openPath`
+        // creates `%APPDATA%\ghostty\` for the default path, but a user
+        // launched with `--config-file D:\new-dir\custom.conf` could
+        // target a directory that has never been created. Without this
+        // step the first Save against that path would fail here with
+        // `TempCreateFailed`.
+        if (std.fs.path.dirname(target_path)) |parent| {
+            std.fs.cwd().makePath(parent) catch |err| {
+                std.log.warn("settings save: couldn't create parent dir path={s} err={}", .{ parent, err });
+                return error.TempCreateFailed;
+            };
+        }
+
+        // Write to the sibling temp file, close, then rename. Scoped
+        // block so the file is closed BEFORE ReplaceFileW — Windows
+        // blocks the replace while the temp handle is open.
+        {
+            const tmp = std.fs.cwd().createFile(tmp_path, .{}) catch return error.TempCreateFailed;
+            defer tmp.close();
+            var write_buf: [4096]u8 = undefined;
+            var fw = tmp.writer(&write_buf);
+            fw.interface.writeAll(patched.items) catch return error.SerializeFailed;
+            fw.interface.flush() catch return error.SerializeFailed;
+        }
+
+        const target_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, target_path) catch return error.OutOfMemory;
+        defer alloc.free(target_w);
+        const tmp_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, tmp_path) catch return error.OutOfMemory;
+        defer alloc.free(tmp_w);
+
+        if (ReplaceFileW(target_w, tmp_w, null, 0, null, null) == 0) {
+            // Likely ERROR_FILE_NOT_FOUND if the user didn't have a
+            // config file yet. Fall back to MoveFileExW.
+            if (MoveFileExW(tmp_w, target_w, MOVEFILE_REPLACE_EXISTING) == 0) {
+                std.fs.cwd().deleteFile(tmp_path) catch {};
+                return error.ReplaceFailed;
+            }
+        }
+
+        // Mirror the `.reload_config` hard-reload path at win32.zig
+        // line ~2106: re-read from disk + push through CoreApp so
+        // every surface's next frame picks up the new values.
+        //
+        // Temporarily restore the startup cwd around `Config.load`.
+        // `loadCliArgs` resolves relative `--config-file` argv entries
+        // via realpath-against-cwd; after `sanitizeCurrentDirectory()`
+        // ran, cwd is typically `%USERPROFILE%`, and a user who
+        // launched with `--config-file custom.conf` would see the
+        // reload pick up `%USERPROFILE%\custom.conf` instead of the
+        // file we just wrote. Save lands correctly, but the live
+        // config would immediately diverge from disk — "my edits
+        // didn't take effect until restart" is exactly this bug.
+        // Capture the current (sanitized) cwd so we can restore it
+        // after the reload. Leaking a cwd change into the rest of
+        // process lifetime would change where other code resolves
+        // relative paths — for example, a subsequent surface spawn
+        // could inherit the wrong working directory.
+        const cwd_before: ?[]u8 = std.process.getCwdAlloc(alloc) catch null;
+        defer if (cwd_before) |p| alloc.free(p);
+
+        // `defer` (NOT inline restore) for the cwd rollback so BOTH the
+        // happy path AND the `ReloadFailed` error path run it. Earlier
+        // code had `Config.load catch return error.ReloadFailed`
+        // followed by an inline restore; the return short-circuited
+        // the restore, leaving the process pinned to `startup_cwd`
+        // whenever a reload hit a broken config file. Downstream
+        // surface spawns then inherited the wrong cwd until restart.
+        var did_chdir_to_startup: bool = false;
+        if (self.startup_cwd) |cwd| {
+            std.fs.cwd().makePath(cwd) catch {}; // no-op if exists
+            if (std.process.changeCurDir(cwd)) |_| {
+                did_chdir_to_startup = true;
+            } else |err| {
+                std.log.warn("settings save: couldn't restore startup cwd path={s} err={}", .{ cwd, err });
+            }
+        }
+        defer {
+            if (did_chdir_to_startup) {
+                if (cwd_before) |cwd| {
+                    std.process.changeCurDir(cwd) catch |err| {
+                        std.log.warn("settings save: couldn't restore sanitized cwd path={s} err={}", .{ cwd, err });
+                    };
+                }
+            }
+        }
+
+        var reloaded = configpkg.Config.load(alloc) catch return error.ReloadFailed;
+        defer reloaded.deinit();
+
+        // Post-save validation: detect fields the user GUI-edited
+        // whose persisted value gets MASKED by a later layer on
+        // reload (included `config-file` + subsequent CLI
+        // `--config-file` flag + `--config-default-files=false`).
+        // The persisted-on-disk value is correct, but the effective
+        // runtime value doesn't match. Track whether ANY field is
+        // masked so we can return a distinct error variant; the
+        // settings-window caller surfaces this differently from a
+        // generic write failure.
+        var any_masked = false;
+        inline for (@typeInfo(configpkg.Config).@"struct".fields) |field| {
+            if (field.name[0] == '_') continue;
+            switch (@typeInfo(field.type)) {
+                .bool, .int, .float, .@"enum", .@"struct", .@"union" => {
+                    const key = @field(ConfigKey, field.name);
+                    if (user_edited.isSet(@intFromEnum(key))) {
+                        if (pending.changed(&reloaded, key)) {
+                            std.log.warn(
+                                "settings save: field '{s}' was saved but is masked by a later config-file layer; the effective value after reload differs",
+                                .{field.name},
+                            );
+                            any_masked = true;
+                        }
+                    }
+                },
+                else => {},
+            }
+        }
+
+        self.core_app.updateConfig(self, &reloaded) catch return error.ReloadFailed;
+        if (any_masked) return error.SavedButMasked;
+    }
+
+    /// The legacy `ShellExecuteW` path. Kept alive for Advanced pane
+    /// consumption and for users running `open_config` on CI / headless
+    /// runs where the settings window is unreachable.
+    fn openConfigInEditor(self: *App) !void {
+        // If the process was launched with `--config-file <path>`,
+        // that file is the one we Save to from the Settings UI and
+        // the one that masks the per-user default on reload. Opening
+        // the per-user default from the escape-hatch would let the
+        // user edit a file they'd then see no effect from (the CLI
+        // override still masks it), so route to the same file the
+        // Save path targets.
+        const path = blk: {
+            if (self.cli_config_override_path) |cli_path|
+                break :blk try self.core_app.alloc.dupe(u8, cli_path);
+            break :blk try config_edit.openPath(self.core_app.alloc);
+        };
         defer self.core_app.alloc.free(path);
         try self.openUrl(path);
     }
@@ -3193,8 +4347,27 @@ pub const App = struct {
             try self.core_app.alloc.dupe(u8, body);
         defer self.core_app.alloc.free(message);
 
+        // Primary path: Action Center toast via WinRT. This persists
+        // in Action Center history and surfaces system-level badging.
+        // On success we SKIP the in-app banner — showing both would
+        // double-notify on the same event. Any show error (Focus
+        // Assist, notifications disabled, runtime unavailable) falls
+        // back to the banner so the user still gets feedback.
+        if (self.winrt_toast) |*toast| {
+            if (toast.show(caption, body, .info)) |_| {
+                return;
+            } else |err| {
+                std.log.warn("winrt toast show failed err={}; falling back to banner", .{err});
+            }
+        }
+
         if (try self.showHostBanner(target, .info, message)) return;
-        try self.showInfoMessage(target, caption, body);
+        // Fallback modal: pass the COMPOSED `message` as the body so
+        // notifications with an empty `body` (e.g. settings-save
+        // success, where title alone carries the signal) still render
+        // something readable. Using raw `body` would produce a blank
+        // modal that looks broken despite the action succeeding.
+        try self.showInfoMessage(target, caption, message);
     }
 
     fn showChildExited(
@@ -3242,12 +4415,16 @@ pub const App = struct {
         title: []const u8,
         message: []const u8,
     ) !void {
-        const title_w = try std.unicode.utf8ToUtf16LeAllocZ(self.core_app.alloc, title);
-        defer self.core_app.alloc.free(title_w);
-        const message_w = try std.unicode.utf8ToUtf16LeAllocZ(self.core_app.alloc, message);
-        defer self.core_app.alloc.free(message_w);
-        const hwnd = if (self.findSurfaceForTarget(target)) |surface| surface.windowHwnd() else null;
-        _ = MessageBoxW(hwnd, message_w.ptr, title_w.ptr, MB_OK | MB_ICONINFORMATION);
+        _ = self;
+        _ = target;
+        // Tertiary fallback after WinRT toast + host banner both
+        // fail. Reached only when there's no UI surface to render a
+        // banner AND the WinRT path failed (Focus Assist, corporate
+        // lockdown with no combase, etc.) — i.e. the user genuinely
+        // has nowhere to see the notification. Log so telemetry
+        // captures the event. Replaced a modal `MessageBoxW` per
+        // AGENTS.md:84 ban.
+        std.log.info("info notification (no visible target): {s} — {s}", .{ title, message });
     }
 
     fn showHostBanner(
@@ -3358,6 +4535,50 @@ const SearchStatus = struct {
     selected: ?usize = null,
 };
 
+/// Which caption button (integrated titlebar) the cursor is hovering.
+const CaptionButton = enum { none, minimize, maximize, close };
+
+/// Deep-copy of one `apprt.ClipboardContent` entry so it can survive an
+/// async confirm-overlay roundtrip. Freed via `PendingClipboardOp.deinit`.
+const OwnedClipboardContent = struct {
+    mime: [:0]u8,
+    data: [:0]u8,
+};
+
+/// A clipboard operation awaiting user confirmation via
+/// `HostOverlayMode.confirm`. The owning `Surface` dupes all caller
+/// payload bytes into `core_app.alloc` when queuing the op so the
+/// confirm overlay's async callback sees valid data regardless of when
+/// the original caller's buffers go out of scope. See AGENTS.md:84 —
+/// this is the migration of the last live `MessageBoxW` out of the
+/// apprt.
+const PendingClipboardOp = union(enum) {
+    /// Deferred paste. `request` tells the core path to complete once
+    /// the user accepts; `data` is the duplicated payload.
+    paste: struct {
+        request: apprt.ClipboardRequest,
+        data: [:0]u8,
+    },
+    /// Deferred clipboard write (one or more mime/data pairs).
+    write: struct {
+        clipboard: apprt.Clipboard,
+        contents: []OwnedClipboardContent,
+    },
+
+    pub fn deinit(self: *PendingClipboardOp, alloc: Allocator) void {
+        switch (self.*) {
+            .paste => |*p| alloc.free(p.data),
+            .write => |*w| {
+                for (w.contents) |*c| {
+                    alloc.free(c.mime);
+                    alloc.free(c.data);
+                }
+                alloc.free(w.contents);
+            },
+        }
+    }
+};
+
 const SurfaceStatus = struct {
     pwd: ?[]const u8 = null,
     scrollbar: terminal.Scrollbar = .zero,
@@ -3372,6 +4593,30 @@ const SurfaceStatus = struct {
 const HostTabStatus = struct {
     index: usize = 0,
     total: usize = 1,
+};
+
+/// Payload for a non-modal confirm overlay. The callbacks receive the
+/// `userdata` pointer passed at construction time so the issuer can
+/// bind state (e.g. which Surface's close is pending). Callbacks are
+/// invoked exactly once — either `on_accept` or `on_cancel` — and the
+/// payload is dropped immediately after. Owned byte slices
+/// (`title`, `body`, `accept_label`, `cancel_label`) live on the Host's
+/// allocator; `deinit` frees them.
+const ConfirmPayload = struct {
+    title: []u8,
+    body: []u8,
+    accept_label: []u8,
+    cancel_label: []u8,
+    on_accept: *const fn (userdata: ?*anyopaque) void,
+    on_cancel: ?*const fn (userdata: ?*anyopaque) void = null,
+    userdata: ?*anyopaque = null,
+
+    fn deinit(self: *ConfirmPayload, alloc: std.mem.Allocator) void {
+        alloc.free(self.title);
+        alloc.free(self.body);
+        alloc.free(self.accept_label);
+        alloc.free(self.cancel_label);
+    }
 };
 
 const ChildPlacement = struct {
@@ -3460,11 +4705,43 @@ const Host = struct {
     tabs: std.ArrayListUnmanaged(Tab) = .empty,
     active_tab: usize = 0,
     next_tab_id: u32 = 1,
+    /// True while THIS host is drag-resizing (between its own
+    /// `WM_ENTERSIZEMOVE` and `WM_EXITSIZEMOVE`). Surfaces owned by
+    /// this Host short-circuit `requestRepaint` while the flag is
+    /// set. Per-host rather than per-App so dragging window A does
+    /// not freeze unrelated background windows B / C. Atomic
+    /// because the renderer thread reads it from outside the UI
+    /// pump.
+    is_live_resize: std.atomic.Value(bool) = .init(false),
+    /// One-shot guard used by `WM_EXITSIZEMOVE`: the final layout
+    /// must still defer terminal surface repaints so the explicit
+    /// post-layout flush owns the single repaint request.
+    defer_surface_repaints_until_flush: bool = false,
+    /// Tab-drag state machine. `beginPress` fires on tab mousedown;
+    /// `onMouseMove` promotes to `drag_tab` once movement exceeds
+    /// the 5 px L1 threshold; `onMouseUp` returns the gesture
+    /// (activate / drop). Full OLE wire-up (`IDropSource` /
+    /// `IDataObject` / cross-window `IDropTarget`) lands in a later
+    /// P5 pass; this field is the behaviour contract, ready.
+    drag_state: win32_tab_drag.DragState = .{},
     overlay_mode: HostOverlayMode = .none,
+    /// Active confirm overlay payload when `overlay_mode == .confirm`.
+    /// Owned byte slices (`title`, `body`, `accept_label`,
+    /// `cancel_label`) are allocated via `app.core_app.alloc` and
+    /// freed when the overlay closes or the Host deinits.
+    confirm_payload: ?ConfirmPayload = null,
     overlay_label_hwnd: ?HWND = null,
     overlay_edit_hwnd: ?HWND = null,
     overlay_edit_prev_proc: ?*const anyopaque = null,
     cached_overlay_edit: ?[:0]const u8 = null,
+    /// Guard flag: set true while `setOverlayEditText` drives a
+    /// programmatic `SetWindowTextW` on the overlay EDIT. That call
+    /// synchronously fires `EN_CHANGE`; without this gate the nested
+    /// handler would invalidate `cached_overlay_edit`, re-run
+    /// `rebuildPaletteList` / `syncOverlay*` mid-write, and leave the
+    /// outer caller racing its own sync. Matches the precedent in
+    /// `win32_settings.zig` (AGENTS.md:75).
+    suppress_edit_events: bool = false,
     overlay_hint_hwnd: ?HWND = null,
     overlay_accept_hwnd: ?HWND = null,
     overlay_cancel_hwnd: ?HWND = null,
@@ -3513,6 +4790,37 @@ const Host = struct {
     overlay_accept_placement: ChildPlacement = .{},
     overlay_cancel_placement: ChildPlacement = .{},
     hovered_button_hwnd: ?HWND = null,
+    /// Fade state for the tab the user is currently hovering. Paint
+    /// reads `alphaAt(now)` + pre-composites the glyph colour against
+    /// the tab bg so the close X visibly fades in with
+    /// `win32_tab_visual.close_fade_ms` (120 ms) cubic ease-in-out.
+    tab_close_hover: win32_tab_visual.CloseState = .{},
+    tab_close_hover_hwnd: ?HWND = null,
+    /// Focused-tab underline slide state. Retargeted by
+    /// `layoutChromeForRect` whenever the active tab's on-screen rect
+    /// changes. Slides over `win32_tab_visual.underline_slide_ms`
+    /// (160 ms) cubic ease-in-out; snaps instantly on the first
+    /// layout (slide_started_ms == 0) and under reduced-motion
+    /// (AGENTS.md:58).
+    tab_underline: win32_tab_visual.UnderlineState = .{},
+    /// Which caption button the cursor is currently hovering, when
+    /// integrated-titlebar is active. Drives hover-tint paint in
+    /// `paintChrome` and is cleared on `WM_NCMOUSELEAVE`. Gate on
+    /// `App.use_integrated_titlebar` — stays `.none` on Win10 / any
+    /// build < 22000.
+    caption_hover: CaptionButton = .none,
+    /// Registered for WM_NCMOUSELEAVE via `TrackMouseEvent(TME_NONCLIENT
+    /// | TME_LEAVE)` so we can clear `caption_hover` when the cursor
+    /// exits the non-client area. Only re-armed when it becomes false.
+    caption_track_armed: bool = false,
+    /// Fade-OUT state for the tab the user JUST left, so rapid
+    /// A → B hover transitions animate BOTH tabs concurrently
+    /// (A fades out 1 → 0 while B fades in 0 → 1) instead of A
+    /// snapping to 0 the moment the mouse enters B. One slot is
+    /// enough in practice — at 120 ms per fade, the user would need
+    /// sub-frame hover chains to require more parallel animations.
+    tab_close_prev: win32_tab_visual.CloseState = .{},
+    tab_close_prev_hwnd: ?HWND = null,
     hovered_quick_slot: ?usize = null,
     focused_quick_slot: ?usize = null,
     banner_kind: HostBannerKind = .none,
@@ -3523,6 +4831,24 @@ const Host = struct {
     tab_drag_start_x: i32 = 0,
     tab_drag_active: bool = false,
 
+    // Command palette list UI. Backed by a custom child HWND shown
+    // only while the palette is open. `palette_list_ranked` caches the
+    // current query's ranked matches so the paint path doesn't re-rank
+    // on every WM_PAINT; rebuilt on EDIT text change.
+    palette_list_hwnd: ?HWND = null,
+    palette_list_placement: ChildPlacement = .{},
+    palette_list_ranked: [win32_palette.max_ranked]win32_palette.RankedIndex = undefined,
+    palette_list_ranked_count: usize = 0,
+    palette_list_scroll: usize = 0,
+    /// Currently-selected row (absolute index into ranked). Enter runs
+    /// this entry; click overrides both selection and invocation.
+    palette_list_selected: usize = 0,
+
+    // Single SetTimer-driven tween scheduler; see Tween scheduler block
+    // in the method section. Matches Win32's main-thread-paint model.
+    tween_sched: win32_tween.Scheduler = .{},
+    tween_timer_active: bool = false,
+
     fn nextTabId(self: *Host) u32 {
         const id = self.next_tab_id;
         self.next_tab_id +%= 1;
@@ -3530,7 +4856,582 @@ const Host = struct {
         return id;
     }
 
+    // ── Tween scheduler plumbing ───────────────────────────────────────
+
+    fn clientAnimationsEnabled() bool {
+        var enabled: BOOL = 1;
+        if (SystemParametersInfoW(
+            SPI_GETCLIENTAREAANIMATION,
+            0,
+            @ptrCast(&enabled),
+            0,
+        ) == 0) {
+            // Fail closed: if we can't read the accessibility setting,
+            // honour reduced motion. Accessibility guarantees err toward
+            // "less motion", never toward "more".
+            return false;
+        }
+        return enabled != 0;
+    }
+
+    /// Reduced-motion and HC collapse `duration_ms` to 0 (snap).
+    fn addTween(
+        self: *Host,
+        from: f32,
+        to: f32,
+        duration_ms: u16,
+        easing: [4]f32,
+    ) ?win32_tween.TweenId {
+        const now = GetTickCount64();
+        const reduced = !clientAnimationsEnabled() or isHighContrastActive();
+        const effective_duration: u16 = if (reduced) 0 else duration_ms;
+
+        const id = self.tween_sched.add(now, .{
+            .from = from,
+            .to = to,
+            .duration_ms = effective_duration,
+            .easing = easing,
+        }) catch return null;
+
+        self.ensureTweenTimer();
+        return id;
+    }
+
+    fn ensureTweenTimer(self: *Host) void {
+        if (self.tween_timer_active) return;
+        const hwnd = self.hwnd orelse return;
+        const prev = SetTimer(hwnd, TWEEN_TIMER_ID, TWEEN_TIMER_INTERVAL_MS, null);
+        if (prev == 0) {
+            std.log.warn("tween: SetTimer failed; animations will be static this tick", .{});
+            return;
+        }
+        self.tween_timer_active = true;
+    }
+
+    fn killTweenTimer(self: *Host) void {
+        if (!self.tween_timer_active) return;
+        const hwnd = self.hwnd orelse {
+            self.tween_timer_active = false;
+            return;
+        };
+        _ = KillTimer(hwnd, TWEEN_TIMER_ID);
+        self.tween_timer_active = false;
+    }
+
+    fn tickTweens(self: *Host) void {
+        const now = GetTickCount64();
+        const still_alive = self.tween_sched.tick(now);
+        if (self.hwnd) |h| {
+            _ = InvalidateRect(h, null, 0);
+        }
+        // The Host-level InvalidateRect doesn't cascade to child
+        // button HWNDs (flag = 0 so no WS_CLIPCHILDREN bubble).
+        // Explicitly invalidate each fading tab button so its
+        // WM_DRAWITEM path re-reads `CloseState.alphaAt(now)` each
+        // frame. When both slots converge, we stop forcing repaints.
+        if (self.tab_close_hover_hwnd) |tab_hwnd| {
+            if (self.tab_close_hover.animating(now)) {
+                _ = InvalidateRect(tab_hwnd, null, 0);
+            } else {
+                self.tab_close_hover_hwnd = null;
+            }
+        }
+        if (self.tab_close_prev_hwnd) |prev_hwnd| {
+            if (self.tab_close_prev.animating(now)) {
+                _ = InvalidateRect(prev_hwnd, null, 0);
+            } else {
+                self.tab_close_prev_hwnd = null;
+            }
+        }
+        if (!still_alive) self.killTweenTimer();
+    }
+
+    /// Retarget the focused-tab underline toward the pixel rect
+    /// `(left, width)` (in parent HWND coords). Snaps on the first
+    /// retarget (no slide-in from origin on window open) and under
+    /// reduced-motion / HC. Otherwise slides over
+    /// `win32_tab_visual.underline_slide_ms`; registers a dummy tween
+    /// so the 16 ms heartbeat stays alive for the slide duration.
+    fn retargetTabUnderline(self: *Host, left: i32, width: i32) void {
+        const new_left: f32 = @floatFromInt(left);
+        const new_width: f32 = @floatFromInt(width);
+        if (self.tab_underline.target_left == new_left and
+            self.tab_underline.target_width == new_width) return;
+
+        const reduced = !clientAnimationsEnabled() or isHighContrastActive();
+        if (self.tab_underline.slide_started_ms == 0 or reduced) {
+            // Snap: first layout, or the user opted out of motion.
+            // slide_started_ms stays 0 so the next retarget also
+            // snaps if the user hasn't re-enabled animations. On a
+            // non-reduced path, the first REAL slide runs through
+            // retargetTo below which sets the timestamp.
+            self.tab_underline.target_left = new_left;
+            self.tab_underline.target_width = new_width;
+            self.tab_underline.start_left = new_left;
+            self.tab_underline.start_width = new_width;
+            if (self.hwnd) |h| _ = InvalidateRect(h, null, 0);
+            return;
+        }
+
+        const now = GetTickCount64();
+        self.tab_underline.retargetTo(new_left, new_width, now);
+        // Keep the 16 ms heartbeat alive for the slide duration so
+        // `paintChrome` re-runs every frame and reads the interpolated
+        // rect. Mirrors the close-button fade pattern.
+        _ = self.addTween(
+            0.0,
+            1.0,
+            @intCast(win32_tab_visual.underline_slide_ms),
+            (win32_theme.ThemeMotion{}).easing_standard,
+        );
+    }
+
+    // ── Integrated titlebar (Win11) ─────────────────────────────────────
+    //
+    // All four handlers below early-return `null` on Win10 / build <
+    // 22000; the caller falls through to `DefWindowProcW` and the
+    // system paints its default caption.
+
+    fn handleNcCalcSize(
+        self: *Host,
+        hwnd: HWND,
+        wParam: WPARAM,
+        lParam: LPARAM,
+    ) ?LRESULT {
+        if (!self.app.use_integrated_titlebar) return null;
+        if (wParam == 0) return null; // FALSE case: untouched.
+        const params: *NCCALCSIZE_PARAMS = @ptrFromInt(@as(usize, @bitCast(lParam)));
+        const saved_top = params.rgrc[0].top;
+        // Let DWP compute the default side/bottom frame…
+        _ = DefWindowProcW(hwnd, WM_NCCALCSIZE, wParam, lParam);
+        // …then reset the top so the caption row lives inside the
+        // client area (WT's strategy, wt-chrome-reference.md §3).
+        params.rgrc[0].top = saved_top;
+        // Maximized state: Win11 adds an invisible resize margin
+        // above the visible content. Without this compensation the
+        // top of the content would clip into the monitor bezel.
+        if (IsZoomed(hwnd) != 0) {
+            const metrics = win32_nc_layout.metricsDefault(self.current_dpi);
+            params.rgrc[0].top += metrics.size_frame_y + metrics.padded_border;
+        }
+        return 0;
+    }
+
+    fn handleNcHitTest(self: *Host, hwnd: HWND, lParam: LPARAM) ?LRESULT {
+        if (!self.app.use_integrated_titlebar) return null;
+
+        // lParam is the cursor in SCREEN coords (WM_NCHITTEST is
+        // special-cased — NOT client-relative).
+        const bits: u32 = @truncate(@as(u64, @bitCast(lParam)));
+        const cx: i32 = @as(i16, @bitCast(@as(u16, @truncate(bits))));
+        const cy: i32 = @as(i16, @bitCast(@as(u16, @truncate(bits >> 16))));
+
+        var win_rect: RECT = undefined;
+        if (GetWindowRect(hwnd, &win_rect) == 0) return null;
+
+        const window_rect: win32_nc_layout.Rect = .{
+            .left = win_rect.left,
+            .top = win_rect.top,
+            .right = win_rect.right,
+            .bottom = win_rect.bottom,
+        };
+        const cursor: win32_nc_layout.Point = .{ .x = cx, .y = cy };
+        const metrics = win32_nc_layout.metricsDefault(self.current_dpi);
+        const state: win32_nc_layout.WindowState =
+            if (IsZoomed(hwnd) != 0) .maximized else .normal;
+        const ht = win32_nc_layout.hitTest(window_rect, cursor, metrics, state);
+        return switch (ht) {
+            .nowhere => HTNOWHERE,
+            .client => HTCLIENT,
+            .caption => HTCAPTION,
+            .sysmenu => HTSYSMENU,
+            .minbutton => HTMINBUTTON,
+            .maxbutton => HTMAXBUTTON,
+            .left => HTLEFT,
+            .right => HTRIGHT,
+            .top => HTTOP,
+            .topleft => HTTOPLEFT,
+            .topright => HTTOPRIGHT,
+            .bottom => HTBOTTOM,
+            .bottomleft => HTBOTTOMLEFT,
+            .bottomright => HTBOTTOMRIGHT,
+            .close => HTCLOSE,
+        };
+    }
+
+    fn handleNcMouseMove(self: *Host, hwnd: HWND, wParam: WPARAM) ?LRESULT {
+        if (!self.app.use_integrated_titlebar) return null;
+
+        // wParam is the hit-test code returned by our WM_NCHITTEST.
+        const ht: i32 = @intCast(@as(i64, @bitCast(wParam)));
+        const new_hover: CaptionButton = switch (ht) {
+            HTCLOSE => .close,
+            HTMAXBUTTON => .maximize,
+            HTMINBUTTON => .minimize,
+            else => .none,
+        };
+
+        if (self.caption_hover != new_hover) {
+            self.caption_hover = new_hover;
+            self.invalidateChrome();
+        }
+
+        // Arm a one-shot WM_NCMOUSELEAVE so we can clear the hover
+        // when the cursor exits the non-client area. Without this the
+        // last-hovered button would paint highlighted indefinitely.
+        if (!self.caption_track_armed) {
+            var track: TRACKMOUSEEVENT = .{
+                .cbSize = @sizeOf(TRACKMOUSEEVENT),
+                .dwFlags = TME_LEAVE | TME_NONCLIENT,
+                .hwndTrack = hwnd,
+                .dwHoverTime = 0,
+            };
+            if (TrackMouseEvent(&track) != 0) {
+                self.caption_track_armed = true;
+            }
+        }
+
+        return null; // fall through to DefWindowProcW for native feedback
+    }
+
+    fn handleNcMouseLeave(self: *Host) void {
+        self.caption_track_armed = false;
+        if (self.caption_hover != .none) {
+            self.caption_hover = .none;
+            self.invalidateChrome();
+        }
+    }
+
+    /// Non-owning view over the palette command lists. Lifetime is tied
+    /// to `app.config` — do not hold across a reload.
+    fn paletteSnapshot(self: *const Host) PaletteSnapshot {
+        return .{
+            .commands = self.app.config.@"command-palette-entry".value.items,
+            .cvals = self.app.config.@"command-palette-entry".value_c.items,
+        };
+    }
+
+    // ── Palette list UI ───────────────────────────────────────────────
+
+    /// Programmatically set the overlay EDIT's text and keep the
+    /// cached UTF-8 view in sync. Wraps the write in
+    /// `suppress_edit_events` so the synchronous `EN_CHANGE` that
+    /// `SetWindowTextW` fires on the same thread does NOT re-run the
+    /// cache-invalidate + sync cascade while the outer caller is
+    /// mid-write. Callers must still drive their own
+    /// `syncCommandPaletteBanner` / `syncOverlay*` after the write —
+    /// the suppressed EN_CHANGE intentionally skips that default
+    /// path. See task #44 and AGENTS.md:75.
+    fn setOverlayEditText(self: *Host, value: []const u8) !bool {
+        const edit_hwnd = self.overlay_edit_hwnd orelse return false;
+        self.suppress_edit_events = true;
+        defer self.suppress_edit_events = false;
+        return try syncWindowTextUtf8CachedAfterSet(
+            self.app.core_app.alloc,
+            edit_hwnd,
+            &self.cached_overlay_edit,
+            value,
+        );
+    }
+
+    /// Rebuild the ranked match cache for the current EDIT query and
+    /// invalidate the list so WM_PAINT redraws. Called from
+    /// `syncCommandPaletteBanner` on every keystroke, and from
+    /// `showOverlay(.command_palette)` when the palette opens.
+    fn rebuildPaletteList(self: *Host) void {
+        // `overlayEditText` returns either a literal "" or a borrowed
+        // view of `self.cached_overlay_edit`; the Host owns the cache
+        // and frees it in deinit. Do NOT free here — that either
+        // undermines the literal (UB) or dangles the cache pointer,
+        // so the next read returns freed memory.
+        const text_raw = overlayEditText(self) catch "";
+        const text = std.mem.trim(u8, text_raw, " \t\r\n");
+
+        const snap = self.paletteSnapshot();
+        // Breadcrumb for the palette-crash investigation (task #44).
+        // User-reported: "crashes after a few keystrokes". These
+        // three lines bound the likely crash surface — a malformed
+        // snapshot (dangling cvals after config reload), an unusual
+        // query that trips `zf.rank`, or a bad `palette_list_ranked`
+        // state. When a repro lands, the warn lines before/after
+        // the `rankedForQuery` call pinpoint which side failed.
+        log.debug(
+            "palette rebuild begin text_len={d} cmds={d} cvals={d}",
+            .{ text.len, snap.commands.len, snap.cvals.len },
+        );
+
+        const ranked = win32_palette.rankedForQuery(
+            snap,
+            text,
+            &self.palette_list_ranked,
+        );
+        // Defensive cap: `rankedForQuery` is bounded by
+        // `win32_palette.max_ranked` (256) by contract, but if anything
+        // ever regresses that, a runaway `palette_list_ranked_count`
+        // turns every paint/scroll/invoke into an OOB on the fixed
+        // stack array. Clamp here instead of relying on the library
+        // invariant alone.
+        self.palette_list_ranked_count = @min(ranked.len, self.palette_list_ranked.len);
+        self.palette_list_scroll = 0;
+        self.palette_list_selected = 0;
+
+        log.debug(
+            "palette rebuild end ranked={d}",
+            .{self.palette_list_ranked_count},
+        );
+
+        if (self.palette_list_hwnd) |h| _ = InvalidateRect(h, null, 0);
+    }
+
+    /// Move the list selection up/down one row, scrolling if the new
+    /// selection is off-screen. Returns true if the key was consumed.
+    fn moveListSelection(self: *Host, reverse: bool) bool {
+        if (self.overlay_mode != .command_palette) return false;
+        if (self.palette_list_ranked_count == 0) return false;
+        var next: usize = self.palette_list_selected;
+        if (reverse) {
+            if (next == 0) {
+                next = self.palette_list_ranked_count - 1;
+            } else {
+                next -= 1;
+            }
+        } else {
+            next += 1;
+            if (next >= self.palette_list_ranked_count) next = 0;
+        }
+        self.palette_list_selected = next;
+        // Keep the selected row inside the visible window.
+        if (next < self.palette_list_scroll) {
+            self.palette_list_scroll = next;
+        } else if (next >= self.palette_list_scroll + palette_max_visible_rows) {
+            self.palette_list_scroll = next - palette_max_visible_rows + 1;
+        }
+        if (self.palette_list_hwnd) |h| _ = InvalidateRect(h, null, 0);
+        self.announcePaletteSelection();
+        return true;
+    }
+
+    /// Describe the palette list's current state as a single string
+    /// suitable for `UIA_NamePropertyId`. The UIA host reads this
+    /// whenever a client queries the palette list's name, and the
+    /// selection-change path raises `NameChanged` so Narrator re-reads
+    /// after each ↑/↓ keystroke.
+    fn buildPaletteListName(self: *const Host, buf: []u8) []const u8 {
+        if (self.palette_list_ranked_count == 0) {
+            return std.fmt.bufPrint(
+                buf,
+                "Command palette, no matches",
+                .{},
+            ) catch "Command palette";
+        }
+        const snap = self.paletteSnapshot();
+        const idx = @min(
+            self.palette_list_selected,
+            self.palette_list_ranked_count - 1,
+        );
+        const cmd_index = self.palette_list_ranked[idx].index;
+        if (cmd_index >= snap.commands.len) return "Command palette";
+        const cmd = snap.commands[cmd_index];
+        const action = std.mem.span(snap.cvals[cmd_index].action);
+        return std.fmt.bufPrint(
+            buf,
+            "Command palette, {d} of {d}: {s} — {s}",
+            .{ idx + 1, self.palette_list_ranked_count, cmd.title, action },
+        ) catch "Command palette";
+    }
+
+    fn paletteListUiaState(self: *const Host) win32_uia.PaletteListState {
+        return .{
+            .ctx = @ptrCast(@constCast(self)),
+            .name = &paletteListNameThunk,
+        };
+    }
+
+    fn announcePaletteSelection(self: *const Host) void {
+        // TODO: raise UIA_NamePropertyId PropertyChanged so Narrator
+        // re-reads the selected entry on ↑/↓. This needs the active
+        // provider instance; the current WM_GETOBJECT path creates a
+        // fresh one per query so there's nothing to raise against
+        // without caching. Leave as a known-limitation until the
+        // per-widget provider cache lands (P3-era work).
+        _ = self;
+    }
+
+    /// Translate a y coordinate (client-area) into an absolute rank
+    /// index, or null if the click landed outside a row.
+    fn paletteRowAtY(self: *const Host, y: i32) ?usize {
+        if (y < 0) return null;
+        const row_h = self.scaled(palette_row_height);
+        if (row_h <= 0) return null;
+        const visible_row: usize = @intCast(@divTrunc(y, row_h));
+        const absolute = visible_row + self.palette_list_scroll;
+        if (absolute >= self.palette_list_ranked_count) return null;
+        return absolute;
+    }
+
+    /// Dispatch the action at rank index `row`. Must be called from the
+    /// palette list's WM_LBUTTONDOWN, where the Host is still alive;
+    /// the dispatched action may free the host (close_tab on last tab
+    /// etc.) so no `self` access after `performBindingAction`.
+    fn invokePaletteRow(self: *Host, row: usize) !void {
+        if (row >= self.palette_list_ranked_count) return;
+        if (row >= self.palette_list_ranked.len) return;
+        const snap = self.paletteSnapshot();
+        const cmd_index = self.palette_list_ranked[row].index;
+        if (cmd_index >= snap.commands.len) return;
+        if (cmd_index >= snap.cvals.len) return;
+        const action = snap.commands[cmd_index].action;
+        const action_str = std.mem.span(snap.cvals[cmd_index].action);
+
+        const surface = self.activeSurface() orelse return;
+        self.app.pushPaletteMru(action_str) catch |err| {
+            std.log.warn("palette MRU push failed err={}", .{err});
+        };
+        self.hideOverlay();
+        self.layout() catch {};
+        _ = try surface.core_surface.performBindingAction(action);
+        // Do NOT touch `self` after dispatch — the host may be freed.
+    }
+
+    /// Scroll the visible window by `delta` wheel units (120 = one line).
+    fn scrollPaletteList(self: *Host, delta: i16) void {
+        if (self.palette_list_ranked_count <= palette_max_visible_rows) return;
+        const lines_per_notch: i32 = 3;
+        const step: i32 = @intFromFloat(@as(f32, @floatFromInt(delta)) / 120.0 * @as(f32, @floatFromInt(lines_per_notch)));
+        if (step == 0) return;
+        const max_scroll = self.palette_list_ranked_count - palette_max_visible_rows;
+        var next: isize = @as(isize, @intCast(self.palette_list_scroll)) - step;
+        if (next < 0) next = 0;
+        if (next > @as(isize, @intCast(max_scroll))) next = @intCast(max_scroll);
+        const new_scroll: usize = @intCast(next);
+        if (new_scroll == self.palette_list_scroll) return;
+        self.palette_list_scroll = new_scroll;
+        // Clamp the selected row into the visible window. Without this,
+        // Enter invokes whatever row the selection *used* to point at —
+        // possibly an off-screen action the user has no idea they're
+        // launching. UIA Name updates follow from the reassignment.
+        const visible_end = new_scroll + palette_max_visible_rows;
+        if (self.palette_list_selected < new_scroll) {
+            self.palette_list_selected = new_scroll;
+        } else if (self.palette_list_selected >= visible_end) {
+            self.palette_list_selected = visible_end - 1;
+        }
+        if (self.palette_list_hwnd) |h| _ = InvalidateRect(h, null, 0);
+    }
+
+    /// BeginPaint/EndPaint over the list child HWND. Each row shows
+    /// title | action | keybind hint. The selected row (Enter target)
+    /// gets the accent highlight.
+    fn paintPaletteList(self: *Host) void {
+        const hwnd = self.palette_list_hwnd orelse return;
+        var ps: PAINTSTRUCT = undefined;
+        const hdc = BeginPaint(hwnd, &ps);
+        defer _ = EndPaint(hwnd, &ps);
+
+        var rect: RECT = undefined;
+        if (GetClientRect(hwnd, &rect) == 0) return;
+
+        const theme = &self.app.resolved_theme;
+        fillSolidRect(hdc, rect, theme.overlay_bg);
+
+        if (self.palette_list_ranked_count == 0) return;
+
+        const snap = self.paletteSnapshot();
+        const row_h = self.scaled(palette_row_height);
+        const padding = self.scaled(12);
+        const title_width = self.scaled(200);
+        const hint_width = self.scaled(140);
+
+        _ = SetBkMode(hdc, TRANSPARENT);
+        const old_font: ?HGDIOBJ = if (self.chrome_font) |f| SelectObject(hdc, f) else null;
+        defer {
+            if (old_font) |f| _ = SelectObject(hdc, f);
+        }
+
+        const visible_end = @min(
+            self.palette_list_scroll + palette_max_visible_rows,
+            self.palette_list_ranked_count,
+        );
+        var i = self.palette_list_scroll;
+        while (i < visible_end) : (i += 1) {
+            const y_top: i32 = @intCast((i - self.palette_list_scroll) * @as(usize, @intCast(row_h)));
+            const row_rect: RECT = .{
+                .left = 0,
+                .top = y_top,
+                .right = rect.right,
+                .bottom = y_top + row_h,
+            };
+            const is_selected = i == self.palette_list_selected;
+            if (is_selected) {
+                fillSolidRect(hdc, row_rect, theme.button_active_bg);
+            }
+            if (i >= self.palette_list_ranked.len) break;
+            const cmd_index = self.palette_list_ranked[i].index;
+            if (cmd_index >= snap.commands.len) continue;
+            if (cmd_index >= snap.cvals.len) continue;
+            const cmd = snap.commands[cmd_index];
+            const action_str = std.mem.span(snap.cvals[cmd_index].action);
+
+            const title_color = if (is_selected) theme.button_active_fg else theme.text_primary;
+            const secondary_color = if (is_selected) theme.button_active_fg else theme.text_secondary;
+
+            drawPaletteRowText(
+                hdc,
+                cmd.title,
+                .{
+                    .left = row_rect.left + padding,
+                    .top = row_rect.top,
+                    .right = row_rect.left + padding + title_width,
+                    .bottom = row_rect.bottom,
+                },
+                title_color,
+            );
+            drawPaletteRowText(
+                hdc,
+                action_str,
+                .{
+                    .left = row_rect.left + padding + title_width,
+                    .top = row_rect.top,
+                    .right = row_rect.right - padding - hint_width,
+                    .bottom = row_rect.bottom,
+                },
+                secondary_color,
+            );
+
+            // Keybind hint: look up the primary trigger for this action
+            // in the reverse index that `Binding.Set` already maintains.
+            // Format into a stack buffer — the per-frame allocation
+            // would otherwise stack up at every keystroke's WM_PAINT.
+            if (self.app.config.keybind.set.reverse.get(cmd.action)) |trigger| {
+                var hint_buf: [96]u8 = undefined;
+                const hint = std.fmt.bufPrint(&hint_buf, "{f}", .{trigger}) catch null;
+                if (hint) |text| {
+                    drawPaletteRowText(
+                        hdc,
+                        text,
+                        .{
+                            .left = row_rect.right - padding - hint_width,
+                            .top = row_rect.top,
+                            .right = row_rect.right - padding,
+                            .bottom = row_rect.bottom,
+                        },
+                        secondary_color,
+                    );
+                }
+            }
+        }
+    }
+
     fn deinit(self: *Host) void {
+        // Stop the tween heartbeat timer before we tear down the
+        // scheduler — leaving a SetTimer bound to a destroyed HWND
+        // would panic the next time it fired.
+        if (self.tween_timer_active) {
+            if (self.hwnd) |h| _ = KillTimer(h, TWEEN_TIMER_ID);
+            self.tween_timer_active = false;
+        }
+        self.tween_sched.deinit();
+
         if (self.banner_text) |value| self.app.core_app.alloc.free(value);
         if (self.overlay_completion_seed) |value| self.app.core_app.alloc.free(value);
         if (self.overlay_completion_value) |value| self.app.core_app.alloc.free(value);
@@ -3659,6 +5560,12 @@ const Host = struct {
     fn activateTabIndex(self: *Host, index: usize) bool {
         if (index >= self.tabs.items.len) return false;
         self.active_tab = index;
+        // The underline retarget happens in `layoutTabStrip` —
+        // `active_tab` is read there and fed to `retargetTabUnderline`
+        // with precomputed coords. Invoking layout after the index
+        // change ensures the slide kicks off immediately on activation
+        // instead of waiting for the next incidental layout tick.
+        self.layout() catch {};
         if (self.tabs.items[index].focusedSurface()) |surface| {
             self.app.activateSurface(surface);
             return true;
@@ -3838,12 +5745,7 @@ const Host = struct {
         };
         const next = nextTabOverviewSelection(current_index + 1, profiles.len, reverse) - 1;
         try self.setSelectedProfileIndex(next);
-        _ = try syncWindowTextUtf8CachedAfterSet(
-            self.app.core_app.alloc,
-            edit_hwnd,
-            &self.cached_overlay_edit,
-            profiles[next].key,
-        );
+        _ = try self.setOverlayEditText(profiles[next].key);
         _ = SendMessageW(edit_hwnd, EM_SETSEL, 0, -1);
         _ = try self.syncOverlayLabel();
         _ = try self.syncOverlayHint();
@@ -3946,6 +5848,46 @@ const Host = struct {
         self.hovered_button_hwnd = child;
         if (previous) |hwnd| _ = InvalidateRect(hwnd, null, 0);
         if (child) |hwnd| _ = InvalidateRect(hwnd, null, 0);
+
+        // Tab close-button fade: when the hovered button transitions
+        // into / out of a TAB button, drive CloseState + kick the
+        // tween timer so the 16 ms tick drives repaints while the
+        // alpha interpolates. Non-tab buttons (caption action buttons,
+        // overlay accept/cancel) use the instant hover visuals.
+        const prev_was_tab = if (previous) |h| self.isTabButton(h) else false;
+        const new_is_tab = if (child) |h| self.isTabButton(h) else false;
+        if (prev_was_tab or new_is_tab) {
+            const now = GetTickCount64();
+
+            if (prev_was_tab and new_is_tab) {
+                // Adjacent tab transition: move the previous target
+                // into the fade-out slot so both animations run in
+                // parallel — fade A out while fading B in.
+                self.tab_close_prev = self.tab_close_hover;
+                self.tab_close_prev.setHovered(false, now);
+                self.tab_close_prev_hwnd = previous;
+
+                self.tab_close_hover = .{};
+                self.tab_close_hover.setHovered(true, now);
+                self.tab_close_hover_hwnd = child;
+            } else {
+                // Single-direction transition: (no tab → tab) fade in,
+                // (tab → no tab) fade out. Previous-slot stays as-is
+                // so an already-in-progress fade-out keeps animating.
+                self.tab_close_hover.setHovered(new_is_tab, now);
+                self.tab_close_hover_hwnd = if (new_is_tab) child else previous;
+            }
+
+            // Dummy tween keeps the 16 ms heartbeat alive for the
+            // fade duration; paint reads `CloseState.alphaAt` each
+            // frame directly.
+            _ = self.addTween(
+                0.0,
+                1.0,
+                @intCast(win32_tab_visual.close_fade_ms),
+                (win32_theme.ThemeMotion{}).easing_standard,
+            );
+        }
     }
 
     fn setHoveredQuickSlot(self: *Host, slot: ?usize) void {
@@ -4189,6 +6131,29 @@ const Host = struct {
         ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
         self.subclassButton(self.overlay_cancel_hwnd.?, &hostButtonProc, &self.overlay_button_prev_proc);
 
+        // Palette list — shown only when overlay_mode == .command_palette.
+        // Stamped with a pointer to the Host via GWLP_USERDATA so the
+        // wndproc can dispatch clicks back to `host.invokePaletteRow`.
+        self.palette_list_hwnd = CreateWindowExW(
+            0,
+            palette_list_class_name,
+            std.unicode.utf8ToUtf16LeStringLiteral(""),
+            WS_CHILD,
+            0,
+            0,
+            320,
+            palette_row_height * @as(i32, palette_max_visible_rows),
+            hwnd,
+            @ptrFromInt(2006),
+            self.app.hinstance,
+            null,
+        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+        _ = SetWindowLongPtrW(
+            self.palette_list_hwnd.?,
+            GWLP_USERDATA,
+            @as(LONG_PTR, @intCast(@intFromPtr(self))),
+        );
+
         self.hideOverlay();
     }
 
@@ -4247,35 +6212,165 @@ const Host = struct {
         }
         const accept_hwnd = self.overlay_accept_hwnd orelse return;
         const cancel_hwnd = self.overlay_cancel_hwnd orelse return;
-        _ = applyChildVisibility(edit_hwnd, &self.overlay_edit_placement, true);
+
+        // Confirm overlays are message-only: they carry the payload's
+        // body as read-only explanatory text (the hint HWND) rather
+        // than an editable query. Hiding the EDIT removes the blank-
+        // textbox-UX-trap and puts keyboard focus on the Accept
+        // button by default (Enter = accept, Esc = cancel per the
+        // overlayEditProc key handlers; we still capture keys there
+        // so focus on the button is just the initial landing spot).
+        const is_confirm = mode == .confirm;
+        _ = applyChildVisibility(edit_hwnd, &self.overlay_edit_placement, !is_confirm);
         _ = applyChildVisibility(accept_hwnd, &self.overlay_accept_placement, true);
         _ = applyChildVisibility(cancel_hwnd, &self.overlay_cancel_placement, true);
 
         const initial_text = initial orelse "";
-        _ = try syncWindowTextUtf8CachedAfterSet(
-            self.app.core_app.alloc,
-            edit_hwnd,
-            &self.cached_overlay_edit,
-            initial_text,
-        );
+        _ = try self.setOverlayEditText(initial_text);
 
         _ = try self.syncOverlayLabel();
         _ = try self.syncOverlayHint();
         _ = try self.syncOverlayButtons();
+        // The command palette gets a scrollable list below the EDIT;
+        // rebuild it for the initial (usually empty) query so the
+        // ranker's "show all" path has something visible to draw.
+        if (mode == .command_palette) self.rebuildPaletteList();
         try self.layout();
-        _ = SetFocus(edit_hwnd);
-        _ = SendMessageW(edit_hwnd, EM_SETSEL, 0, -1);
+        if (is_confirm) {
+            // Show body as hint label. Prefer the Accept button as
+            // the keyboard-focus target so the destructive action is
+            // one explicit click/Enter away — never auto-triggered.
+            _ = SetFocus(accept_hwnd);
+        } else {
+            _ = SetFocus(edit_hwnd);
+            _ = SendMessageW(edit_hwnd, EM_SETSEL, 0, -1);
+        }
     }
 
     fn hideOverlay(self: *Host) void {
         self.overlay_mode = .none;
         self.clearOverlayCompletion();
         self.setBanner(.none, null) catch {};
+        // Drop any active confirm payload. Both accept and cancel
+        // paths route through hideOverlay, so this is the one place
+        // the owned byte slices get freed. Callbacks were already
+        // dispatched in invokeConfirm{Accept,Cancel} before reaching
+        // this point.
+        if (self.confirm_payload) |*p| {
+            p.deinit(self.app.core_app.alloc);
+            self.confirm_payload = null;
+        }
         if (self.overlay_label_hwnd) |hwnd| _ = applyChildVisibility(hwnd, &self.overlay_label_placement, false);
         if (self.overlay_edit_hwnd) |hwnd| _ = applyChildVisibility(hwnd, &self.overlay_edit_placement, false);
         if (self.overlay_hint_hwnd) |hwnd| _ = applyChildVisibility(hwnd, &self.overlay_hint_placement, false);
         if (self.overlay_accept_hwnd) |hwnd| _ = applyChildVisibility(hwnd, &self.overlay_accept_placement, false);
         if (self.overlay_cancel_hwnd) |hwnd| _ = applyChildVisibility(hwnd, &self.overlay_cancel_placement, false);
+        if (self.palette_list_hwnd) |hwnd| _ = applyChildVisibility(hwnd, &self.palette_list_placement, false);
+        self.palette_list_ranked_count = 0;
+        self.palette_list_scroll = 0;
+    }
+
+    /// Bring up a non-modal confirmation prompt. Ownership of the
+    /// four string slices (`title`, `body`, `accept_label`,
+    /// `cancel_label`) transfers to the Host — the Host frees them
+    /// when the overlay closes. Opening a confirm while another
+    /// overlay is active closes the previous one first (policy:
+    /// confirm is mutually exclusive with palette / search /
+    /// profile).
+    fn showConfirm(
+        self: *Host,
+        title: []const u8,
+        body: []const u8,
+        accept_label: []const u8,
+        cancel_label: []const u8,
+        on_accept: *const fn (userdata: ?*anyopaque) void,
+        on_cancel: ?*const fn (userdata: ?*anyopaque) void,
+        userdata: ?*anyopaque,
+    ) !void {
+        const alloc = self.app.core_app.alloc;
+        // Deep-copy every string so the caller doesn't need to keep
+        // the source alive.
+        const title_owned = try alloc.dupe(u8, title);
+        errdefer alloc.free(title_owned);
+        const body_owned = try alloc.dupe(u8, body);
+        errdefer alloc.free(body_owned);
+        const accept_owned = try alloc.dupe(u8, accept_label);
+        errdefer alloc.free(accept_owned);
+        const cancel_owned = try alloc.dupe(u8, cancel_label);
+        errdefer alloc.free(cancel_owned);
+
+        // Close any previous overlay so we don't stack. `hideOverlay`
+        // frees an existing `confirm_payload` via its own deinit
+        // branch, so we don't leak here.
+        if (self.overlay_mode != .none) self.hideOverlay();
+
+        self.confirm_payload = .{
+            .title = title_owned,
+            .body = body_owned,
+            .accept_label = accept_owned,
+            .cancel_label = cancel_owned,
+            .on_accept = on_accept,
+            .on_cancel = on_cancel,
+            .userdata = userdata,
+        };
+
+        try self.showOverlay(.confirm, null);
+    }
+
+    /// Fire the accept callback and close the overlay. Critical
+    /// ordering: hide the overlay + free the payload FIRST, then
+    /// dispatch the callback. The accept handler can synchronously
+    /// destroy this Host (e.g. the confirm-close-surface path calls
+    /// `DestroyWindow` which triggers the Host's `WM_DESTROY` +
+    /// teardown) — touching `self` after that is a use-after-free.
+    /// Snapshot the callback into locals, null out the payload,
+    /// hide the overlay state, THEN call the callback.
+    fn invokeConfirmAccept(self: *Host) void {
+        const captured = self.confirm_payload orelse {
+            self.hideOverlay();
+            self.layout() catch {};
+            return;
+        };
+        const cb = captured.on_accept;
+        const userdata = captured.userdata;
+        // hideOverlay deinits the payload (frees the owned byte
+        // slices) and clears `confirm_payload = null`. After this
+        // point, no Host-mutating call may touch fields the
+        // callback might also reach.
+        self.hideOverlay();
+        self.layout() catch {};
+        cb(userdata);
+    }
+
+    fn invokeConfirmCancel(self: *Host) void {
+        const captured = self.confirm_payload orelse {
+            self.hideOverlay();
+            self.layout() catch {};
+            return;
+        };
+        const cb = captured.on_cancel;
+        const userdata = captured.userdata;
+        self.hideOverlay();
+        self.layout() catch {};
+        if (cb) |f| f(userdata);
+    }
+
+    /// If an active confirm overlay was opened with `ud` as its
+    /// userdata, hide + deinit it WITHOUT dispatching the cancel
+    /// callback. Called from `Surface.destroy` so a close-while-
+    /// confirming doesn't leave the overlay with a dangling Surface
+    /// pointer — a later Accept click would otherwise UAF into the
+    /// freed surface. Skipping the cancel callback is correct here:
+    /// the Surface is already tearing down, nothing to roll back.
+    fn cancelConfirmIfOwnedBy(self: *Host, ud: *anyopaque) void {
+        const payload = self.confirm_payload orelse return;
+        const payload_ud = payload.userdata orelse return;
+        if (payload_ud != ud) return;
+        // `hideOverlay` deinits the payload (frees owned string
+        // bytes and clears `confirm_payload = null`) without
+        // invoking on_accept/on_cancel. The Host itself stays live.
+        self.hideOverlay();
+        self.layout() catch {};
     }
 
     fn overlayInitialText(self: *Host, mode: HostOverlayMode) ?[]const u8 {
@@ -4309,6 +6404,10 @@ const Host = struct {
                 const status = self.app.hostTabStatus(surface);
                 break :blk std.fmt.allocPrint(self.app.core_app.alloc, "{d}", .{status.index + 1}) catch null;
             },
+            // Confirm overlays don't carry editable text — the body is
+            // held by `confirm_payload.body` and painted by the paint
+            // branch. Returning null leaves the hidden EDIT empty.
+            .confirm => null,
         };
     }
 
@@ -4360,7 +6459,7 @@ const Host = struct {
             ),
             .command_palette => {
                 const text = std.mem.trim(u8, try overlayEditText(self), " \t\r\n");
-                const label = try buildCommandPaletteOverlayLabel(alloc, text);
+                const label = try buildCommandPaletteOverlayLabel(alloc, self.paletteSnapshot(), text);
                 defer alloc.free(label);
                 return try syncWindowTextUtf8Cached(
                     alloc,
@@ -4396,6 +6495,22 @@ const Host = struct {
                     label,
                 );
             },
+            .confirm => {
+                // Confirm overlays use the payload's title as the
+                // label text. Falls back to a sensible default if
+                // payload is missing (shouldn't happen; showConfirm
+                // guarantees it).
+                const title = if (self.confirm_payload) |p|
+                    p.title
+                else
+                    "Confirm";
+                return try syncWindowTextUtf8Cached(
+                    alloc,
+                    label_hwnd,
+                    &self.cached_overlay_label,
+                    title,
+                );
+            },
         }
     }
 
@@ -4403,9 +6518,30 @@ const Host = struct {
         const accept_hwnd = self.overlay_accept_hwnd orelse return false;
         const cancel_hwnd = self.overlay_cancel_hwnd orelse return false;
         const alloc = self.app.core_app.alloc;
+        var changed = false;
+        // Confirm overlays pull labels from the payload directly so
+        // users get the exact wording the caller chose (e.g. "Close"
+        // as a destructive Accept). Skip the generic EDIT-text-driven
+        // label computation below since there is no EDIT input.
+        if (self.overlay_mode == .confirm) {
+            if (self.confirm_payload) |p| {
+                changed = (try syncWindowTextUtf8Cached(
+                    alloc,
+                    accept_hwnd,
+                    &self.cached_overlay_accept,
+                    p.accept_label,
+                )) or changed;
+                changed = (try syncWindowTextUtf8Cached(
+                    alloc,
+                    cancel_hwnd,
+                    &self.cached_overlay_cancel,
+                    p.cancel_label,
+                )) or changed;
+            }
+            return changed;
+        }
         const text = std.mem.trim(u8, try overlayEditText(self), " \t\r\n");
         const surface = self.activeSurface();
-        var changed = false;
         if (self.overlay_mode == .profile) {
             const accept = try buildProfileAcceptLabel(
                 alloc,
@@ -4436,6 +6572,7 @@ const Host = struct {
             if (surface) |value| value.search_needle else null,
             if (surface) |value| value.search_total else null,
             if (surface) |value| value.search_selected else null,
+            self.paletteSnapshot(),
         );
         defer alloc.free(accept);
         changed = (try syncWindowTextUtf8Cached(
@@ -4456,6 +6593,20 @@ const Host = struct {
     fn syncOverlayHint(self: *Host) !bool {
         const hint_hwnd = self.overlay_hint_hwnd orelse return false;
         const alloc = self.app.core_app.alloc;
+        // Confirm overlays use the hint HWND to render the payload
+        // body — the explanatory text ("A process is still running…").
+        // Make it visible and write the body; bypass the generic
+        // EDIT-driven hint composition.
+        if (self.overlay_mode == .confirm) {
+            const body = if (self.confirm_payload) |p| p.body else "";
+            _ = applyChildVisibility(hint_hwnd, &self.overlay_hint_placement, true);
+            return try syncWindowTextUtf8Cached(
+                alloc,
+                hint_hwnd,
+                &self.cached_overlay_hint,
+                body,
+            );
+        }
         const text = std.mem.trim(u8, try overlayEditText(self), " \t\r\n");
         if (self.overlay_mode == .profile) {
             const hint = try buildProfileHintText(
@@ -4475,6 +6626,8 @@ const Host = struct {
             );
         }
         const surface = self.activeSurface();
+        var mru_buf: [5][]const u8 = undefined;
+        const mru = self.app.paletteMruSlice(&mru_buf);
         const hint = try buildOverlayHintText(
             alloc,
             self.overlay_mode,
@@ -4484,6 +6637,8 @@ const Host = struct {
             if (surface) |value| value.search_selected else null,
             if (surface) |value| self.app.hostTabStatus(value) else .{},
             if (self.activeTab()) |tab| tab.leafCount() else 1,
+            self.paletteSnapshot(),
+            mru,
         );
         defer alloc.free(hint);
         return try syncWindowTextUtf8Cached(
@@ -4944,35 +7099,62 @@ const Host = struct {
             DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
         );
 
-        // Per-tab close X glyph (visible on active and hovered tabs)
-        if (can_close_tab and (active or hovered)) {
-            const close_glyph = comptime std.unicode.utf8ToUtf16LeStringLiteral("\u{00D7}"); // ×
-            const close_fg = if (hovered) theme.text_primary else theme.text_secondary;
-            _ = SetTextColor(draw.hDC, close_fg);
-            var close_rect = RECT{
-                .left = draw.rcItem.right - close_zone_width,
-                .top = draw.rcItem.top,
-                .right = draw.rcItem.right - self.scaled(2),
-                .bottom = draw.rcItem.bottom,
-            };
-            _ = DrawTextW(
-                draw.hDC,
-                close_glyph,
-                1,
-                &close_rect,
-                DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
-            );
+        // Per-tab close X glyph. Active tabs keep the X fully opaque
+        // (it's a permanent affordance the user can always click).
+        // Inactive tabs fade the X in/out based on hover via
+        // `win32_tab_visual.CloseState` — matches Windows Terminal's
+        // hover treatment. On non-hovered + non-active tabs the alpha
+        // drops to 0 so the X vanishes entirely.
+        if (can_close_tab) {
+            const now = GetTickCount64();
+            // Two animation slots: the incoming hover target
+            // (`tab_close_hover_*` fades 0 → 1) and the departing tab
+            // on adjacent transitions (`tab_close_prev_*` fades
+            // 1 → 0). Tabs that match neither slot use alpha 0 for
+            // idle and 1 for active.
+            const is_hover_target = self.tab_close_hover_hwnd != null and
+                self.tab_close_hover_hwnd.? == draw.hwndItem;
+            const is_prev_target = self.tab_close_prev_hwnd != null and
+                self.tab_close_prev_hwnd.? == draw.hwndItem;
+            const alpha: f32 = if (active)
+                1.0
+            else if (is_hover_target)
+                self.tab_close_hover.alphaAt(now)
+            else if (is_prev_target)
+                self.tab_close_prev.alphaAt(now)
+            else if (hovered)
+                1.0 // hovered but not via CloseState (e.g. first paint)
+            else
+                0.0;
+            if (alpha > 0.01) {
+                const close_glyph = comptime std.unicode.utf8ToUtf16LeStringLiteral("\u{00D7}"); // ×
+                const close_fg_full = if (hovered or active) theme.text_primary else theme.text_secondary;
+                // Alpha-blend the glyph colour against the tab bg —
+                // GDI's DrawTextW has no alpha channel, so we
+                // pre-composite.
+                const blended = blendColorRGB(bg, close_fg_full, alpha);
+                _ = SetTextColor(draw.hDC, blended);
+                var close_rect = RECT{
+                    .left = draw.rcItem.right - close_zone_width,
+                    .top = draw.rcItem.top,
+                    .right = draw.rcItem.right - self.scaled(2),
+                    .bottom = draw.rcItem.bottom,
+                };
+                _ = DrawTextW(
+                    draw.hDC,
+                    close_glyph,
+                    1,
+                    &close_rect,
+                    DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
+                );
+            }
         }
 
-        // Active tab accent underline (only for tab buttons, not chrome action buttons)
-        if (active and !overlay and tab_button) {
-            fillSolidRect(draw.hDC, .{
-                .left = draw.rcItem.left + self.scaled(3),
-                .top = draw.rcItem.bottom - self.scaled(4),
-                .right = draw.rcItem.right - self.scaled(3),
-                .bottom = draw.rcItem.bottom - self.scaled(2),
-            }, theme.accent);
-        }
+        // Focused-tab underline is painted on the PARENT HWND in
+        // `paintChrome` so that the single accent rect can slide
+        // between tab buttons over `win32_tab_visual.underline_slide_ms`.
+        // Painting it inside the child button would produce a hard cut
+        // on focus change.
     }
 
     fn buttonProfileKind(self: *Host, hwnd: HWND) ?windows_shell.ProfileKind {
@@ -5017,24 +7199,48 @@ const Host = struct {
     fn completeCommandPalette(self: *Host, reverse: bool) !bool {
         if (self.overlay_mode != .command_palette) return false;
         const edit_hwnd = self.overlay_edit_hwnd orelse return false;
-        const text = std.mem.trim(u8, try overlayEditText(self), " \t\r\n");
-        const seed = if (self.overlay_completion_seed) |value|
-            if (self.overlay_completion_value) |current|
-                if (std.mem.eql(u8, current, text)) value else text
-            else
-                text
-        else
-            text;
-        const candidate = commandPaletteCompletionCandidate(seed, text, reverse) orelse return false;
-        _ = try syncWindowTextUtf8CachedAfterSet(
-            self.app.core_app.alloc,
-            edit_hwnd,
-            &self.cached_overlay_edit,
-            candidate,
-        );
+        const alloc = self.app.core_app.alloc;
+
+        // CRITICAL UAF FIX (task #44, user-reported "palette crashes
+        // after a few keystrokes"): `text` and the `seed` derived
+        // from it BOTH borrow from `cached_overlay_edit`.
+        // `setOverlayEditText(candidate)` below frees that cache via
+        // `appendOwnedString` inside `syncWindowTextUtf8CachedAfterSet`,
+        // so any read of `text` / `seed` after that point is a
+        // use-after-free. Concrete repro: open palette, type, press
+        // Tab — `appendOwnedString(seed)` reads freed memory.
+        //
+        // Dupe both inputs into owned buffers up front so the rest
+        // of the function is safe across the free boundary.
+        const text_raw = try overlayEditText(self);
+        const trimmed = std.mem.trim(u8, text_raw, " \t\r\n");
+        const text_owned = try alloc.dupe(u8, trimmed);
+        defer alloc.free(text_owned);
+
+        const seed_owned: []const u8 = blk: {
+            if (self.overlay_completion_seed) |value| {
+                if (self.overlay_completion_value) |current| {
+                    if (std.mem.eql(u8, current, text_owned)) {
+                        break :blk try alloc.dupe(u8, value);
+                    }
+                }
+            }
+            break :blk try alloc.dupe(u8, text_owned);
+        };
+        defer alloc.free(seed_owned);
+
+        const candidate = commandPaletteCompletionCandidate(
+            self.paletteSnapshot(),
+            seed_owned,
+            text_owned,
+            reverse,
+        ) orelse return false;
+        // `candidate` borrows from `snap.cvals` (config-owned,
+        // stable for this synchronous call's lifetime).
+        _ = try self.setOverlayEditText(candidate);
         _ = SendMessageW(edit_hwnd, EM_SETSEL, 0, -1);
-        try appendOwnedString(self.app.core_app.alloc, &self.overlay_completion_seed, seed);
-        try appendOwnedString(self.app.core_app.alloc, &self.overlay_completion_value, candidate);
+        try appendOwnedString(alloc, &self.overlay_completion_seed, seed_owned);
+        try appendOwnedString(alloc, &self.overlay_completion_value, candidate);
         _ = try self.syncCommandPaletteBanner();
         return true;
     }
@@ -5051,12 +7257,7 @@ const Host = struct {
         const next = nextTabOverviewSelection(current, total, reverse);
         const next_text = try std.fmt.allocPrint(self.app.core_app.alloc, "{d}", .{next});
         defer self.app.core_app.alloc.free(next_text);
-        _ = try syncWindowTextUtf8CachedAfterSet(
-            self.app.core_app.alloc,
-            edit_hwnd,
-            &self.cached_overlay_edit,
-            next_text,
-        );
+        _ = try self.setOverlayEditText(next_text);
         _ = SendMessageW(edit_hwnd, EM_SETSEL, 0, -1);
         _ = try self.syncOverlayLabel();
         _ = try self.syncOverlayHint();
@@ -5087,8 +7288,11 @@ const Host = struct {
     fn syncCommandPaletteBanner(self: *Host) !bool {
         if (self.overlay_mode != .command_palette) return false;
         _ = self.overlay_edit_hwnd orelse return false;
+        self.rebuildPaletteList();
         const text = std.mem.trim(u8, try overlayEditText(self), " \t\r\n");
-        const banner = try commandPaletteBannerText(self.app.core_app.alloc, text);
+        var mru_buf: [5][]const u8 = undefined;
+        const mru = self.app.paletteMruSlice(&mru_buf);
+        const banner = try commandPaletteBannerText(self.app.core_app.alloc, self.paletteSnapshot(), text, mru);
         defer if (banner) |value| self.app.core_app.alloc.free(value);
         if (banner) |value| {
             try self.setBanner(.info, value);
@@ -5114,21 +7318,30 @@ const Host = struct {
         switch (self.overlay_mode) {
             .none => return false,
             .command_palette => {
-                const resolved = if (commandPaletteUniqueMatch(text)) |candidate| candidate else text;
-                const action = input.Binding.Action.parse(resolved) catch |err| {
+                // Prefer the currently-selected list row (what the user
+                // sees highlighted). Fall back to parsing the raw query
+                // so users who type a full action name and press Enter
+                // before the list rebuild completes still get dispatch.
+                if (self.palette_list_ranked_count > 0) {
+                    const row = @min(
+                        self.palette_list_selected,
+                        self.palette_list_ranked_count - 1,
+                    );
+                    try self.invokePaletteRow(row);
+                    // Do NOT access `self` after dispatch.
+                    return true;
+                }
+                const action = input.Binding.Action.parse(text) catch |err| {
                     log.warn("win32 command palette invalid action action={s} err={}", .{ text, err });
                     try self.setBanner(.err, "Unknown Ghostty action. Example: new_tab or toggle_fullscreen");
                     return false;
                 };
-                // Hide the overlay BEFORE dispatch: the action may synchronously destroy
-                // the host (e.g. close_tab on last tab, close_window), which would make
-                // any subsequent access to `self` a use-after-free. Hiding first also
-                // lets overlay-switching actions (toggle_tab_overview, start_search) work
-                // correctly instead of being immediately cancelled.
+                self.app.pushPaletteMru(text) catch |err| {
+                    std.log.warn("palette MRU push failed err={}", .{err});
+                };
                 self.hideOverlay();
                 self.layout() catch {};
                 _ = try surface.core_surface.performBindingAction(action);
-                // Do NOT access `self` after dispatch — host may have been freed.
                 return true;
             },
             .profile => {
@@ -5169,6 +7382,11 @@ const Host = struct {
                     self.app.activateSurface(next_surface);
                 }
             },
+            .confirm => {
+                // Enter maps to Accept.
+                self.invokeConfirmAccept();
+                return true;
+            },
         }
 
         self.hideOverlay();
@@ -5185,13 +7403,32 @@ const Host = struct {
     }
 
     fn tabBarHeight(self: *Host) i32 {
-        return if (self.shouldShowTabBar()) self.scaled(host_tab_height) else 0;
+        if (!self.shouldShowTabBar()) return 0;
+        // Win11 integrated titlebar: tab row is 40 px tall so it
+        // matches the caption-button row height — gives the
+        // "tabs-in-caption" look. On Win10 / build < 22000 we keep
+        // the compact 32 px height since the DWM caption still sits
+        // above.
+        const base = if (self.app.use_integrated_titlebar)
+            host_tab_height_integrated
+        else
+            host_tab_height;
+        return self.scaled(base);
     }
 
     fn rightButtonsWidth(self: *const Host) i32 {
         return self.scaled(host_tab_small_button_width) + // new tab (+)
             self.scaled(host_tab_overflow_button_width) + // dropdown chevron (▾)
             self.scaled(12); // gap + margins
+    }
+
+    /// Pixels reserved for the 3 caption buttons (min / max / close)
+    /// when the integrated titlebar is active. Returns 0 otherwise.
+    /// Buttons are painted by `paintChrome`; this reservation keeps
+    /// the [+][▾] cluster and tab strip from colliding with them.
+    fn captionButtonsWidth(self: *const Host) i32 {
+        if (!self.app.use_integrated_titlebar) return 0;
+        return self.scaled(host_caption_button_w) * 3;
     }
 
     fn scaled(self: *const Host, base: i32) i32 {
@@ -5216,7 +7453,14 @@ const Host = struct {
     }
 
     fn statusBarHeight(self: *Host) i32 {
-        return if (self.hasVisibleStatus()) self.scaled(host_status_height) else 0;
+        // Status bar removed per user feedback: "too busy, give the
+        // user back some terminal space." The status_bar module + its
+        // helpers are kept in the build graph via the
+        // live-infrastructure `_ = …` block for future opt-in, but
+        // the chrome no longer reserves vertical space for it and
+        // `paintChrome` skips the status paint branch.
+        _ = self;
+        return 0;
     }
 
     fn estimateLauncherLaneRight(self: *Host) i32 {
@@ -5484,6 +7728,65 @@ const Host = struct {
         self.repaintChrome();
     }
 
+    fn shouldDeferSurfaceRepaints(self: *const Host) bool {
+        return self.is_live_resize.load(.acquire) or self.defer_surface_repaints_until_flush;
+    }
+
+    fn flushDeferredVisibleSurfaceRepaints(self: *Host) void {
+        self.flushDeferredVisibleSurfaceRepaintsWith(struct {
+            fn repaint(surface: *Surface) !void {
+                try surface.queuePaintRequest(true);
+            }
+        }.repaint);
+    }
+
+    fn flushDeferredVisibleSurfaceRepaintsWith(self: *Host, repaint_fn: anytype) void {
+        if (self.activeTab()) |tab| {
+            var it = tab.tree.iterator();
+            while (it.next()) |entry| {
+                if (!entry.view.window_visible) continue;
+                _ = entry.view.flushDeferredLiveResizeRepaint(repaint_fn) catch |err| {
+                    log.err("win32 deferred live-resize repaint flush failed err={}", .{err});
+                };
+            }
+        }
+    }
+
+    /// `MoveWindow` / `SetWindowPos` with repaint suppressed does not reliably
+    /// queue `WM_PAINT` on child HWNDs. Owner-draw tab controls always repaint
+    /// immediately; WGL child surfaces repaint immediately outside live resize
+    /// and defer to an explicit post-resize flush while the user is dragging.
+    fn invalidateHostedChildPaint(self: *Host) void {
+        const defer_surface_repaints = self.shouldDeferSurfaceRepaints();
+        if (self.activeTab()) |tab| {
+            var it = tab.tree.iterator();
+            while (it.next()) |entry| {
+                if (!entry.view.window_visible) continue;
+                if (defer_surface_repaints) {
+                    entry.view.markLiveResizeRepaintDeferred();
+                    continue;
+                }
+                entry.view.repaintHostedChild() catch |err| {
+                    log.err("win32 hosted child repaint request failed err={}", .{err});
+                };
+            }
+        }
+        if (self.new_tab_hwnd) |h| {
+            _ = InvalidateRect(h, null, 0);
+            _ = UpdateWindow(h);
+        }
+        if (self.overflow_hwnd) |h| {
+            _ = InvalidateRect(h, null, 0);
+            _ = UpdateWindow(h);
+        }
+        for (self.tabs.items) |*t| {
+            if (t.button_hwnd) |h| {
+                _ = InvalidateRect(h, null, 0);
+                _ = UpdateWindow(h);
+            }
+        }
+    }
+
     fn freeCachedChromeStrings(self: *Host) void {
         const alloc = self.app.core_app.alloc;
         self.chrome_text_dirty = true;
@@ -5537,7 +7840,8 @@ const Host = struct {
         }
         const width = @max(0, rect.right - rect.left);
         const right_buttons_width = self.rightButtonsWidth();
-        const tab_area_width = @max(1, width - right_buttons_width);
+        const caption_buttons_w = self.captionButtonsWidth();
+        const tab_area_width = @max(1, width - right_buttons_width - caption_buttons_w);
         const tab_range = visibleTabRange(self.tabs.items.len, self.active_tab, tab_area_width);
         const visible_count = @max(@as(i32, 1), @as(i32, @intCast(tab_range.count)));
         const button_width = @max(1, @divTrunc(tab_area_width, visible_count));
@@ -5616,35 +7920,56 @@ const Host = struct {
     fn layoutChromeForRect(self: *Host, rect: RECT, changed: *bool) bool {
         const width = @max(0, rect.right - rect.left);
         const right_buttons_width = self.rightButtonsWidth();
-        const tab_area_width = @max(1, width - right_buttons_width);
+        // When integrated titlebar is active, reserve the rightmost
+        // 3 × caption_button_w pixels for min/max/close so the
+        // [+][▾] cluster and tab strip don't collide with them.
+        const caption_buttons_w = self.captionButtonsWidth();
+        const tab_area_width = @max(1, width - right_buttons_width - caption_buttons_w);
         const tab_range = visibleTabRange(self.tabs.items.len, self.active_tab, tab_area_width);
         const visible_count = @max(@as(i32, 1), @as(i32, @intCast(tab_range.count)));
         const button_width = @min(@max(1, @divTrunc(tab_area_width, visible_count)), self.scaled(host_tab_max_button_width));
         const button_y = self.scaled(3);
-        const button_height = self.scaled(host_tab_height) - self.scaled(6);
+        // Scale button height with the actual tab-bar height so
+        // buttons fill the integrated-titlebar row in Win11 (40 px)
+        // without a dead gap above the underline.
+        const button_height = @max(1, self.tabBarHeight() - self.scaled(6));
+        var active_tab_left: ?i32 = null;
         for (self.tabs.items, 0..) |*tab, i| {
             if (tab.button_hwnd) |button_hwnd| {
                 if (i >= tab_range.start and i < tab_range.start + tab_range.count) {
                     const visible_index: i32 = @intCast(i - tab_range.start);
+                    const tab_left = visible_index * button_width;
                     changed.* = applyChildRect(
                         button_hwnd,
                         &tab.button_placement,
                         childRect(
-                            visible_index * button_width,
+                            tab_left,
                             button_y,
                             button_width,
                             button_height,
                         ),
                     ) or changed.*;
                     changed.* = applyChildVisibility(button_hwnd, &tab.button_placement, true) or changed.*;
+                    if (i == self.active_tab) active_tab_left = tab_left;
                 } else {
                     changed.* = applyChildVisibility(button_hwnd, &tab.button_placement, false) or changed.*;
                 }
             }
         }
 
-        // Right-side cluster: [+][▾] — new tab and dropdown chevron
-        var button_x = width - self.scaled(8);
+        // Animate the focused-tab underline toward the active tab's
+        // on-screen rect. First retarget (slide_started_ms == 0) snaps
+        // so the line doesn't slide in from the left on window open;
+        // subsequent retargets slide over underline_slide_ms. Reduced-
+        // motion collapses to a snap via `retargetTabUnderline`.
+        if (active_tab_left) |left| {
+            self.retargetTabUnderline(left, button_width);
+        }
+
+        // Right-side cluster: [+][▾] — new tab and dropdown chevron.
+        // Shift left by the caption-buttons reservation (0 on Win10)
+        // so the chevron doesn't land under the close button.
+        var button_x = width - self.scaled(8) - caption_buttons_w;
         if (self.overflow_hwnd) |button_hwnd| {
             const overflow_width = self.scaled(host_tab_overflow_button_width);
             button_x -= overflow_width;
@@ -5703,6 +8028,50 @@ const Host = struct {
                     self.scaled(host_overlay_row_height),
                 ),
             ) or changed.*;
+
+            if (self.overlay_mode == .command_palette) {
+                if (self.palette_list_hwnd) |list_hwnd| {
+                    // Anchor the list directly under the EDIT, left-
+                    // aligned with it and right-aligned with the buttons
+                    // so it reads as part of the same visual card.
+                    const list_x = self.scaled(host_overlay_padding) + self.scaled(host_overlay_label_width) + self.scaled(8);
+                    const list_width = @max(
+                        self.scaled(120),
+                        width - list_x - self.scaled(host_overlay_padding),
+                    );
+                    const list_y = overlay_y + self.scaled(host_overlay_row_height) + self.scaled(12);
+                    const visible_rows: i32 = @intCast(@min(
+                        self.palette_list_ranked_count,
+                        palette_max_visible_rows,
+                    ));
+                    const list_height = @max(
+                        self.scaled(palette_row_height),
+                        visible_rows * self.scaled(palette_row_height),
+                    );
+                    changed.* = applyChildRect(
+                        list_hwnd,
+                        &self.palette_list_placement,
+                        childRect(list_x, list_y, list_width, list_height),
+                    ) or changed.*;
+                    changed.* = applyChildVisibility(
+                        list_hwnd,
+                        &self.palette_list_placement,
+                        self.palette_list_ranked_count > 0,
+                    ) or changed.*;
+                }
+            } else if (self.palette_list_hwnd) |list_hwnd| {
+                changed.* = applyChildVisibility(
+                    list_hwnd,
+                    &self.palette_list_placement,
+                    false,
+                ) or changed.*;
+            }
+        } else if (self.palette_list_hwnd) |list_hwnd| {
+            changed.* = applyChildVisibility(
+                list_hwnd,
+                &self.palette_list_placement,
+                false,
+            ) or changed.*;
         }
 
         return true;
@@ -5742,6 +8111,7 @@ const Host = struct {
                             childRect(content_rect.left, content_y, content_width, content_height),
                         ) or layout_changed;
                     }
+                    entry.view.syncCoreSizeFromClientRect();
                     // Update content_scale if DPI changed since surface was last visible
                     if (self.pending_dpi_update and entry.view.core_initialized) {
                         const scale_val: f32 = @as(f32, @floatFromInt(self.current_dpi)) / 96.0;
@@ -5792,6 +8162,7 @@ const Host = struct {
                         childRect(x, y, w, h),
                     ) or layout_changed;
                 }
+                entry.view.syncCoreSizeFromClientRect();
                 // Update content_scale if DPI changed since surface was last visible
                 if (self.pending_dpi_update and entry.view.core_initialized) {
                     const scale_val: f32 = @as(f32, @floatFromInt(self.current_dpi)) / 96.0;
@@ -5808,7 +8179,127 @@ const Host = struct {
         if (layout_changed) {
             // Batch-invalidate after actual positioning/visibility changes.
             _ = InvalidateRect(hwnd, null, 0);
+            self.invalidateHostedChildPaint();
         }
+    }
+
+    fn drawNativeCaptionButton(
+        self: *Host,
+        hdc: HDC,
+        rect: RECT,
+        part_id: i32,
+        hovered: bool,
+    ) bool {
+        const hwnd = self.hwnd orelse return false;
+        const theme_handle = OpenThemeData(hwnd, WINDOW_THEME_CLASS) orelse return false;
+        defer _ = CloseThemeData(theme_handle);
+        const state_id: i32 = if (hovered) CBS_HOT else CBS_NORMAL;
+        return DrawThemeBackground(theme_handle, hdc, part_id, state_id, &rect, null) >= 0;
+    }
+
+    /// Paint the 3 caption buttons (min / max-or-restore / close) at
+    /// the top-right of the tab row. Called from `paintChrome` only
+    /// when `App.use_integrated_titlebar` is true. Prefer the native
+    /// UxTheme path so glyphs and hover treatments match Windows.
+    fn paintCaptionButtons(
+        self: *Host,
+        hdc: HDC,
+        client_rect: RECT,
+        theme: *const win32_theme.ThemeColors,
+    ) void {
+        const cb_w = self.scaled(host_caption_button_w);
+        const cb_h = self.scaled(host_caption_button_h);
+        if (cb_w <= 0 or cb_h <= 0) return;
+        // Caller already unwrapped BeginPaint; `drawIcon` takes a
+        // non-nullable `*anyopaque` so we coerce once here.
+        const hdc_nn: *anyopaque = hdc orelse return;
+
+        const maximized = if (self.hwnd) |h| IsZoomed(h) != 0 else false;
+        const right = client_rect.right;
+
+        const close_rect: RECT = .{
+            .left = right - cb_w,
+            .top = 0,
+            .right = right,
+            .bottom = cb_h,
+        };
+        const max_rect: RECT = .{
+            .left = right - 2 * cb_w,
+            .top = 0,
+            .right = right - cb_w,
+            .bottom = cb_h,
+        };
+        const min_rect: RECT = .{
+            .left = right - 3 * cb_w,
+            .top = 0,
+            .right = right - 2 * cb_w,
+            .bottom = cb_h,
+        };
+
+        if (self.drawNativeCaptionButton(hdc, min_rect, WP_MINBUTTON, self.caption_hover == .minimize) and
+            self.drawNativeCaptionButton(
+                hdc,
+                max_rect,
+                if (maximized) WP_RESTOREBUTTON else WP_MAXBUTTON,
+                self.caption_hover == .maximize,
+            ) and
+            self.drawNativeCaptionButton(hdc, close_rect, WP_CLOSEBUTTON, self.caption_hover == .close))
+        {
+            return;
+        }
+
+        // Hover colours.
+        const close_hover_bg = rgb(0xC4, 0x2B, 0x1C);
+        const subtle_hover_bg = if (theme.is_dark)
+            adjustColor(theme.chrome_bg, 28, 28, 28)
+        else
+            adjustColor(theme.chrome_bg, -16, -16, -16);
+
+        const close_glyph_color = if (self.caption_hover == .close) rgb(0xFF, 0xFF, 0xFF) else theme.text_primary;
+        const min_glyph_color = theme.text_primary;
+        const max_glyph_color = theme.text_primary;
+        const is_hc = isHighContrastActive();
+
+        const min_icon_rect: win32_icons.Rect = .{
+            .left = min_rect.left,
+            .top = min_rect.top,
+            .right = min_rect.right,
+            .bottom = min_rect.bottom,
+        };
+        const max_icon_rect: win32_icons.Rect = .{
+            .left = max_rect.left,
+            .top = max_rect.top,
+            .right = max_rect.right,
+            .bottom = max_rect.bottom,
+        };
+        const close_icon_rect: win32_icons.Rect = .{
+            .left = close_rect.left,
+            .top = close_rect.top,
+            .right = close_rect.right,
+            .bottom = close_rect.bottom,
+        };
+
+        // Min button.
+        if (self.caption_hover == .minimize) {
+            fillSolidRect(hdc, min_rect, subtle_hover_bg);
+        }
+        win32_icons.drawIcon(.minimize, hdc_nn, min_icon_rect, min_glyph_color, is_hc);
+
+        // Max / restore button.
+        if (self.caption_hover == .maximize) {
+            fillSolidRect(hdc, max_rect, subtle_hover_bg);
+        }
+        if (maximized) {
+            win32_icons.drawIcon(.restore, hdc_nn, max_icon_rect, max_glyph_color, is_hc);
+        } else {
+            win32_icons.drawIcon(.maximize, hdc_nn, max_icon_rect, max_glyph_color, is_hc);
+        }
+
+        // Close button.
+        if (self.caption_hover == .close) {
+            fillSolidRect(hdc, close_rect, close_hover_bg);
+        }
+        win32_icons.drawIcon(.close, hdc_nn, close_icon_rect, close_glyph_color, is_hc);
     }
 
     fn paintChrome(self: *Host) void {
@@ -5844,6 +8335,31 @@ const Host = struct {
                 .bottom = tab_h,
             };
             fillSolidRect(hdc, tab_rect, theme.chrome_bg);
+
+            // Focused-tab accent underline. Lives in the 2 px gap
+            // between the tab button's bottom edge (button_height = tab_h
+            // - scaled(6), starting at y=scaled(3)) and the tab bar's
+            // 1 px bottom border. Drawn on the parent HWND so the single
+            // rect can slide across child button boundaries; children
+            // paint themselves above this region via WM_DRAWITEM and do
+            // not occlude it. Inset 3 px on each horizontal edge to
+            // match Windows Terminal's tab indicator treatment
+            // (wt-chrome-reference.md §1).
+            {
+                const now_ms = GetTickCount64();
+                const cur = self.tab_underline.currentRect(now_ms);
+                const underline_left = @as(i32, @intFromFloat(@round(cur.left))) + self.scaled(3);
+                const underline_right = @as(i32, @intFromFloat(@round(cur.left + cur.width))) - self.scaled(3);
+                if (underline_right > underline_left and cur.width > 0.5) {
+                    fillSolidRect(hdc, .{
+                        .left = underline_left,
+                        .top = tab_h - self.scaled(3),
+                        .right = underline_right,
+                        .bottom = tab_h - self.scaled(1),
+                    }, theme.accent);
+                }
+            }
+
             fillSolidRect(
                 hdc,
                 .{
@@ -5887,6 +8403,16 @@ const Host = struct {
                     }, theme.chrome_border);
                 }
             }
+            // Caption buttons (integrated titlebar only). Painted on
+            // the parent HWND at the rightmost edge of the tab row;
+            // hit-tested via `win32_nc_layout.hitTest` + dispatched by
+            // DefWindowProc's WM_NCLBUTTONUP → WM_SYSCOMMAND path.
+            // Glyphs come from `win32_icons.drawIcon` so we don't have
+            // to select a Segoe Fluent Icons font.
+            if (self.app.use_integrated_titlebar) {
+                self.paintCaptionButtons(hdc, client_rect, theme);
+            }
+
             fillSolidRect(
                 hdc,
                 .{
@@ -5972,6 +8498,7 @@ const Host = struct {
                         if (surface) |value| value.search_total else null,
                         if (surface) |value| value.search_selected else null,
                         overlay_status,
+                        self.paletteSnapshot(),
                     ) catch return;
                 defer alloc.free(overlay_label);
                 if (self.cached_overlay_paint_label_w) |old| alloc.free(old);
@@ -5993,8 +8520,10 @@ const Host = struct {
                             self.app.launcher_profile_target,
                             self.app.launcher_quick_slot_keys,
                         ) catch return
-                else
-                    buildOverlayFeedbackText(
+                else feedback: {
+                    var mru_buf: [5][]const u8 = undefined;
+                    const mru = self.app.paletteMruSlice(&mru_buf);
+                    break :feedback buildOverlayFeedbackText(
                         alloc,
                         self.banner_kind,
                         self.banner_text,
@@ -6005,7 +8534,10 @@ const Host = struct {
                         if (surface) |value| value.search_selected else null,
                         overlay_status,
                         pane_count,
+                        self.paletteSnapshot(),
+                        mru,
                     ) catch return;
+                };
                 defer alloc.free(overlay_feedback);
                 if (self.cached_overlay_paint_feedback_w) |old| alloc.free(old);
                 self.cached_overlay_paint_feedback_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, overlay_feedback) catch return;
@@ -6370,6 +8902,10 @@ const Host = struct {
             }
         }
         _ = SetTextColor(hdc, theme.text_primary);
+        if (status_h <= 0) {
+            self.chrome_repaint_dirty = false;
+            return;
+        }
 
         const status_y = @max(self.scaled(host_tab_height) + self.scaled(2), ps.rcPaint.bottom - @max(1, status_h) + self.scaled(4));
         var status_x: i32 = self.scaled(16);
@@ -6652,6 +9188,13 @@ const SurfaceInitOptions = struct {
     host_id: ?u32 = null,
     tab_id: ?u32 = null,
     clone_state_from: ?*const Surface = null,
+    /// Passive first-show: the newly-created host HWND is shown via
+    /// `SW_SHOWNOACTIVATE` instead of `SW_SHOW`, so it becomes
+    /// visible without stealing focus from the caller's current
+    /// foreground window. Used by the quick-terminal passive mode
+    /// (`quick-terminal-keyboard-interactivity = none`) on first
+    /// toggle-on.
+    passive_show: bool = false,
 };
 
 const SplitSurfaceAttachRollback = struct {
@@ -6801,8 +9344,14 @@ fn appendOwnedString(
     target: *?[:0]const u8,
     value: ?[]const u8,
 ) !void {
+    // Allocate first, then free the old slot. Reversing the order
+    // means that (a) an OOM leaves `*target` holding a still-valid
+    // previous allocation instead of a dangling freed pointer, and
+    // (b) a caller passing a `value` that aliases the current slot
+    // is copied to fresh storage before the free, avoiding UAF.
+    const next: ?[:0]const u8 = if (value) |v| try alloc.dupeZ(u8, v) else null;
     if (target.*) |existing| alloc.free(existing);
-    target.* = if (value) |v| try alloc.dupeZ(u8, v) else null;
+    target.* = next;
 }
 
 fn ownedStringEquals(current: ?[:0]const u8, value: []const u8) bool {
@@ -6900,6 +9449,7 @@ fn applyChildVisibility(hwnd: HWND, placement: *ChildPlacement, visible: bool) b
 fn highContrastThemeFromSysColors() ThemeColors {
     const win_bg = GetSysColor(COLOR_WINDOW);
     const win_fg = GetSysColor(COLOR_WINDOWTEXT);
+    const win_frame = GetSysColor(COLOR_WINDOWFRAME);
     const btn_bg = GetSysColor(COLOR_BTNFACE);
     const btn_fg = GetSysColor(COLOR_BTNTEXT);
     const hi_bg = GetSysColor(COLOR_HIGHLIGHT);
@@ -6908,9 +9458,9 @@ fn highContrastThemeFromSysColors() ThemeColors {
 
     return .{
         .chrome_bg = win_bg,
-        .chrome_border = win_fg,
+        .chrome_border = win_frame,
         .overlay_bg = win_bg,
-        .overlay_border = win_fg,
+        .overlay_border = win_frame,
         .edit_bg = win_bg,
         .edit_frame_bg = win_bg,
         .status_bg = win_bg,
@@ -6926,8 +9476,8 @@ fn highContrastThemeFromSysColors() ThemeColors {
 
         .accent = hi_bg,
         .accent_hover = hi_bg,
-        .chrome_accent_idle = win_fg,
-        .edit_border_unfocused = win_fg,
+        .chrome_accent_idle = win_frame,
+        .edit_border_unfocused = win_frame,
 
         .button_bg = btn_bg,
         .button_border = btn_fg,
@@ -6955,7 +9505,11 @@ fn highContrastThemeFromSysColors() ThemeColors {
         .button_active_focus_ring = hi_fg,
         .button_accept_focus_ring = hi_fg,
 
-        .pane_divider = hi_bg,
+        // WCAG fix (plan §7.4): unfocused dividers use COLOR_WINDOWFRAME
+        // so multi-pane layouts stay visually separated; focused dividers
+        // use COLOR_HIGHLIGHT to preserve the focus cue. Previously both
+        // collapsed to hi_bg, which removed the focused/unfocused contrast.
+        .pane_divider = win_frame,
         .pane_divider_focused = hi_bg,
 
         .is_dark = false,
@@ -6993,6 +9547,30 @@ fn isSystemDarkMode() bool {
     if (reg_type != REG_DWORD or data_size != @sizeOf(u32)) return true;
 
     return data == 0; // 0 = dark mode, 1 = light mode
+}
+
+/// Read the current Windows system accent colour from
+/// `HKCU\Software\Microsoft\Windows\DWM\AccentColor`. DWM stores it as
+/// a DWORD in 0xAABBGGRR order (alpha in the high byte). We discard
+/// the alpha and return a COLORREF (0x00BBGGRR).
+///
+/// Returns null if the key is unreadable — callers then skip the
+/// accent-follow blend and fall back to the hardcoded overlay accent.
+fn resolveSystemAccentColor() ?u32 {
+    const subkey = std.unicode.utf8ToUtf16LeStringLiteral("Software\\Microsoft\\Windows\\DWM");
+    const value_name = std.unicode.utf8ToUtf16LeStringLiteral("AccentColor");
+    var hkey: usize = 0;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, subkey, 0, KEY_READ, &hkey) != ERROR_SUCCESS) return null;
+    defer _ = RegCloseKey(hkey);
+
+    var data: u32 = 0;
+    var data_size: DWORD = @sizeOf(u32);
+    var reg_type: DWORD = 0;
+    if (RegQueryValueExW(hkey, value_name, null, &reg_type, @ptrCast(&data), &data_size) != ERROR_SUCCESS) return null;
+    if (reg_type != REG_DWORD or data_size != @sizeOf(u32)) return null;
+
+    // Drop alpha; keep 0x00BBGGRR.
+    return data & 0x00FFFFFF;
 }
 
 fn resolveTheme(config: *const configpkg.Config) ThemeColors {
@@ -7040,6 +9618,10 @@ fn titlebarTextColor(theme: *const ThemeColors, config: *const configpkg.Config)
 }
 
 fn applyDwmTheme(hwnd: HWND, theme: *const ThemeColors, config: *const configpkg.Config) void {
+    applyDwmThemeWithBuild(hwnd, theme, config, 0);
+}
+
+fn applyDwmThemeWithBuild(hwnd: HWND, theme: *const ThemeColors, config: *const configpkg.Config, os_build: u32) void {
     if (isHighContrastActive()) return; // Let system control title bar in HC mode
     const dark_mode: u32 = if (theme.is_dark) 1 else 0;
     // Try attribute 20 first (Win10 20H1+), fall back to 19 (Win10 1809-20H1)
@@ -7052,15 +9634,855 @@ fn applyDwmTheme(hwnd: HWND, theme: *const ThemeColors, config: *const configpkg
     const text_color = titlebarTextColor(theme, config);
     _ = DwmSetWindowAttribute(hwnd, DWMWA_CAPTION_COLOR, @ptrCast(&caption_color), @sizeOf(u32));
     _ = DwmSetWindowAttribute(hwnd, DWMWA_TEXT_COLOR, @ptrCast(&text_color), @sizeOf(u32));
-    // Toggle system backdrop blur (Win11 22H2+; returns E_INVALIDARG on older builds, discarded)
-    const backdrop_type: u32 = if (shouldUseSystemBackdrop(config)) DWMSBT_MAINWINDOW else DWMSBT_NONE;
+    // Toggle system backdrop blur (Win11+; returns E_INVALIDARG on older
+    // builds, discarded). Main-window backdrop picks the richest variant
+    // the build supports:
+    //   * Win11 22H2+ (build ≥ 22621): `DWMSBT_TABBEDWINDOW` for the Mica-
+    //     with-tabs look that the new chrome expects. Older Win11 can't
+    //     render `TABBEDWINDOW` (`DwmSetWindowAttribute` returns
+    //     `E_INVALIDARG`); probing blindly there would spam the debug
+    //     log on every theme apply, so the build-number gate filters.
+    //   * Win11 < 22H2: `DWMSBT_MAINWINDOW` (plain Mica).
+    //   * Win10 / older / `background-opacity = 1.0` / blur disabled:
+    //     `DWMSBT_NONE`.
+    const backdrop_type: u32 = if (shouldUseSystemBackdrop(config)) blk: {
+        if (os_build >= OS_BUILD_WIN11_22H2) break :blk DWMSBT_TABBEDWINDOW;
+        break :blk DWMSBT_MAINWINDOW;
+    } else DWMSBT_NONE;
     _ = DwmSetWindowAttribute(hwnd, DWMWA_SYSTEMBACKDROP_TYPE, @ptrCast(&backdrop_type), @sizeOf(u32));
+}
+
+/// Linear-interpolate two `COLORREF`-shaped values (`0x00BBGGRR` on
+/// Windows GDI) by `alpha` ∈ [0, 1]. `alpha = 0` returns `a`,
+/// `alpha = 1` returns `b`. Used for pre-composited alpha on paths
+/// where GDI can't render RGBA directly — specifically, `DrawTextW`
+/// has no alpha channel, so the text colour must be pre-blended
+/// against the surface background for fade effects to look right.
+fn blendColorRGB(a: u32, b: u32, alpha: f32) u32 {
+    const t: f32 = std.math.clamp(alpha, 0.0, 1.0);
+    const inv: f32 = 1.0 - t;
+    const ar: u32 = a & 0xFF;
+    const ag: u32 = (a >> 8) & 0xFF;
+    const ab: u32 = (a >> 16) & 0xFF;
+    const br: u32 = b & 0xFF;
+    const bg: u32 = (b >> 8) & 0xFF;
+    const bb: u32 = (b >> 16) & 0xFF;
+    const rr: u32 = @intFromFloat(@as(f32, @floatFromInt(ar)) * inv + @as(f32, @floatFromInt(br)) * t);
+    const gg: u32 = @intFromFloat(@as(f32, @floatFromInt(ag)) * inv + @as(f32, @floatFromInt(bg)) * t);
+    const bb2: u32 = @intFromFloat(@as(f32, @floatFromInt(ab)) * inv + @as(f32, @floatFromInt(bb)) * t);
+    return (bb2 << 16) | (gg << 8) | rr;
 }
 
 fn fillSolidRect(hdc: HDC, rect: RECT, color: u32) void {
     const brush = GetStockObject(DC_BRUSH) orelse return;
     _ = SetDCBrushColor(hdc, color);
     _ = FillRect(hdc, &rect, brush);
+}
+
+/// Draw a single-line, left-aligned, vertically-centred, ellipsized
+/// string into the rect. Used by the palette list row painter.
+fn drawPaletteRowText(hdc: HDC, text: []const u8, rect: RECT, color: u32) void {
+    if (text.len == 0) return;
+    // UTF-16 on the stack — palette titles / actions are short (well
+    // under 256 chars); anything longer gets truncated rather than
+    // allocating per paint.
+    var buf: [256]u16 = undefined;
+    const copied = std.unicode.utf8ToUtf16Le(&buf, text) catch buf.len;
+    const n: usize = @min(copied, buf.len - 1);
+    buf[n] = 0;
+
+    _ = SetTextColor(hdc, color);
+    var r = rect;
+    _ = DrawTextW(
+        hdc,
+        @ptrCast(&buf),
+        @intCast(n),
+        &r,
+        DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX,
+    );
+}
+
+fn getPaletteListHost(hwnd: HWND) ?*Host {
+    const raw = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
+    if (raw == 0) return null;
+    return @ptrFromInt(@as(usize, @intCast(raw)));
+}
+
+/// Trampoline bridging `PaletteListState.name` (C-compatible fn
+/// pointer shape) into `Host.buildPaletteListName`. `ctx` is the
+/// const-erased `*Host` stashed on `PaletteListState`; the provider
+/// never mutates `self` so casting away const here is safe.
+fn paletteListNameThunk(ctx: *anyopaque, buf: []u8) []const u8 {
+    const host: *const Host = @ptrCast(@alignCast(ctx));
+    return host.buildPaletteListName(buf);
+}
+
+/// Thunks adapting `*App` into the `AppHandle` callback shape used by
+/// `win32_settings.SettingsWindow`. Kept inline so a theme swap is
+/// picked up on the next paint without cache invalidation.
+fn settingsChromeBgThunk(ctx: *anyopaque) u32 {
+    const app: *const App = @ptrCast(@alignCast(ctx));
+    return app.resolved_theme.chrome_bg;
+}
+fn settingsTextPrimaryThunk(ctx: *anyopaque) u32 {
+    const app: *const App = @ptrCast(@alignCast(ctx));
+    return app.resolved_theme.text_primary;
+}
+fn settingsOpenInEditorThunk(ctx: *anyopaque) void {
+    const app: *App = @ptrCast(@alignCast(ctx));
+    app.openConfigInEditor() catch |err| {
+        std.log.warn("settings: open-in-editor failed err={}", .{err});
+    };
+}
+fn settingsCurrentConfigThunk(ctx: *anyopaque) *const configpkg.Config {
+    const app: *const App = @ptrCast(@alignCast(ctx));
+    return &app.config;
+}
+fn settingsSaveAndReloadThunk(
+    ctx: *anyopaque,
+    pending: *const configpkg.Config,
+    original: *const configpkg.Config,
+) win32_settings.SaveError!void {
+    const app: *App = @ptrCast(@alignCast(ctx));
+    return app.settingsSaveAndReload(pending, original);
+}
+fn settingsOnClosedThunk(ctx: *anyopaque) void {
+    const app: *App = @ptrCast(@alignCast(ctx));
+    // Mirrors the kick after the last terminal window closes; the
+    // quit timer observes `hasLiveUiWindows()` so this is a no-op
+    // when any terminal HWND is still alive.
+    if (app.running and !app.hasLiveUiWindows()) app.startQuitTimer();
+}
+fn settingsNotifySuccessThunk(ctx: *anyopaque, title: []const u8, body: []const u8) void {
+    const app: *App = @ptrCast(@alignCast(ctx));
+    // Telemetry: push to the in-app toast stack. The renderer consumes
+    // this when the toast-paint HWND lands; today it logs.
+    app.showToast(title, body, .success) catch |err| {
+        std.log.warn("settings: toast push failed err={}", .{err});
+    };
+
+    // Always show the in-app host banner. This is chrome feedback for
+    // a user-initiated action (the Save button) and it's NOT gated on
+    // `app-notifications.config-reload` — users who disable system /
+    // reload notifications still expect visible confirmation that
+    // their Save landed. Without this line, disabling the config the
+    // thunk returned silently after logging-only.
+    const alloc = app.core_app.alloc;
+    const banner_text = std.fmt.allocPrint(alloc, "{s}{s}{s}", .{
+        title,
+        if (body.len > 0) ": " else "",
+        body,
+    }) catch null;
+    const banner_shown: bool = if (banner_text) |msg| blk: {
+        defer alloc.free(msg);
+        // `showHostBanner(.app, …)` routes through `primarySurface()`
+        // and returns false when no terminal host is open (e.g.
+        // settings window is the only UI window after the last tab
+        // closed). Capture that so we know to fall back to the
+        // always-visible in-settings confirm strip below.
+        break :blk app.showHostBanner(.app, .info, msg) catch false;
+    } else false;
+
+    // System-level WinRT toast + MessageBox fallback. Gated on
+    // `app-notifications.config-reload` since Settings-save triggers
+    // a config reload under the hood; users who disabled reload
+    // notifications don't want a system toast on every Save either.
+    // EXCEPTION: when the banner couldn't render (no host surface),
+    // the user is in settings-only state and expects SOME visible
+    // confirmation of their Save click. Force the modal fallback so
+    // "save succeeded silently" can't happen.
+    if (!app.config.@"app-notifications".@"config-reload" and banner_shown) return;
+
+    // `showDesktopNotification` requires sentinel-terminated strings
+    // because it forwards to WinRT. Allocate a sentinel-terminated
+    // copy; on allocation failure, skip the visible path (telemetry
+    // + banner still captured the event).
+    const title_z = alloc.dupeZ(u8, title) catch return;
+    defer alloc.free(title_z);
+    const body_z = alloc.dupeZ(u8, body) catch return;
+    defer alloc.free(body_z);
+    app.showDesktopNotification(.app, title_z, body_z) catch |err| {
+        std.log.warn("settings: desktop notification failed err={}", .{err});
+    };
+}
+
+/// Accept callback for the `confirm-close-surface` overlay. Fires
+/// from the Host's overlay machinery once the user picks Accept /
+/// presses Enter. `userdata` is the `*Surface` pointer passed into
+/// `showConfirm`. The Surface's HWND may already be gone (defensive
+/// null-check) — if so this is a no-op.
+fn surfaceConfirmCloseAccept(userdata: ?*anyopaque) void {
+    const ud = userdata orelse return;
+    const surface: *Surface = @ptrCast(@alignCast(ud));
+    if (surface.hwnd) |hwnd| _ = DestroyWindow(hwnd);
+}
+
+/// Accept callback for a deferred paste confirm. Ownership of the
+/// duplicated payload passes to this function — we free it once core
+/// is done ingesting (which is synchronous inside
+/// `completeClipboardRequest`). Matches AGENTS.md:89 "snapshot the
+/// callback state before calling" — here the payload IS the state.
+fn surfaceConfirmPasteAccept(userdata: ?*anyopaque) void {
+    const ud = userdata orelse return;
+    const surface: *Surface = @ptrCast(@alignCast(ud));
+    const op = surface.pending_clipboard_op orelse return;
+    if (op != .paste) return;
+    const pending = op.paste;
+    // Snapshot the allocator by value BEFORE dispatching. If
+    // `completeClipboardRequest` synchronously destroys the surface
+    // (close_surface / close_tab on last tab), `surface.app` at defer
+    // time is a dangling read. `std.mem.Allocator` is a pod value
+    // (vtable + ctx ptr); the ctx is owned by the app arena which
+    // outlives the surface, so the snapshot stays valid.
+    const alloc = surface.app.core_app.alloc;
+    surface.pending_clipboard_op = null;
+    defer alloc.free(pending.data);
+    surface.core_surface.completeClipboardRequest(
+        pending.request,
+        pending.data,
+        true, // confirmed
+    ) catch |err| {
+        std.log.warn("pending clipboard paste accept failed err={}", .{err});
+    };
+}
+
+fn surfaceConfirmPasteCancel(userdata: ?*anyopaque) void {
+    const ud = userdata orelse return;
+    const surface: *Surface = @ptrCast(@alignCast(ud));
+    if (surface.pending_clipboard_op) |*op| op.deinit(surface.app.core_app.alloc);
+    surface.pending_clipboard_op = null;
+}
+
+/// Accept callback for a deferred clipboard-write confirm. Mirrors
+/// the body of `Surface.setClipboard` (html-first, then plain text)
+/// because the confirm-write path only fires from the standard
+/// clipboard — OSC 52 writes use a different code path.
+fn surfaceConfirmWriteAccept(userdata: ?*anyopaque) void {
+    const ud = userdata orelse return;
+    const surface: *Surface = @ptrCast(@alignCast(ud));
+    const op = surface.pending_clipboard_op orelse return;
+    if (op != .write) return;
+    const pending = op.write;
+    const alloc = surface.app.core_app.alloc;
+    surface.pending_clipboard_op = null;
+    defer {
+        for (pending.contents) |*c| {
+            alloc.free(c.mime);
+            alloc.free(c.data);
+        }
+        alloc.free(pending.contents);
+    }
+    if (pending.clipboard != .standard) return;
+    var html_content: ?[]const u8 = null;
+    var plain_content: ?[]const u8 = null;
+    for (pending.contents) |c| {
+        if (std.mem.eql(u8, c.mime, "text/html")) {
+            html_content = c.data;
+        } else if (std.mem.eql(u8, c.mime, "text/plain")) {
+            plain_content = c.data;
+        }
+    }
+    if (html_content) |html| {
+        surface.writeClipboardHtml(html, plain_content) catch |err| {
+            std.log.warn("pending clipboard html write failed err={}", .{err});
+        };
+        return;
+    }
+    if (plain_content) |plain| {
+        surface.writeClipboardText(plain) catch |err| {
+            std.log.warn("pending clipboard text write failed err={}", .{err});
+        };
+    }
+}
+
+fn surfaceConfirmWriteCancel(userdata: ?*anyopaque) void {
+    const ud = userdata orelse return;
+    const surface: *Surface = @ptrCast(@alignCast(ud));
+    if (surface.pending_clipboard_op) |*op| op.deinit(surface.app.core_app.alloc);
+    surface.pending_clipboard_op = null;
+}
+
+/// IDropTarget payload callback. Runs on the STA UI thread (COM
+/// guarantees). `payload` is owned by the module and lives only for
+/// the duration of this callback — the apprt must not retain it.
+///
+/// Route through `completeClipboardRequest(.paste, …, confirmed=false)`
+/// rather than `textCallback` so `clipboard-paste-protection`
+/// actually applies. `textCallback` hard-codes `allow_unsafe=true`
+/// (it's the terminal-typed path, where newlines ARE the user's
+/// intent), which would defeat paste protection for dropped content.
+fn surfaceDropPayloadCallback(ctx: *anyopaque, payload: []const u8) void {
+    const surface: *Surface = @ptrCast(@alignCast(ctx));
+    if (payload.len == 0) return;
+    const alloc = surface.app.core_app.alloc;
+    const payload_z = alloc.dupeZ(u8, payload) catch |err| {
+        std.log.warn("drop payload dupe failed err={}", .{err});
+        return;
+    };
+    defer alloc.free(payload_z);
+
+    // Defense-in-depth classifier pass.
+    //
+    // Core's `isSafe` only flags newlines + bracketed-paste-end
+    // sequences. That's correct for generic clipboard pastes but
+    // insufficient for drop payloads where a crafted filename like
+    // `%USERPROFILE%\x.txt` (cmd `%VAR%`), `$HOME.txt` (PowerShell),
+    // or a filename containing control bytes / a URL embedded in
+    // other text would bypass confirmation. Consult the full
+    // `win32_paste_protection.inspect` verdict — which covers
+    // control_chars, shell_metachar, AND mixed_content — not just
+    // `hasShellMetachar`. When the verdict isn't `.safe`, fire the
+    // same confirm path as the core `.UnsafePaste` branch.
+    if (surface.app.config.@"clipboard-paste-protection") {
+        const verdict = win32_paste_protection.inspect(payload_z);
+        if (verdict.severity != .safe) {
+            std.log.info("drop payload flagged severity={s} reason={s}", .{
+                @tagName(verdict.severity),
+                verdict.reason,
+            });
+            // Non-modal confirm overlay; dupes payload so it survives
+            // the callback teardown. Paste completes asynchronously
+            // on accept via `surfaceConfirmPasteAccept`.
+            surface.requestPasteConfirm(.paste, payload_z) catch |err| {
+                std.log.warn("drop payload paste-protection confirm failed err={}", .{err});
+            };
+            return;
+        }
+    }
+
+    surface.core_surface.completeClipboardRequest(.paste, payload_z, false) catch |err| switch (err) {
+        error.UnsafePaste, error.UnauthorizedPaste => {
+            // Unsafe content (newlines, control sequences, etc.).
+            // Defer to the non-modal confirm overlay; the Accept
+            // callback re-submits with `confirmed = true`.
+            surface.requestPasteConfirm(.paste, payload_z) catch |inner| {
+                std.log.warn("drop payload protected paste confirm failed err={}", .{inner});
+            };
+        },
+        else => {
+            std.log.warn("drop payload paste failed err={}", .{err});
+        },
+    };
+}
+
+/// Translate the core's `QuickTerminalSize` (primary + secondary,
+/// each optional, percent or pixels) into our geometry-module's
+/// single-dimension `SizePercent`. Picks the primary axis value;
+/// secondary defaults fall to 25% when unset. If primary is unset,
+/// defaults to 25% — matches the old hard-coded behaviour while
+/// the geometry module awaits an expanded two-axis API.
+fn sizeFromConfig(qts: configpkg.Config.QuickTerminalSize) win32_quick_terminal.SizePercent {
+    const primary = qts.primary orelse return .{ .percent = 25 };
+    return sizeToGeometry(primary);
+}
+
+fn sizeSecondaryFromConfig(qts: configpkg.Config.QuickTerminalSize) ?win32_quick_terminal.SizePercent {
+    const secondary = qts.secondary orelse return null;
+    return sizeToGeometry(secondary);
+}
+
+fn sizeToGeometry(sz: configpkg.Config.QuickTerminalSize.Size) win32_quick_terminal.SizePercent {
+    return switch (sz) {
+        .percentage => |v| .{ .percent = v },
+        .pixels => |v| .{ .pixels = v },
+    };
+}
+
+// Keep the surface-drop / tab-drag / search-bar modules reachable
+// from the exe's module graph while their HWND wire-ups are pending.
+// Zig prunes module-level decls if no call site references them, so
+// this comptime block forces each public entry point into the build.
+// Drop entries as real consumers land (RegisterDragDrop per surface,
+// OLE IDropSource / IDataObject / IDropTarget for tab drag, per-pane
+// WS_CHILD EDIT + buttons for search bar).
+comptime {
+    // Surface-level drag-drop payload parsing. IDropTarget wire-up
+    // (per-surface `RegisterDragDrop`) is a later P6 pass; this
+    // block keeps the public entry points reachable until then.
+    _ = win32_surface_drop.parentDir;
+    _ = win32_surface_drop.requiresQuoting;
+    _ = win32_surface_drop.formatFilePayload;
+    _ = win32_surface_drop.formatTextPayload;
+    _ = win32_surface_drop.extractShellUrl;
+    _ = win32_surface_drop.extractHtmlFragment;
+    // Tab-drag state machine. `Host.drag_state` already references
+    // `DragState`; the helpers below stay here until the mousemove /
+    // drag-hit-test paint paths consume them.
+    _ = win32_tab_drag.insertionIndexAtX;
+    _ = win32_tab_drag.isNoOpDrop;
+    _ = win32_tab_drag.encodePayload;
+    _ = win32_tab_drag.decodePayload;
+    _ = win32_tab_drag.clipboard_format_name;
+    // Tab-drag OLE adapter (IDataObject + IDropSource for DoDragDrop).
+    // Consumed by the cross-window tear-off path when mouseup fires
+    // outside the source tab strip — state machine hooks below the
+    // `tabButtonProc` mouse handlers. Kept live here so the module
+    // participates in the build graph and the tests run.
+    _ = win32_tab_drag_ole.DataObject;
+    _ = win32_tab_drag_ole.DragSource;
+    _ = win32_tab_drag_ole.doDragDrop;
+    // Search-bar downsample helper. `Surface.search_bar` already
+    // references `SearchBar`; the match-marker overlay retains this
+    // entry point for the scrollbar P5.2 pass.
+    _ = win32_search_bar.downsampleMarkers;
+    // GDI icons (palette rows, search-bar toggles, caption buttons,
+    // toast severity glyphs). Each consumer calls `drawIcon` at its
+    // WM_PAINT time; the paint-path wire-ups land with the
+    // respective HWND passes.
+    _ = win32_icons.drawIcon;
+    _ = win32_icons.insetRect;
+    _ = win32_icons.centerSquare;
+    _ = win32_icons.iconContentRect;
+    _ = win32_icons.isDrawable;
+    // Paste-protection severity classification. Wire-up into
+    // `Surface.pasteClipboardText` + `IDropTarget::Drop` lands with
+    // the confirm-overlay migration from `MessageBoxW`; until then
+    // the module is exercised via its own tests.
+    _ = win32_paste_protection.inspect;
+    _ = win32_paste_protection.hasControlChars;
+    _ = win32_paste_protection.hasNewline;
+    _ = win32_paste_protection.hasShellMetachar;
+    _ = win32_paste_protection.hasMixedContent;
+    // Scrollbar geometry (P5.2). Consumed by the renderer's present
+    // path once the GL overlay lands.
+    _ = win32_scrollbar_geometry.ScrollbarState;
+    _ = win32_scrollbar_geometry.trackRect;
+    _ = win32_scrollbar_geometry.thumbRect;
+    _ = win32_scrollbar_geometry.rowFromCursor;
+    _ = win32_scrollbar_geometry.pointOverTrack;
+    _ = win32_scrollbar_geometry.pointOverThumb;
+    // Integrated-titlebar NC layout (P5.1). Consumed by the host
+    // wndproc's WM_NCCALCSIZE / WM_NCHITTEST handlers on Win11.
+    _ = win32_nc_layout.calcNcClientRect;
+    _ = win32_nc_layout.hitTest;
+    _ = win32_nc_layout.captionButtonsRect;
+    _ = win32_nc_layout.metricsDefault;
+    // Status-bar redesign (P5.7). Consumed by the Host's
+    // `paintChrome` status-bar pass when the new 28 px layout lands.
+    _ = win32_status_bar.composeFragments;
+    _ = win32_status_bar.truncateToFit;
+    _ = win32_status_bar.isDigitRun;
+    // Tab visual polish (P5.8). `CloseState` drives hover close-button
+    // fade; `UnderlineState` animates the focused-tab underline between
+    // tabs. Wire-up lands with the tab-strip paint rework.
+    _ = win32_tab_visual.CloseState;
+    _ = win32_tab_visual.UnderlineState;
+    _ = win32_tab_visual.easeInOutCubic;
+    _ = win32_tab_visual.closeHitRect;
+    // Keyboard-focus-ring tracker (P5.9). Per-control subclass routes
+    // WM_KEYDOWN / mouse-input through `onKeyDown` / `onMouseInput`;
+    // WM_PAINT consults `shouldShowRing` + draws `ringRect`.
+    _ = win32_focus_ring.FocusRingTracker;
+    _ = win32_focus_ring.ringRect;
+    _ = win32_focus_ring.isDrawable;
+}
+
+/// Strip HTML tags for the CF_UNICODETEXT fallback when the core
+/// only supplies a `text/html` payload (e.g. `copy_to_clipboard:html`).
+/// This is a best-effort stripper — sufficient for plain consumers
+/// like Notepad / cmd.exe that would otherwise see raw `<span>` tags.
+/// Anything between `<` and `>` is dropped; everything else survives
+/// verbatim (including entity references — we don't decode them to
+/// avoid allocating a larger output for what's already a plain
+/// fallback). Returns a newly-allocated buffer owned by `alloc`.
+/// Scan the process argv for the first `--config-file=<path>` or
+/// `--config-file <path>` occurrence. Returns a newly-allocated
+/// absolute path owned by `alloc`, or null if no override was
+/// specified. Used by the settings save path to target the
+/// user-chosen config file instead of the per-user default. If
+/// multiple `--config-file` flags were passed, the first wins —
+/// the settings UI can't meaningfully edit multiple files at once,
+/// and picking the first matches how `Config.load` applies them in
+/// order.
+/// Walk argv for a `wgh://activate?…` entry. Returns the parsed
+/// target on hit, null otherwise. Tolerates malformed activation
+/// strings (logs, returns null) — cold-start activation is a
+/// best-effort UX feature, not a correctness channel.
+fn scanToastActivationArg(alloc: std.mem.Allocator) ?win32_toast_activation.ActivationTarget {
+    const argv = std.process.argsAlloc(alloc) catch return null;
+    defer std.process.argsFree(alloc, argv);
+    var i: usize = 1;
+    while (i < argv.len) : (i += 1) {
+        const arg = argv[i];
+        if (std.mem.startsWith(u8, arg, "wgh://")) {
+            return win32_toast_activation.parseLaunchArg(arg) catch |err| blk: {
+                std.log.warn("toast activation arg parse failed arg={s} err={}", .{ arg, err });
+                break :blk null;
+            };
+        }
+    }
+    return null;
+}
+
+fn cliConfigFileOverride(alloc: std.mem.Allocator) !?[]u8 {
+    const argv = std.process.argsAlloc(alloc) catch return null;
+    defer std.process.argsFree(alloc, argv);
+    const key = "--config-file";
+    // Pick the LAST `--config-file` occurrence, not the first:
+    // `Config.loadRecursiveFiles` applies files in argv order and
+    // later files override earlier ones. Saving into the first
+    // file when a second exists would be the wrong layer — the
+    // saved value would be masked on reload.
+    var last_path: ?[]const u8 = null;
+    var i: usize = 1; // skip argv[0]
+    while (i < argv.len) : (i += 1) {
+        const arg = argv[i];
+        if (std.mem.eql(u8, arg, key)) {
+            if (i + 1 < argv.len) {
+                last_path = argv[i + 1];
+                i += 1; // skip the path arg so we don't match it as a key
+            }
+            continue;
+        }
+        if (std.mem.startsWith(u8, arg, key ++ "=")) {
+            last_path = arg[key.len + 1 ..];
+            continue;
+        }
+    }
+    if (last_path) |p| return try absolutizePath(alloc, p);
+    return null;
+}
+
+/// Resolve a possibly-relative path to an absolute one WITHOUT
+/// requiring the leaf to exist. `std.fs.realpathAlloc` calls
+/// `GetFullPathNameW` + `CreateFileW` to canonicalise, which fails
+/// with `FileNotFound` before the first save has written the file.
+/// For the settings save path, we need an absolute path regardless
+/// of whether the file exists yet — the atomic rename will create
+/// it. `std.fs.path.isAbsolute` handles the already-absolute case;
+/// otherwise join with cwd. No canonicalisation (symlink resolution
+/// etc.) — that's not required for an atomic rename target.
+fn absolutizePath(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
+    if (std.fs.path.isAbsolute(path)) {
+        return try alloc.dupe(u8, path);
+    }
+    const cwd = try std.process.getCwdAlloc(alloc);
+    defer alloc.free(cwd);
+    return try std.fs.path.join(alloc, &.{ cwd, path });
+}
+
+/// Surgical settings-save text patcher. Preserves the target file's
+/// raw text — comments, blank lines, relative path directives, and
+/// fields we don't round-trip through the Config type all stay
+/// byte-identical. Only the GUI-edited field lines are rewritten;
+/// missing edited keys are appended at the end.
+///
+/// Line match: a line is considered a key-assignment for `<name>`
+/// when trimmed-left it starts with `<name>` followed by optional
+/// whitespace + `=`. Lines starting with `#` or `;` are comments
+/// and are never treated as assignments. Duplicate key lines in
+/// the source are all replaced (match-all) since `loadRecursiveFiles`
+/// semantics take the LAST value.
+/// Count the number of leading whitespace (space / tab) bytes.
+fn leadingIndentLen(line: []const u8) usize {
+    var i: usize = 0;
+    while (i < line.len and (line[i] == ' ' or line[i] == '\t')) : (i += 1) {}
+    return i;
+}
+
+/// Extract the trailing inline comment from a `key = value # comment`
+/// line, preserving the `#` / `;` prefix. Returns empty slice when no
+/// comment is present or no `=` is found.
+///
+/// The scan starts AFTER the first `=` so a `#` or `;` that appears
+/// inside the key or surrounding whitespace isn't accidentally treated
+/// as a comment marker. Quoting inside value strings isn't tracked
+/// because config values are plain tokens (no shell-style quoting in
+/// this grammar); the first unquoted `#` / `;` after the `=` wins.
+fn trailingCommentOf(line: []const u8) []const u8 {
+    const eq = std.mem.indexOfScalar(u8, line, '=') orelse return &.{};
+    var i: usize = eq + 1;
+    while (i < line.len) : (i += 1) {
+        if (line[i] == '#' or line[i] == ';') {
+            // Trim trailing \r (CRLF input) and trailing whitespace
+            // from the comment — we'll add our own single-space
+            // separator between value and comment.
+            var end: usize = line.len;
+            while (end > i and (line[end - 1] == '\r' or line[end - 1] == ' ' or line[end - 1] == '\t')) : (end -= 1) {}
+            return line[i..end];
+        }
+    }
+    return &.{};
+}
+
+fn patchOrAppendEdits(
+    alloc: std.mem.Allocator,
+    raw: []const u8,
+    pending: *const configpkg.Config,
+    user_edited: std.StaticBitSet(std.enums.values(@import("../config/key.zig").Key).len),
+    out: *std.ArrayListUnmanaged(u8),
+) !void {
+    const ConfigKey = @import("../config/key.zig").Key;
+    const ConfigFormatter = @import("../config/formatter.zig");
+
+    // Pass 1: scan lines to find the LAST occurrence of each
+    // user-edited key. Replacing only the LAST occurrence matches
+    // `Config.loadRecursiveFiles`'s "last value wins" semantic — a
+    // user who has two `font-size = 12` lines (e.g. one in a theme
+    // section, one in an override block) keeps the earlier line
+    // untouched and only sees the later one updated. Replacing
+    // every occurrence would collapse intentional overrides.
+    //
+    // Line indices are 0-based; we store them in an array keyed on
+    // `Config.Key`'s enum int. -1 / max-usize means "no match seen".
+    const keys_total = comptime std.enums.values(ConfigKey).len;
+    var last_line: [keys_total]usize = [_]usize{std.math.maxInt(usize)} ** keys_total;
+
+    // Split into line slices once so we can index by line number
+    // during the emit pass.
+    var lines: std.ArrayListUnmanaged([]const u8) = .{};
+    defer lines.deinit(alloc);
+    {
+        var it = std.mem.splitScalar(u8, raw, '\n');
+        while (it.next()) |line| try lines.append(alloc, line);
+    }
+
+    for (lines.items, 0..) |line, line_idx| {
+        const stripped = std.mem.trimLeft(u8, line, " \t");
+        if (stripped.len == 0 or stripped[0] == '#' or stripped[0] == ';') continue;
+        const eq_idx = std.mem.indexOfScalar(u8, stripped, '=') orelse continue;
+        const key_slice = std.mem.trimRight(u8, stripped[0..eq_idx], " \t");
+        inline for (@typeInfo(configpkg.Config).@"struct".fields) |field| {
+            if (field.name[0] != '_' and std.mem.eql(u8, field.name, key_slice)) {
+                const key = @field(ConfigKey, field.name);
+                if (user_edited.isSet(@intFromEnum(key))) {
+                    last_line[@intFromEnum(key)] = line_idx;
+                }
+            }
+        }
+    }
+
+    // Track which keys we've emitted so the append pass can pick up
+    // the leftovers.
+    var written: std.StaticBitSet(std.enums.values(ConfigKey).len) = .initEmpty();
+
+    // Pass 2: emit. Every line is written verbatim EXCEPT the
+    // recorded last-occurrence lines for user-edited keys, which
+    // get the fresh serialised value.
+    for (lines.items, 0..) |line, line_idx| {
+        if (line_idx > 0) try out.append(alloc, '\n');
+
+        var replaced = false;
+        inline for (@typeInfo(configpkg.Config).@"struct".fields) |field| {
+            if (!replaced and field.name[0] != '_') {
+                const key = @field(ConfigKey, field.name);
+                if (user_edited.isSet(@intFromEnum(key)) and
+                    last_line[@intFromEnum(key)] == line_idx)
+                {
+                    var scratch: std.Io.Writer.Allocating = .init(alloc);
+                    defer scratch.deinit();
+                    ConfigFormatter.formatEntry(
+                        field.type,
+                        field.name,
+                        @field(pending, field.name),
+                        &scratch.writer,
+                    ) catch return error.OutOfMemory;
+                    var payload = scratch.written();
+                    if (payload.len > 0 and payload[payload.len - 1] == '\n') {
+                        payload = payload[0 .. payload.len - 1];
+                    }
+                    // Preserve leading indentation and trailing inline
+                    // comments from the original line. Users frequently
+                    // annotate overrides with `# …` on the same line
+                    // (`font-size = 14  # demo`); replacing the whole
+                    // line silently drops the comment. Split the
+                    // existing line at the first unquoted `#` / `;`
+                    // that comes AFTER the `=` — comments before `=`
+                    // are impossible (that'd make the line a comment
+                    // line, which we already skip).
+                    const indent_end = leadingIndentLen(line);
+                    const leading = line[0..indent_end];
+                    const trailing = trailingCommentOf(line);
+                    try out.appendSlice(alloc, leading);
+                    try out.appendSlice(alloc, payload);
+                    if (trailing.len > 0) {
+                        try out.append(alloc, ' ');
+                        try out.appendSlice(alloc, trailing);
+                    }
+                    written.set(@intFromEnum(key));
+                    replaced = true;
+                }
+            }
+        }
+        if (!replaced) try out.appendSlice(alloc, line);
+    }
+
+    // Pass 3: append user-edited keys that didn't appear in the
+    // source at all (first-save / new-key cases).
+    inline for (@typeInfo(configpkg.Config).@"struct".fields) |field| {
+        if (field.name[0] == '_') continue;
+        const key = @field(ConfigKey, field.name);
+        if (user_edited.isSet(@intFromEnum(key)) and !written.isSet(@intFromEnum(key))) {
+            if (out.items.len > 0 and out.items[out.items.len - 1] != '\n') {
+                try out.append(alloc, '\n');
+            }
+            var scratch: std.Io.Writer.Allocating = .init(alloc);
+            defer scratch.deinit();
+            ConfigFormatter.formatEntry(
+                field.type,
+                field.name,
+                @field(pending, field.name),
+                &scratch.writer,
+            ) catch return error.OutOfMemory;
+            try out.appendSlice(alloc, scratch.written());
+        }
+    }
+}
+
+fn stripHtmlTags(alloc: std.mem.Allocator, html: []const u8) ![]u8 {
+    var buf: std.ArrayList(u8) = .{};
+    defer buf.deinit(alloc);
+    try buf.ensureTotalCapacity(alloc, html.len);
+    var i: usize = 0;
+    while (i < html.len) {
+        const c = html[i];
+        if (c == '<') {
+            // Seek to the matching `>`; if not found, emit the `<`
+            // as literal content and continue scanning. Earlier code
+            // `break`ed here which dropped the entire remainder of a
+            // malformed fragment — plain-text consumers saw a
+            // truncated paste. Now we best-effort degrade by treating
+            // the unmatched `<` as a literal character.
+            if (std.mem.indexOfScalarPos(u8, html, i, '>')) |end| {
+                i = end + 1;
+                continue;
+            }
+            try buf.append(alloc, c);
+            i += 1;
+            continue;
+        }
+        try buf.append(alloc, c);
+        i += 1;
+    }
+    return buf.toOwnedSlice(alloc);
+}
+
+test "stripHtmlTags drops tag brackets" {
+    const testing = std.testing;
+    const out = try stripHtmlTags(
+        testing.allocator,
+        "<span style=\"color:red\">hello</span> <b>world</b>",
+    );
+    defer testing.allocator.free(out);
+    try testing.expectEqualStrings("hello world", out);
+}
+
+test "stripHtmlTags handles malformed (unclosed tag)" {
+    const testing = std.testing;
+    // Previously `break`ed on unmatched `<`, dropping the remainder.
+    // The best-effort degrade now emits `<` as literal and continues.
+    const out = try stripHtmlTags(testing.allocator, "pre<broken");
+    defer testing.allocator.free(out);
+    try testing.expectEqualStrings("pre<broken", out);
+}
+
+test "stripHtmlTags malformed in middle keeps tail" {
+    const testing = std.testing;
+    // Regression: unmatched `<` at the start of a fragment must NOT
+    // truncate everything after it. Previously produced "hello "; now
+    // preserves the tail including the stray `<`.
+    const out = try stripHtmlTags(testing.allocator, "hello <world tail");
+    defer testing.allocator.free(out);
+    try testing.expectEqualStrings("hello <world tail", out);
+}
+
+test "stripHtmlTags preserves plain text" {
+    const testing = std.testing;
+    const out = try stripHtmlTags(testing.allocator, "no tags here");
+    defer testing.allocator.free(out);
+    try testing.expectEqualStrings("no tags here", out);
+}
+
+test "win32 appendOwnedString replaces existing value and frees old allocation" {
+    const testing = std.testing;
+    var target: ?[:0]const u8 = null;
+    try appendOwnedString(testing.allocator, &target, "alpha");
+    try testing.expect(target != null);
+    try testing.expectEqualStrings("alpha", target.?);
+
+    try appendOwnedString(testing.allocator, &target, "beta");
+    try testing.expect(target != null);
+    try testing.expectEqualStrings("beta", target.?);
+
+    try appendOwnedString(testing.allocator, &target, null);
+    try testing.expect(target == null);
+}
+
+test "win32 appendOwnedString leaves target untouched on OOM" {
+    // Guard against the pre-refactor UAF where the old pointer was
+    // freed BEFORE allocating the new one: an OOM mid-call would
+    // leave `target.*` pointing at freed memory, which a subsequent
+    // `overlayEditText` / palette sync would read and crash on.
+    const testing = std.testing;
+    var arena: [64]u8 = undefined;
+    var fixed: std.heap.FixedBufferAllocator = .init(&arena);
+    const alloc = fixed.allocator();
+
+    var target: ?[:0]const u8 = null;
+    try appendOwnedString(alloc, &target, "warm-up");
+    try testing.expectEqualStrings("warm-up", target.?);
+
+    // Force an allocation failure with a value too large to fit.
+    const huge = "x" ** 512;
+    const before = target.?.ptr;
+    try testing.expectError(error.OutOfMemory, appendOwnedString(alloc, &target, huge));
+    try testing.expect(target != null);
+    try testing.expect(target.?.ptr == before);
+    try testing.expectEqualStrings("warm-up", target.?);
+}
+
+test "win32 palette EN_CHANGE re-entry guard: suppress_edit_events gates sync cascade" {
+    // Sentinel test — the Host struct MUST carry the
+    // `suppress_edit_events: bool = false` flag. Task #44's palette-
+    // crash fix relies on it gating the EN_CHANGE handler at
+    // `hostWindowProc` (command_id 2002) and on `setOverlayEditText`
+    // flipping it around programmatic `SetWindowTextW` calls. If a
+    // future refactor removes or renames the field this test fails
+    // at compile time before anyone else hits the crash again.
+    try std.testing.expect(@hasField(Host, "suppress_edit_events"));
+    try std.testing.expectEqual(bool, @FieldType(Host, "suppress_edit_events"));
+}
+
+fn paletteListProc(
+    hwnd: HWND,
+    msg: UINT,
+    wParam: WPARAM,
+    lParam: LPARAM,
+) callconv(.winapi) LRESULT {
+    switch (msg) {
+        WM_ERASEBKGND => return 1,
+        WM_PAINT => {
+            if (getPaletteListHost(hwnd)) |host| host.paintPaletteList();
+            return 0;
+        },
+        WM_LBUTTONDOWN => {
+            const host = getPaletteListHost(hwnd) orelse return DefWindowProcW(hwnd, msg, wParam, lParam);
+            const y: i32 = signedHighWord(lParamBits(lParam));
+            const row = host.paletteRowAtY(y);
+            if (row) |r| host.invokePaletteRow(r) catch |err| {
+                std.log.warn("palette row invoke failed err={}", .{err});
+            };
+            return 0;
+        },
+        WM_MOUSEWHEEL => {
+            const host = getPaletteListHost(hwnd) orelse return DefWindowProcW(hwnd, msg, wParam, lParam);
+            host.scrollPaletteList(wheelDeltaFromWParam(wParam));
+            return 0;
+        },
+        WM_GETOBJECT => {
+            const host = getPaletteListHost(hwnd) orelse return DefWindowProcW(hwnd, msg, wParam, lParam);
+            const state = host.paletteListUiaState();
+            if (win32_uia.handlePaletteListGetObject(
+                host.app.core_app.alloc,
+                hwnd,
+                wParam,
+                lParam,
+                state,
+            )) |lr| return lr;
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+        else => return DefWindowProcW(hwnd, msg, wParam, lParam),
+    }
 }
 
 fn drawRoundedRect(hdc: HDC, rect: RECT, bg: u32, border: u32, radius: i32) void {
@@ -7545,15 +10967,20 @@ fn buildOverlayPaintLabelText(
     search_total: ?usize,
     search_selected: ?usize,
     host_status: HostTabStatus,
+    palette: PaletteSnapshot,
 ) ![]u8 {
     return switch (mode) {
         .none => try alloc.dupe(u8, ""),
         .surface_title => try alloc.dupe(u8, "Window title"),
         .tab_title => try alloc.dupe(u8, "Tab title"),
-        .command_palette => try buildCommandPaletteOverlayLabel(alloc, input_text),
+        .command_palette => try buildCommandPaletteOverlayLabel(alloc, palette, input_text),
         .profile => try alloc.dupe(u8, "Profile"),
         .search => try buildSearchOverlayLabel(alloc, search_total, search_selected),
         .tab_overview => try buildTabOverviewOverlayLabel(alloc, host_status.index, host_status.total),
+        // Confirm overlays source their prompt title from the payload
+        // at paint time; this default only appears when the payload
+        // has already been dropped (mid-teardown).
+        .confirm => try alloc.dupe(u8, "Confirm"),
     };
 }
 
@@ -7568,6 +10995,8 @@ fn buildOverlayFeedbackText(
     search_selected: ?usize,
     host_status: HostTabStatus,
     pane_count: usize,
+    palette: PaletteSnapshot,
+    mru: []const []const u8,
 ) ![]u8 {
     if (banner_text) |value| {
         return switch (banner_kind) {
@@ -7585,6 +11014,8 @@ fn buildOverlayFeedbackText(
         search_selected,
         host_status,
         pane_count,
+        palette,
+        mru,
     );
 }
 
@@ -7595,6 +11026,7 @@ fn buildOverlayAcceptLabel(
     active_search_needle: ?[]const u8,
     search_total: ?usize,
     search_selected: ?usize,
+    palette: PaletteSnapshot,
 ) ![]u8 {
     return switch (mode) {
         .none => try alloc.dupe(u8, "OK"),
@@ -7603,8 +11035,7 @@ fn buildOverlayAcceptLabel(
             if (input.Binding.Action.parse(input_text)) |_| {
                 break :blk try alloc.dupe(u8, "Run");
             } else |_| {}
-            if (commandPaletteUniqueMatch(input_text) != null) break :blk try alloc.dupe(u8, "Run");
-            if (commandPaletteMatchCount(input_text) > 0) break :blk try alloc.dupe(u8, "Pick");
+            if (commandPaletteUniqueMatch(palette, input_text) != null) break :blk try alloc.dupe(u8, "Run");
             break :blk try alloc.dupe(u8, "Check");
         },
         .profile => try alloc.dupe(u8, "Open"),
@@ -7626,6 +11057,12 @@ fn buildOverlayAcceptLabel(
             try alloc.dupe(u8, "Close")
         else
             try alloc.dupe(u8, "Go"),
+        // Confirm overlays source accept/cancel labels from the
+        // payload. This default is never visible because
+        // `syncOverlayButtons` has a special-case branch for the
+        // `.confirm` mode that reads the payload directly; the
+        // switch just needs coverage to compile.
+        .confirm => try alloc.dupe(u8, "OK"),
     };
 }
 
@@ -7638,12 +11075,14 @@ fn buildOverlayHintText(
     search_selected: ?usize,
     host_status: HostTabStatus,
     pane_count: usize,
+    palette: PaletteSnapshot,
+    mru: []const []const u8,
 ) ![]u8 {
     return switch (mode) {
         .none => try alloc.dupe(u8, ""),
         .command_palette => blk: {
-            if (try commandPaletteBannerText(alloc, input_text)) |text| break :blk text;
-            break :blk try alloc.dupe(u8, "No curated action matches. Try: new_tab, start_search, reload_config");
+            if (try commandPaletteBannerText(alloc, palette, input_text, mru)) |text| break :blk text;
+            break :blk try alloc.dupe(u8, "No matching action. Try: new_tab, start_search, reload_config");
         },
         .profile => try alloc.dupe(u8, "Choose a profile by number or name. Enter opens a new tab."),
         .search => blk: {
@@ -7719,6 +11158,12 @@ fn buildOverlayHintText(
                 .{ requested, host_status.total },
             );
         },
+        // Confirm overlays source their hint text from the payload
+        // body at paint time (the hint HWND is re-used as the body
+        // line). This helper produces a default so the promptTitle
+        // call doesn't need a special case; the real text lives on
+        // the payload.
+        .confirm => try alloc.dupe(u8, ""),
     };
 }
 
@@ -7727,6 +11172,8 @@ fn overlayCancelLabel(mode: HostOverlayMode) []const u8 {
         .none => "Cancel",
         .command_palette, .profile, .search, .tab_overview => "Close",
         .surface_title, .tab_title => "Cancel",
+        // Confirm overlays override this via the payload.
+        .confirm => "Cancel",
     };
 }
 
@@ -8495,62 +11942,85 @@ fn buildInspectorButtonLabel(
     return try alloc.dupe(u8, "Inspect");
 }
 
-fn commandPaletteMatchCount(input_text: []const u8) usize {
-    var count: usize = 0;
-    for (curated_command_palette_actions) |candidate| {
-        if (std.mem.startsWith(u8, candidate, input_text)) count += 1;
-    }
-    return count;
+fn commandPaletteMatchCount(snap: PaletteSnapshot, input_text: []const u8) usize {
+    return win32_palette.matchCount(snap, input_text);
 }
 
-fn commandPaletteUniqueMatch(input_text: []const u8) ?[]const u8 {
+/// Returns the top-ranked match for the query, or null if no entry
+/// matches. Renamed-by-semantic — this used to mean "exactly one
+/// prefix match"; with fuzzy ranking the right submit-on-Enter
+/// semantic is "the best match".
+fn commandPaletteUniqueMatch(snap: PaletteSnapshot, input_text: []const u8) ?[]const u8 {
     if (input_text.len == 0) return null;
-    var match: ?[]const u8 = null;
-    for (curated_command_palette_actions) |candidate| {
-        if (!std.mem.startsWith(u8, candidate, input_text)) continue;
-        if (match != null) return null;
-        match = candidate;
+    var buf: [palette_max_tokens][]const u8 = undefined;
+    const tokens = tokenizePaletteQuery(input_text, &buf);
+    if (tokens.len == 0) return null;
+
+    var best_rank: f64 = std.math.inf(f64);
+    var best_index: ?usize = null;
+    for (snap.commands, snap.cvals, 0..) |cmd, c, i| {
+        const r = rankPaletteEntry(cmd, c, tokens) orelse continue;
+        if (r < best_rank) {
+            best_rank = r;
+            best_index = i;
+        }
     }
-    return match;
+    return if (best_index) |i| std.mem.span(snap.cvals[i].action) else null;
 }
 
-fn commandPaletteNthMatch(input_text: []const u8, target_index: usize) ?[]const u8 {
-    var match_index: usize = 0;
-    for (curated_command_palette_actions) |candidate| {
-        if (!std.mem.startsWith(u8, candidate, input_text)) continue;
-        if (match_index == target_index) return candidate;
-        match_index += 1;
-    }
-    return null;
+fn commandPaletteNthMatch(
+    snap: PaletteSnapshot,
+    input_text: []const u8,
+    target_index: usize,
+) ?[]const u8 {
+    var ranked_buf: [palette_max_ranked]RankedIndex = undefined;
+    const ranked = rankedIndicesForQuery(snap, input_text, &ranked_buf);
+    if (target_index >= ranked.len) return null;
+    return std.mem.span(snap.cvals[ranked[target_index].index].action);
 }
 
 fn commandPaletteCompletionCandidate(
+    snap: PaletteSnapshot,
     seed: []const u8,
     current_text: []const u8,
     reverse: bool,
 ) ?[]const u8 {
-    const count = commandPaletteMatchCount(seed);
-    if (count == 0) return null;
-    if (count == 1) return commandPaletteUniqueMatch(seed);
+    var ranked_buf: [palette_max_ranked]RankedIndex = undefined;
+    const ranked = rankedIndicesForQuery(snap, seed, &ranked_buf);
+    if (ranked.len == 0) return null;
+    if (ranked.len == 1) return std.mem.span(snap.cvals[ranked[0].index].action);
 
-    var current_index: ?usize = null;
-    var match_index: usize = 0;
-    for (curated_command_palette_actions) |candidate| {
-        if (!std.mem.startsWith(u8, candidate, seed)) continue;
-        if (std.mem.eql(u8, candidate, current_text)) current_index = match_index;
-        match_index += 1;
+    var current_rank_index: ?usize = null;
+    for (ranked, 0..) |r, i| {
+        const action = std.mem.span(snap.cvals[r.index].action);
+        if (std.mem.eql(u8, action, current_text)) {
+            current_rank_index = i;
+            break;
+        }
     }
 
-    const target_index = if (current_index) |value|
+    const target = if (current_rank_index) |value|
         if (reverse)
-            (value + count - 1) % count
+            (value + ranked.len - 1) % ranked.len
         else
-            (value + 1) % count
+            (value + 1) % ranked.len
     else if (reverse)
-        count - 1
+        ranked.len - 1
     else
         0;
-    return commandPaletteNthMatch(seed, target_index);
+    return std.mem.span(snap.cvals[ranked[target].index].action);
+}
+
+/// Look up the Command.description for a given formatted action string.
+/// Returns null if no entry matches or the description is empty.
+fn commandPaletteDescriptionFor(snap: PaletteSnapshot, action_text: []const u8) ?[]const u8 {
+    for (snap.commands, snap.cvals) |cmd, c| {
+        const action = std.mem.span(c.action);
+        if (!std.mem.eql(u8, action, action_text)) continue;
+        const desc: []const u8 = cmd.description;
+        return if (desc.len == 0) null else desc;
+    }
+    return null;
 }
 
 fn nextTabOverviewSelection(current: usize, total: usize, reverse: bool) usize {
@@ -8568,90 +12038,85 @@ fn tabDirectionFromWheelDelta(delta: i16) apprt.action.GotoTab {
 
 fn buildCommandPaletteOverlayLabel(
     alloc: Allocator,
+    snap: PaletteSnapshot,
     input_text: []const u8,
 ) ![]u8 {
     if (input_text.len == 0) return try alloc.dupe(u8, "Command");
     if (input.Binding.Action.parse(input_text)) |_| {
         return try alloc.dupe(u8, "Run action");
     } else |_| {}
-    if (commandPaletteUniqueMatch(input_text) != null) {
+    if (commandPaletteUniqueMatch(snap, input_text) != null) {
         return try alloc.dupe(u8, "Run action");
     }
-    const matches = commandPaletteMatchCount(input_text);
+    const matches = commandPaletteMatchCount(snap, input_text);
     if (matches > 0) return try std.fmt.allocPrint(alloc, "Command {d}", .{matches});
     return try alloc.dupe(u8, "Command ?");
 }
 
-fn commandPaletteActionSummary(action_text: []const u8) ?[]const u8 {
-    if (std.mem.eql(u8, action_text, "new_tab")) return "open a new tab in this window";
-    if (std.mem.eql(u8, action_text, "new_window")) return "open a new window";
-    if (std.mem.eql(u8, action_text, "new_split:right")) return "split the active pane to the right";
-    if (std.mem.eql(u8, action_text, "new_split:down")) return "split the active pane downward";
-    if (std.mem.eql(u8, action_text, "new_split:left")) return "split the active pane to the left";
-    if (std.mem.eql(u8, action_text, "new_split:up")) return "split the active pane upward";
-    if (std.mem.eql(u8, action_text, "goto_split:right")) return "move focus to the split on the right";
-    if (std.mem.eql(u8, action_text, "goto_split:left")) return "move focus to the split on the left";
-    if (std.mem.eql(u8, action_text, "goto_split:up")) return "move focus to the split above";
-    if (std.mem.eql(u8, action_text, "goto_split:down")) return "move focus to the split below";
-    if (std.mem.eql(u8, action_text, "toggle_split_zoom")) return "zoom or unzoom the active split pane";
-    if (std.mem.eql(u8, action_text, "equalize_splits")) return "equalize all split pane sizes";
-    if (std.mem.eql(u8, action_text, "close_tab")) return "close the current tab";
-    if (std.mem.eql(u8, action_text, "close_window")) return "close the current window";
-    if (std.mem.eql(u8, action_text, "toggle_fullscreen")) return "toggle fullscreen";
-    if (std.mem.eql(u8, action_text, "toggle_window_decorations")) return "show or hide the window title bar";
-    if (std.mem.eql(u8, action_text, "toggle_command_palette")) return "show or hide the command palette";
-    if (std.mem.eql(u8, action_text, "toggle_tab_overview")) return "show the tab list for this window";
-    if (std.mem.eql(u8, action_text, "start_search")) return "open the in-window search overlay";
-    if (std.mem.eql(u8, action_text, "copy_to_clipboard")) return "copy the current selection";
-    if (std.mem.eql(u8, action_text, "paste_from_clipboard")) return "paste from clipboard";
-    if (std.mem.eql(u8, action_text, "select_all")) return "select all terminal text";
-    if (std.mem.eql(u8, action_text, "open_config")) return "open the configuration file";
-    if (std.mem.eql(u8, action_text, "reload_config")) return "reload winghostty configuration";
-    if (std.mem.eql(u8, action_text, "inspector:toggle")) return "toggle the terminal inspector";
-    if (std.mem.eql(u8, action_text, "reset_window_size")) return "reset the window to its default size";
-    return null;
-}
-
-fn commandPaletteBannerText(alloc: Allocator, input_text: []const u8) !?[]u8 {
+fn commandPaletteBannerText(
+    alloc: Allocator,
+    snap: PaletteSnapshot,
+    input_text: []const u8,
+    mru: []const []const u8,
+) !?[]u8 {
     if (input_text.len == 0) {
-        return try alloc.dupe(u8, "Try: new_tab (new tab), start_search (find), toggle_tab_overview (tab list)");
+        if (mru.len == 0) {
+            return try alloc.dupe(u8, "Try: new_tab (new tab), start_search (find), toggle_tab_overview (tab list)");
+        }
+        var buf: std.ArrayListUnmanaged(u8) = .empty;
+        errdefer buf.deinit(alloc);
+        try buf.appendSlice(alloc, "Recent: ");
+        const visible = @min(mru.len, 5);
+        for (mru[0..visible], 0..) |action, i| {
+            if (i > 0) try buf.appendSlice(alloc, ", ");
+            try buf.appendSlice(alloc, action);
+        }
+        return try buf.toOwnedSlice(alloc);
     }
 
     if (input.Binding.Action.parse(input_text)) |_| {
-        if (commandPaletteActionSummary(input_text)) |summary| {
+        if (commandPaletteDescriptionFor(snap, input_text)) |summary| {
             return try std.fmt.allocPrint(alloc, "Ready: {s} - {s}", .{ input_text, summary });
         }
         return try std.fmt.allocPrint(alloc, "Ready to run: {s}", .{input_text});
     } else |_| {}
 
-    if (commandPaletteUniqueMatch(input_text)) |candidate| {
-        if (commandPaletteActionSummary(candidate)) |summary| {
-            return try std.fmt.allocPrint(alloc, "Ready: {s} - {s}", .{ candidate, summary });
-        }
-        return try std.fmt.allocPrint(alloc, "Ready to run: {s}", .{candidate});
-    }
+    // Cap visible matches to keep the banner readable. With ~90
+    // entries a bare query like "t" can rank dozens of matches;
+    // showing all of them produces a wall of text.
+    const max_visible: usize = 5;
+    var ranked_buf: [palette_max_ranked]RankedIndex = undefined;
+    const ranked = rankedIndicesForQuery(snap, input_text, &ranked_buf);
+    if (ranked.len == 0) return null;
 
-    var matches: std.ArrayListUnmanaged([]const u8) = .empty;
-    defer matches.deinit(alloc);
-    for (curated_command_palette_actions) |candidate| {
-        if (std.mem.startsWith(u8, candidate, input_text)) {
-            try matches.append(alloc, candidate);
+    // Single match → "Ready: {action} - {description}" so Enter
+    // telegraphs what it'll run. Multi-match falls through to the
+    // "Matches: …" list so the user sees the candidate set.
+    if (ranked.len == 1) {
+        const action = std.mem.span(snap.cvals[ranked[0].index].action);
+        if (commandPaletteDescriptionFor(snap, action)) |summary| {
+            return try std.fmt.allocPrint(alloc, "Ready: {s} - {s}", .{ action, summary });
         }
+        return try std.fmt.allocPrint(alloc, "Ready to run: {s}", .{action});
     }
-
-    if (matches.items.len == 0) return null;
 
     var buf: std.ArrayListUnmanaged(u8) = .empty;
     errdefer buf.deinit(alloc);
     try buf.appendSlice(alloc, "Matches: ");
-    for (matches.items, 0..) |candidate, i| {
+    const visible_len = @min(ranked.len, max_visible);
+    for (ranked[0..visible_len], 0..) |r, i| {
+        const action = std.mem.span(snap.cvals[r.index].action);
         if (i > 0) try buf.appendSlice(alloc, ", ");
-        try buf.appendSlice(alloc, candidate);
-        if (commandPaletteActionSummary(candidate)) |summary| {
+        try buf.appendSlice(alloc, action);
+        if (commandPaletteDescriptionFor(snap, action)) |summary| {
             try buf.appendSlice(alloc, " (");
             try buf.appendSlice(alloc, summary);
             try buf.appendSlice(alloc, ")");
         }
+    }
+    if (ranked.len > visible_len) {
+        const rest = ranked.len - visible_len;
+        try std.fmt.format(buf.writer(alloc), " + {d} more", .{rest});
     }
     return try buf.toOwnedSlice(alloc);
 }
@@ -8686,6 +12151,46 @@ fn refocusActiveSurface(host: *Host) void {
 fn hostButtonProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.winapi) LRESULT {
     const host = getHost(hwnd);
     if (host) |v| {
+        // Keyboard routing for the overlay accept/cancel pair. In
+        // confirm mode the EDIT control is hidden and focus lands on
+        // the accept button; without this path Esc has no effect
+        // because `overlayEditProc`'s Esc handler only runs when the
+        // (hidden) EDIT has focus. Tab/Shift+Tab cycle between the
+        // two buttons; arrow keys also cycle for screen-reader
+        // users who navigate via arrows.
+        if (msg == WM_KEYDOWN and v.isOverlayButton(hwnd)) {
+            switch (wParam) {
+                VK_ESCAPE => {
+                    if (v.overlay_mode == .confirm) {
+                        v.invokeConfirmCancel();
+                    } else {
+                        v.hideOverlay();
+                    }
+                    return 0;
+                },
+                VK_TAB, VK_LEFT, VK_RIGHT => {
+                    const target: ?HWND = if (hwnd == v.overlay_accept_hwnd)
+                        v.overlay_cancel_hwnd
+                    else if (hwnd == v.overlay_cancel_hwnd)
+                        v.overlay_accept_hwnd
+                    else
+                        null;
+                    if (target) |t| _ = SetFocus(t);
+                    return 0;
+                },
+                VK_RETURN, VK_SPACE => {
+                    if (v.overlay_mode == .confirm) {
+                        if (hwnd == v.overlay_accept_hwnd) {
+                            v.invokeConfirmAccept();
+                        } else if (hwnd == v.overlay_cancel_hwnd) {
+                            v.invokeConfirmCancel();
+                        }
+                        return 0;
+                    }
+                },
+                else => {},
+            }
+        }
         switch (msg) {
             WM_KILLFOCUS => {
                 v.setFocusedQuickSlot(null);
@@ -8949,8 +12454,14 @@ fn overlayEditProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callco
 
         WM_KEYDOWN, WM_SYSKEYDOWN => {
             if (v.overlay_mode == .command_palette) {
-                if (wParam == VK_TAB or wParam == VK_UP or wParam == VK_DOWN) {
-                    const reverse = wParam == VK_UP or (wParam == VK_TAB and keyPressed(VK_SHIFT));
+                if (wParam == VK_UP or wParam == VK_DOWN) {
+                    // Up/Down drive list selection, not EDIT text
+                    // completion — the live list shows the full candidate
+                    // set now, so Tab-cycling-in-EDIT is obsolete UX.
+                    if (v.moveListSelection(wParam == VK_UP)) return 0;
+                }
+                if (wParam == VK_TAB) {
+                    const reverse = keyPressed(VK_SHIFT);
                     if ((v.completeCommandPalette(reverse) catch false)) return 0;
                 }
             }
@@ -9000,6 +12511,13 @@ fn overlayEditProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callco
                 }
             }
             if (wParam == VK_ESCAPE) {
+                if (v.overlay_mode == .confirm) {
+                    // Same no-access-after-dispatch discipline as
+                    // the mouse-click confirm paths — cancel
+                    // callbacks may tear down the Host.
+                    v.invokeConfirmCancel();
+                    return 0;
+                }
                 if (v.overlay_mode == .search) {
                     _ = v.dismissActiveSearch();
                     return 0;
@@ -9032,6 +12550,17 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
 
     const host = getHost(hwnd);
     switch (msg) {
+        // Per-host tween heartbeat. Runs at ~16 ms while any chrome
+        // animation is active; stops as soon as the scheduler empties.
+        // Separate from the App-level quit timer, which uses
+        // `SetTimer(null, …)` on the thread queue.
+        WM_TIMER => {
+            if (wParam == TWEEN_TIMER_ID) {
+                if (host) |v| v.tickTweens();
+                return 0;
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
         WM_DRAWITEM => {
             if (host) |v| {
                 const draw: *const DRAWITEMSTRUCT = @ptrFromInt(@as(usize, @bitCast(lParam)));
@@ -9041,6 +12570,80 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
         WM_ERASEBKGND => return 1,
+        // Integrated-titlebar non-client handlers. All gated on
+        // `App.use_integrated_titlebar` (Win11 build ≥ 22000 per
+        // AGENTS.md:78); on Win10 / older builds they fall through to
+        // DefWindowProcW and the system paints its default caption.
+        WM_NCCALCSIZE => {
+            if (host) |v| {
+                if (v.handleNcCalcSize(hwnd, wParam, lParam)) |lr| return lr;
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+        WM_NCHITTEST => {
+            if (host) |v| {
+                if (v.handleNcHitTest(hwnd, lParam)) |lr| return lr;
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+        WM_NCMOUSEMOVE => {
+            if (host) |v| {
+                if (v.handleNcMouseMove(hwnd, wParam)) |lr| return lr;
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+        WM_NCMOUSELEAVE => {
+            if (host) |v| {
+                v.handleNcMouseLeave();
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+        // Integrated-titlebar caption-button click dispatch. When the
+        // integrated-titlebar path is active, WM_NCCALCSIZE has zeroed
+        // the non-client top margin — DWM no longer "owns" the caption
+        // buttons, so DefWindowProc's WM_NCLBUTTONUP → WM_SYSCOMMAND
+        // translation doesn't fire for HTMINBUTTON / HTMAXBUTTON in
+        // some Windows builds. Close still works because DWM intercepts
+        // HTCLOSE earlier in the message path. Explicitly send
+        // WM_SYSCOMMAND(SC_*) on mouseup over the correct hit-test
+        // code so min / max / restore fire reliably.
+        WM_NCLBUTTONUP => {
+            if (host) |v| {
+                if (v.app.use_integrated_titlebar) {
+                    const ht: i32 = @intCast(@as(i64, @bitCast(wParam)));
+                    switch (ht) {
+                        HTMINBUTTON => {
+                            _ = SendMessageW(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, lParam);
+                            return 0;
+                        },
+                        HTMAXBUTTON => {
+                            const is_zoomed = IsZoomed(hwnd) != 0;
+                            const cmd: WPARAM = if (is_zoomed) SC_RESTORE else SC_MAXIMIZE;
+                            _ = SendMessageW(hwnd, WM_SYSCOMMAND, cmd, lParam);
+                            return 0;
+                        },
+                        HTCLOSE => {
+                            _ = SendMessageW(hwnd, WM_SYSCOMMAND, SC_CLOSE, lParam);
+                            return 0;
+                        },
+                        else => {},
+                    }
+                }
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+        // UIA root object request. Screen readers (Narrator, NVDA) call
+        // `AccessibleObjectFromWindow` which turns into WM_GETOBJECT on
+        // the target HWND. We only handle the UIA root-object ID; MSAA
+        // and other IDs fall through to the default proc.
+        WM_GETOBJECT => {
+            if (host) |v| {
+                if (win32_uia.handleGetObject(v.app.core_app.alloc, hwnd, wParam, lParam)) |lr| {
+                    return lr;
+                }
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
         WM_SETTINGCHANGE => {
             if (host) |v| {
                 v.app.refreshSystemWheelSettings();
@@ -9049,6 +12652,16 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
         WM_THEMECHANGED, WM_SYSCOLORCHANGE => {
+            if (host) |v| {
+                v.app.reconfigureTheme();
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+        // Fired by DWM when the user's accent color changes. Re-resolve
+        // the theme so any accent-derived tokens pick up the new value
+        // without requiring a config reload. Additional accent-follow
+        // work lands with the config surface (see §7.3 of the plan).
+        WM_DWMCOLORIZATIONCOLORCHANGED => {
             if (host) |v| {
                 v.app.reconfigureTheme();
             }
@@ -9128,6 +12741,16 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                 switch (command_id) {
                     2002 => {
                         if (notify_code == EN_CHANGE) {
+                            // Skip re-entry from our own programmatic
+                            // `SetWindowTextW` on the edit HWND. The
+                            // caller already wraps the write in
+                            // `suppress_edit_events` and drives its
+                            // own sync pass afterward; letting this
+                            // handler run would invalidate
+                            // `cached_overlay_edit` mid-write and
+                            // racing borrows across the sync cascade
+                            // was the root of task #44.
+                            if (v.suppress_edit_events) return 0;
                             appendOwnedString(v.app.core_app.alloc, &v.cached_overlay_edit, null) catch {};
                             if (v.overlay_mode == .search) {
                                 _ = v.syncSearchOverlay() catch {};
@@ -9143,6 +12766,16 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                         }
                     },
                     2003 => {
+                        if (v.overlay_mode == .confirm) {
+                            // MUST NOT touch `v` after the callback
+                            // — a destructive accept (close-surface)
+                            // fires `DestroyWindow`, which triggers
+                            // the Host's WM_DESTROY path + frees the
+                            // Host struct. `invokeConfirmAccept`
+                            // itself documents this ordering invariant.
+                            v.invokeConfirmAccept();
+                            return 0;
+                        }
                         if (v.overlay_mode == .profile) {
                             _ = v.submitProfileOverlay(resolveProfileOpenTarget(
                                 v.app.launcher_profile_target,
@@ -9155,6 +12788,17 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                         return 0;
                     },
                     2004 => {
+                        if (v.overlay_mode == .confirm) {
+                            // Cancel is non-destructive today (the
+                            // confirm-close-surface cancel callback
+                            // is null), but future consumers might
+                            // add destructive cancel callbacks (e.g.
+                            // rollback). Use the same no-access-after
+                            // discipline as the accept path for
+                            // safety.
+                            v.invokeConfirmCancel();
+                            return 0;
+                        }
                         if (v.overlay_mode == .search) {
                             _ = v.dismissActiveSearch();
                             return 0;
@@ -9244,8 +12888,51 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
 
         WM_SIZE => {
             if (host) |v| {
+                // Defensive: maximize / minimize jumps don't always
+                // route through WM_ENTERSIZEMOVE → WM_EXITSIZEMOVE, so
+                // a flag set on an earlier interactive drag might be
+                // left stuck `true` after a window-button size change.
+                // Clear it here so the renderer doesn't stay in
+                // coarse-mode after the user clicks maximize.
+                const size_kind: u32 = @truncate(wParam);
+                if (size_kind == SIZE_MAXIMIZED or size_kind == SIZE_MINIMIZED) {
+                    v.is_live_resize.store(false, .release);
+                    // Win32 silently cancels NC mouse tracking when
+                    // the window minimises or its maximised state
+                    // flips — WM_NCMOUSELEAVE is NOT guaranteed to
+                    // fire in those paths. Force-clear the caption
+                    // state here so the next NC re-entry re-arms
+                    // `TrackMouseEvent` and hover paint stays correct.
+                    v.caption_track_armed = false;
+                    if (v.caption_hover != .none) {
+                        v.caption_hover = .none;
+                        v.invalidateChrome();
+                    }
+                }
                 v.layout() catch {};
                 return 0;
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+
+        WM_ENTERSIZEMOVE => {
+            // User started a drag-resize or drag-move. We don't know
+            // which yet, but setting the flag on both is harmless —
+            // pure move generates no WM_SIZE so the throttle has
+            // nothing to coalesce. WM_EXITSIZEMOVE clears it either
+            // way.
+            if (host) |v| v.is_live_resize.store(true, .release);
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+
+        WM_EXITSIZEMOVE => {
+            if (host) |v| {
+                v.is_live_resize.store(false, .release);
+                v.defer_surface_repaints_until_flush = true;
+                v.layout() catch {};
+                v.defer_surface_repaints_until_flush = false;
+                _ = InvalidateRect(hwnd, null, 0);
+                v.flushDeferredVisibleSurfaceRepaints();
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
@@ -9279,7 +12966,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     .x = signedLowWord(lParamBits(lParam)),
                     .y = signedHighWord(lParamBits(lParam)),
                 };
-                if (ScreenToClient(hwnd, &point) != 0 and point.y >= 0 and point.y < host_tab_height) {
+                if (ScreenToClient(hwnd, &point) != 0 and point.y >= 0 and point.y < v.tabBarHeight()) {
                     _ = v.activateTabByDirection(tabDirectionFromWheelDelta(signedHighWord(wParam)));
                     return 0;
                 }
@@ -10273,9 +13960,42 @@ pub const Surface = struct {
     inspector_visible: bool = false,
     debug_input_budget: u8 = 32,
     paint_pending: bool = false,
+    live_resize_repaint_deferred: bool = false,
     renderer_repaint_requested: std.atomic.Value(bool) = .init(false),
     draw_in_progress: bool = false,
     ime_composing: bool = false,
+    /// Per-surface bounded undo stack (P6.5). Initialised empty in
+    /// `Surface.init` and drained in `deinit`. `undo` / `redo`
+    /// actions push snapshots here before executing destructive
+    /// operations (close_tab, clear_screen, reset, split_create).
+    /// The data structure is infrastructure; per-action snapshot
+    /// capture + replay lands with the action-side P6 pass. Caps
+    /// (16 entries / 8 MB) are enforced by the stack itself.
+    undo_stack: win32_undo.UndoStack = undefined,
+    /// Per-pane docked search bar state (P5.3). Query, toggles,
+    /// debounce, match counts. HWND wire-up (40 px docked WS_CHILD
+    /// with EDIT + toggle + nav buttons) lands with a later P5
+    /// pass; the state lives here so Ctrl+F / search-next / prev
+    /// keybind handlers can route through it when the HWND pops.
+    search_bar: win32_search_bar.SearchBar = undefined,
+    /// OLE drop target registered on the surface HWND. `null` when
+    /// the module's `ensureCustomFormats` fails or Ole32 is absent
+    /// (extremely unlikely on Win10+). Lifetime: created in
+    /// `Surface.init` after the HWND is ready, revoked + deinited
+    /// in `Surface.destroyWindow`. Storage is INLINE on Surface so
+    /// the COM v-table pointer stays stable — Surface itself is
+    /// heap-allocated via core_app.alloc and never moves.
+    drop_target: win32_surface_drop_target.DropTarget = undefined,
+    drop_target_registered: bool = false,
+    /// Clipboard operation parked on `HostOverlayMode.confirm` — the
+    /// owning `Surface` holds deep-copied payload bytes so the async
+    /// accept / cancel callback sees valid data regardless of the
+    /// original caller's buffer lifetime. Non-null exactly while an
+    /// overlay is pending. Drained by `surfaceConfirmPasteAccept` /
+    /// `surfaceConfirmWriteAccept` / the matching cancel callbacks,
+    /// and by `Surface.destroyWindow` so a close-while-pending doesn't
+    /// leak. Migration of the last live `MessageBoxW` (AGENTS.md:84).
+    pending_clipboard_op: ?PendingClipboardOp = null,
 
     pub fn init(
         self: *Surface,
@@ -10288,7 +14008,7 @@ pub const Surface = struct {
         const host = if (opts.host_id) |host_id|
             app.findHostById(host_id) orelse return error.InvalidHost
         else
-            try app.createHost(title, opts.clone_state_from);
+            try app.createHost(title, opts.clone_state_from, opts.passive_show);
         self.* = .{
             .app = app,
             .host = host,
@@ -10296,7 +14016,20 @@ pub const Surface = struct {
             .host_id = host.id,
             .host_active = true,
             .window_visible = false,
+            .undo_stack = win32_undo.UndoStack.init(app.core_app.alloc),
+            .search_bar = win32_search_bar.SearchBar.init(app.core_app.alloc),
+            .drop_target = win32_surface_drop_target.DropTarget.init(
+                app.core_app.alloc,
+                undefined, // surface_ctx — fixed up below after the address stabilises
+                &surfaceDropPayloadCallback,
+            ),
         };
+        // The DropTarget's surface_ctx must be `self`, but we can't
+        // initialise it until `self.*` has been fully assigned above
+        // (taking the address of an in-progress struct literal is
+        // undefined). Patch it in now, before the HWND is created so
+        // the first COM callback has a valid context.
+        self.drop_target.surface_ctx = @ptrCast(self);
         self.background_opacity_default = normalizedBackgroundOpacity(config.@"background-opacity");
 
         const hwnd = CreateWindowExW(
@@ -10315,6 +14048,23 @@ pub const Surface = struct {
         ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
         errdefer _ = DestroyWindow(hwnd);
         self.hwnd = hwnd;
+
+        // Register the OLE drop target so Explorer / browser drops
+        // land as typed input in the terminal. Failure is non-fatal:
+        // the user loses the feature but the terminal still works.
+        // Requires the STA apartment that `App.init` brought up via
+        // `CoInitializeEx`.
+        self.drop_target.register(hwnd) catch |err| {
+            std.log.warn("drop target register failed hwnd={*} err={}", .{ hwnd, err });
+        };
+        self.drop_target_registered = true;
+        // `errdefer` below revokes on failure.  Explicit revoke also
+        // happens in `destroyWindow` via the same helper.
+        errdefer if (self.drop_target_registered) {
+            self.drop_target.revoke(hwnd);
+            self.drop_target_registered = false;
+        };
+
         const content_rect: RECT = host.contentRect() catch .{
             .left = 0,
             .top = host_tab_height,
@@ -10461,7 +14211,50 @@ pub const Surface = struct {
     }
 
     pub fn close(self: *const Surface, process_active: bool) void {
-        _ = process_active;
+        // Core routes `process_active = true` here when
+        // `config.confirm-close-surface` is set AND the terminal
+        // cursor is not at a shell prompt — see
+        // `Surface.needsConfirmQuit()`. Honour it with the non-modal
+        // `HostOverlayMode.confirm` overlay: a chrome-themed Accept /
+        // Cancel pair, focus trap, Esc cancels, Enter accepts. No
+        // pump re-entry (unlike `MessageBoxW`).
+        //
+        // Cannot be `*const self` in practice: the overlay owns a
+        // callback pointer back to this Surface for the accept
+        // path, so we need the address. Zig lets us take `@constCast`
+        // here — the stored pointer is only dereferenced back on the
+        // UI thread, exactly where the core caller already ran.
+        if (process_active) {
+            const mutable: *Surface = @constCast(self);
+            const host = mutable.host orelse {
+                // No host = no overlay available = fall back to the
+                // direct destroy. Shouldn't happen in practice; the
+                // Win32 apprt always attaches a Host before close
+                // paths fire.
+                if (self.hwnd) |hwnd| _ = DestroyWindow(hwnd);
+                return;
+            };
+            host.showConfirm(
+                "Close this terminal?",
+                "A process is still running. Closing this surface will terminate it.",
+                "Close",
+                "Cancel",
+                &surfaceConfirmCloseAccept,
+                null,
+                @ptrCast(mutable),
+            ) catch |err| {
+                // Cannot bypass the confirmation on overlay setup
+                // failure — core asked us to protect a running
+                // process, and unilaterally destroying the HWND here
+                // would defeat `confirm-close-surface` every time
+                // the overlay couldn't render. Leave the surface
+                // alive; the user can retry the close action, and
+                // if the overlay keeps failing that's a separate
+                // (and loud) bug to file.
+                std.log.warn("confirm overlay unavailable err={}; declining close to honour confirm-close-surface", .{err});
+            };
+            return;
+        }
         if (self.hwnd) |hwnd| _ = DestroyWindow(hwnd);
     }
 
@@ -10495,7 +14288,12 @@ pub const Surface = struct {
     }
 
     pub fn getSize(self: *const Surface) !apprt.SurfaceSize {
-        return self.size;
+        return try App.resolveSurfaceSizeWithContext(
+            self.app,
+            self.size,
+            self.hwnd,
+            App.clientSize,
+        );
     }
 
     pub fn getCursorPos(self: *const Surface) !apprt.CursorPos {
@@ -10517,14 +14315,18 @@ pub const Surface = struct {
     ) !bool {
         if (clipboard_type != .standard) return false;
 
-        const text = try self.readClipboardText();
-        defer if (text) |v| self.app.core_app.alloc.free(v);
-
-        const str = text orelse switch (state) {
+        // `str` is always owned by `core_app.alloc` — either taken
+        // from `readClipboardText` (which returns `[:0]u8`) or a
+        // fresh `dupeZ("")` fallback for the osc_52_read empty-clipboard
+        // case. Single-owner + single defer closes the leak Codex
+        // caught: the previous `defer if (text) |v| alloc.free(v)`
+        // didn't cover the fallback allocation.
+        const str: [:0]u8 = (try self.readClipboardText()) orelse switch (state) {
             .paste => return false,
             .osc_52_read => try self.app.core_app.alloc.dupeZ(u8, ""),
             .osc_52_write => unreachable,
         };
+        defer self.app.core_app.alloc.free(str);
 
         self.core_surface.completeClipboardRequest(
             state,
@@ -10534,12 +14336,15 @@ pub const Surface = struct {
             error.UnsafePaste,
             error.UnauthorizedPaste,
             => {
-                if (!self.confirmClipboardRead()) return false;
-                try self.core_surface.completeClipboardRequest(
-                    state,
-                    str,
-                    true,
-                );
+                // Defer to the non-modal confirm overlay; dupes
+                // `str` into surface-owned storage so the local
+                // `text` lifetime doesn't need to span the async
+                // gap. On accept `surfaceConfirmPasteAccept` calls
+                // `completeClipboardRequest(state, …, true)`.
+                self.requestPasteConfirm(state, str) catch |inner| {
+                    std.log.warn("paste confirm dispatch failed err={}", .{inner});
+                    return false;
+                };
             },
 
             else => return err,
@@ -10549,17 +14354,46 @@ pub const Surface = struct {
     }
 
     pub fn setClipboard(
-        self: *const Surface,
+        self: *Surface,
         clipboard_type: apprt.Clipboard,
         contents: []const apprt.ClipboardContent,
         confirm: bool,
     ) !void {
         if (clipboard_type != .standard) return;
-        if (confirm and !self.confirmClipboardWrite()) return;
+        if (confirm) {
+            // Non-modal confirm path: dup `contents` into surface-owned
+            // storage + show the overlay. On accept
+            // `surfaceConfirmWriteAccept` runs the same html-then-
+            // plain branch as below; on cancel the dup is freed and
+            // no write happens. Fire-and-forget from core's POV.
+            self.requestWriteConfirm(clipboard_type, contents) catch |err| {
+                std.log.warn("clipboard write confirm dispatch failed err={}", .{err});
+            };
+            return;
+        }
 
+        // Scan for text/html and text/plain. When both are offered
+        // (e.g. `copy_to_clipboard = .html` emits both), write them
+        // in a single OpenClipboard/EmptyClipboard/Close cycle so
+        // consumers that understand CF_HTML (Word, WordPad, OneNote)
+        // get the styled fragment and consumers that don't (Notepad,
+        // cmd.exe) still get usable plain text.
+        var html_content: ?[]const u8 = null;
+        var plain_content: ?[]const u8 = null;
         for (contents) |content| {
-            if (!std.mem.eql(u8, content.mime, "text/plain")) continue;
-            try self.writeClipboardText(content.data);
+            if (std.mem.eql(u8, content.mime, "text/html")) {
+                html_content = content.data;
+            } else if (std.mem.eql(u8, content.mime, "text/plain")) {
+                plain_content = content.data;
+            }
+        }
+
+        if (html_content) |html| {
+            try self.writeClipboardHtml(html, plain_content);
+            return;
+        }
+        if (plain_content) |plain| {
+            try self.writeClipboardText(plain);
             return;
         }
     }
@@ -10610,15 +14444,74 @@ pub const Surface = struct {
         self.renderer_repaint_requested.store(false, .release);
     }
 
-    pub fn requestRepaint(self: *Surface) !void {
-        const hwnd = self.hwnd orelse return;
+    fn markLiveResizeRepaintDeferred(self: *Surface) void {
+        self.live_resize_repaint_deferred = true;
+    }
+
+    fn queuePaintRequest(self: *Surface, update_now: bool) !void {
+        const hwnd = self.hwnd orelse return error.NoWindow;
         if (self.paint_pending) return;
+
         self.paint_pending = true;
+        errdefer self.paint_pending = false;
+
         if (InvalidateRect(hwnd, null, 0) == 0) {
-            self.paint_pending = false;
-            self.cancelRendererRepaintRequest();
             return windows.unexpectedError(windows.kernel32.GetLastError());
         }
+        if (update_now) _ = UpdateWindow(hwnd);
+    }
+
+    fn flushDeferredLiveResizeRepaint(self: *Surface, repaint_fn: anytype) !bool {
+        if (!self.live_resize_repaint_deferred) return false;
+        if (self.paint_pending) {
+            self.live_resize_repaint_deferred = false;
+            return true;
+        }
+
+        try repaint_fn(self);
+        self.live_resize_repaint_deferred = false;
+        return true;
+    }
+
+    fn repaintHostedChild(self: *Surface) !void {
+        if (self.live_resize_repaint_deferred) {
+            _ = try self.flushDeferredLiveResizeRepaint(struct {
+                fn repaint(surface: *Surface) !void {
+                    try surface.queuePaintRequest(true);
+                }
+            }.repaint);
+            return;
+        }
+
+        try self.queuePaintRequest(true);
+    }
+
+    pub fn requestRepaint(self: *Surface) !void {
+        _ = self.hwnd orelse return;
+        // During an interactive drag-resize the OS drives WM_SIZE →
+        // WM_PAINT on every mouse-delta; stacking additional
+        // InvalidateRect calls from the renderer thread just piles
+        // pressure onto the pump without producing extra visible
+        // frames. Drop the wake and let the WM_SIZE-driven cadence
+        // own pacing. WM_EXITSIZEMOVE and layout finish with
+        // `InvalidateRect` on the host plus hosted child HWNDs so nothing
+        // is permanently lost.
+        //
+        // Gate on THIS surface's own Host — an App-wide flag would
+        // freeze background windows whenever any foreground window
+        // enters a drag. Surfaces outside a Host (quick-terminal
+        // pre-host-attach, pre-init paint) fall through without
+        // gating.
+        if (self.host) |h| {
+            if (h.is_live_resize.load(.acquire)) {
+                self.markLiveResizeRepaintDeferred();
+                return;
+            }
+        }
+        self.queuePaintRequest(false) catch |err| {
+            self.cancelRendererRepaintRequest();
+            return err;
+        };
     }
 
     pub fn redraw(self: *Surface) !void {
@@ -11101,7 +14994,11 @@ pub const Surface = struct {
         }
     }
 
-    fn windowSizeChanged(self: *Surface) void {
+    /// Refresh `self.size` from `GetClientRect` and notify the core. Call this
+    /// after `MoveWindow` from `Host.layout` as well as from `WM_SIZE`: with
+    /// `bRepaint = false`, the child can receive `WM_PAINT` before `WM_SIZE`,
+    /// leaving a stale screen size until the next resize event.
+    fn syncCoreSizeFromClientRect(self: *Surface) void {
         const hwnd = self.hwnd orelse return;
         self.size = self.app.clientSize(hwnd) catch return;
 
@@ -11109,6 +15006,17 @@ pub const Surface = struct {
         self.core_surface.sizeCallback(self.size) catch |err| {
             log.err("win32 size callback failed err={}", .{err});
         };
+    }
+
+    fn windowSizeChanged(self: *Surface) void {
+        const hwnd = self.hwnd orelse return;
+        self.syncCoreSizeFromClientRect();
+
+        // `MoveWindow(..., bRepaint = false)` resizes the child HWND without
+        // guaranteeing a follow-up paint for the newly exposed pixels. Request
+        // one from the child itself after `WM_SIZE`, when the default
+        // framebuffer and client rect have both advanced to the new size.
+        _ = InvalidateRect(hwnd, null, 0);
     }
 
     fn focusChanged(self: *Surface, focused: bool) void {
@@ -11437,6 +15345,15 @@ pub const Surface = struct {
         const alloc = self.app.core_app.alloc;
         self.destroy_on_wm_destroy = false;
 
+        // Revoke the drop target BEFORE destroying the HWND — Ole
+        // would otherwise hold a dangling HWND reference until the
+        // process exits. Idempotent on already-revoked targets.
+        if (self.drop_target_registered) {
+            if (self.hwnd) |hwnd| self.drop_target.revoke(hwnd);
+            self.drop_target_registered = false;
+        }
+        self.drop_target.deinit();
+
         if (self.core_initialized) {
             if (self.inspector_visible) {
                 self.core_surface.deactivateInspector();
@@ -11446,6 +15363,24 @@ pub const Surface = struct {
             self.core_surface.deinit();
             self.core_initialized = false;
         }
+
+        // Drain the undo stack. Entries own scrollback / title bytes
+        // allocated via `app.core_app.alloc`; `deinit` frees each.
+        self.undo_stack.deinit();
+        // Drain the search bar's query allocation.
+        self.search_bar.deinit();
+        // Tear down any confirm overlay whose userdata points at
+        // this Surface BEFORE we drain our own pending state. If we
+        // skipped this, a user click on Accept / Cancel after the
+        // Surface is freed would fire
+        // `surfaceConfirmPasteAccept(&freed_surface)` → UAF. Hiding
+        // the overlay here clears the Host's `confirm_payload`
+        // entirely, so no later dispatch is possible.
+        if (self.host) |host| host.cancelConfirmIfOwnedBy(@ptrCast(self));
+        // Drop any pending clipboard-confirm op so a close-while-
+        // pending doesn't leak the duplicated payload bytes.
+        if (self.pending_clipboard_op) |*op| op.deinit(self.app.core_app.alloc);
+        self.pending_clipboard_op = null;
 
         self.destroyGL();
 
@@ -11614,21 +15549,116 @@ pub const Surface = struct {
         return true;
     }
 
-    fn confirmClipboardRead(self: *const Surface) bool {
-        return self.confirmMessageBox(clipboard_read_title, clipboard_read_message, MB_YESNO | MB_ICONWARNING) == IDYES;
+    /// Queue a deferred clipboard-paste confirm. Dupes `data` into
+    /// surface-owned storage, parks it as a `PendingClipboardOp.paste`,
+    /// and shows the non-modal `HostOverlayMode.confirm` overlay. On
+    /// accept `surfaceConfirmPasteAccept` completes the paste; on
+    /// cancel `surfaceConfirmPasteCancel` frees the payload.
+    ///
+    /// Replaces the synchronous `confirmClipboardRead() + MessageBoxW`
+    /// idiom — see AGENTS.md:84 / task #13.
+    fn requestPasteConfirm(
+        self: *Surface,
+        request: apprt.ClipboardRequest,
+        data: []const u8,
+    ) !void {
+        const host = self.host orelse return error.NoHost;
+        const alloc = self.app.core_app.alloc;
+
+        // Defensive: clear any leftover op before queuing a new one so
+        // the destructor can't see a mixed state.
+        if (self.pending_clipboard_op) |*old| old.deinit(alloc);
+        self.pending_clipboard_op = null;
+
+        const data_copy = try alloc.dupeZ(u8, data);
+        // Single errdefer — if showConfirm fails we free the buffer
+        // and leave `pending_clipboard_op` untouched (still null from
+        // the defensive clear above). Committing the op BEFORE
+        // showConfirm would produce a double-free via a second
+        // errdefer on success-commit-then-failure (Codex review bug
+        // #3 / #10).
+        errdefer alloc.free(data_copy);
+
+        try host.showConfirm(
+            "Allow clipboard paste?",
+            "winghostty needs confirmation before completing this clipboard paste or read request.",
+            "Allow",
+            "Cancel",
+            surfaceConfirmPasteAccept,
+            surfaceConfirmPasteCancel,
+            self,
+        );
+
+        // showConfirm succeeded — the callback is registered and
+        // fires async on user action (Enter / Esc / click), never
+        // synchronously inside this call. Commit the pending op now
+        // so the callback can pick it up.
+        self.pending_clipboard_op = .{ .paste = .{
+            .request = request,
+            .data = data_copy,
+        } };
     }
 
-    fn confirmClipboardWrite(self: *const Surface) bool {
-        return self.confirmMessageBox(clipboard_write_title, clipboard_write_message, MB_YESNO | MB_ICONWARNING) == IDYES;
-    }
+    /// Queue a deferred clipboard-write confirm. Dupes every
+    /// `ClipboardContent` entry (mime + data both sentinel-terminated)
+    /// into surface-owned storage. Same accept / cancel discipline as
+    /// `requestPasteConfirm`.
+    fn requestWriteConfirm(
+        self: *Surface,
+        clipboard: apprt.Clipboard,
+        contents: []const apprt.ClipboardContent,
+    ) !void {
+        const host = self.host orelse return error.NoHost;
+        const alloc = self.app.core_app.alloc;
 
-    fn confirmMessageBox(
-        self: *const Surface,
-        title: LPCWSTR,
-        message: LPCWSTR,
-        flags: UINT,
-    ) i32 {
-        return MessageBoxW(self.hwnd, message, title, flags);
+        if (self.pending_clipboard_op) |*old| old.deinit(alloc);
+        self.pending_clipboard_op = null;
+
+        const owned = try alloc.alloc(OwnedClipboardContent, contents.len);
+        var filled: usize = 0;
+        // Outer errdefer frees fully-committed entries `[0..filled)`
+        // plus the backing slice. Per-iteration
+        // `errdefer alloc.free(mime_copy)` covers the partial case
+        // where the mime dup succeeds but the follow-on data dup
+        // fails — without it the mime dup would leak because
+        // `filled` hasn't advanced yet. Codex re-review bug.
+        errdefer {
+            var i: usize = 0;
+            while (i < filled) : (i += 1) {
+                alloc.free(owned[i].mime);
+                alloc.free(owned[i].data);
+            }
+            alloc.free(owned);
+        }
+        for (contents) |c| {
+            const mime_copy = try alloc.dupeZ(u8, c.mime);
+            errdefer alloc.free(mime_copy);
+            const data_copy = try alloc.dupeZ(u8, c.data);
+            // Both dupes succeeded — commit atomically into owned[]
+            // and advance filled. The per-iter mime errdefer goes
+            // out of scope without firing.
+            owned[filled] = .{ .mime = mime_copy, .data = data_copy };
+            filled += 1;
+        }
+
+        try host.showConfirm(
+            "Allow clipboard write?",
+            "winghostty needs confirmation before allowing this application to write to the Windows clipboard.",
+            "Allow",
+            "Cancel",
+            surfaceConfirmWriteAccept,
+            surfaceConfirmWriteCancel,
+            self,
+        );
+
+        // showConfirm succeeded — commit the pending op. The async
+        // accept callback picks it up; same race-free rationale as
+        // `requestPasteConfirm` (showConfirm does not invoke
+        // callbacks synchronously).
+        self.pending_clipboard_op = .{ .write = .{
+            .clipboard = clipboard,
+            .contents = owned,
+        } };
     }
 
     fn readClipboardText(self: *Surface) !?[:0]u8 {
@@ -11676,6 +15706,101 @@ pub const Surface = struct {
 
         if (SetClipboardData(CF_UNICODETEXT, mem) == null) {
             return windows.unexpectedError(windows.kernel32.GetLastError());
+        }
+    }
+
+    /// Write both CF_HTML (styled fragment) and CF_UNICODETEXT
+    /// (plain fallback) in a single clipboard cycle. CF_HTML
+    /// consumers (Word / WordPad / OneNote) read the styled
+    /// payload; plain-text consumers (Notepad / cmd / Terminal
+    /// without HTML support) read the fallback.
+    ///
+    /// If `plain` is provided (core passes both `text/html` and
+    /// `text/plain` when the action is, say, `copy_on_select`), we
+    /// use it verbatim. Otherwise (e.g. explicit
+    /// `copy_to_clipboard:html` which only provides `text/html`),
+    /// we synthesize a plain fallback by stripping HTML tags so
+    /// Notepad etc. get readable text instead of raw markup.
+    fn writeClipboardHtml(self: *const Surface, html: []const u8, plain: ?[]const u8) !void {
+        const alloc = self.app.core_app.alloc;
+
+        // Lazily register CF_HTML once per App. The ID is process-
+        // local and stable.
+        if (self.app.cf_html_format == 0) {
+            const id = RegisterClipboardFormatW(CF_HTML_NAME);
+            if (id == 0) {
+                return windows.unexpectedError(windows.kernel32.GetLastError());
+            }
+            self.app.cf_html_format = id;
+        }
+        const cf_html = self.app.cf_html_format;
+
+        const wrapped = try win32_clipboard_html.wrapFragment(alloc, html);
+        defer alloc.free(wrapped);
+
+        // Pick the plain-text payload. Caller-supplied wins; else
+        // derive a readable approximation from the HTML by walking
+        // through the bytes and dropping anything between `<` and
+        // `>`. Allocation lifetime: the stripped copy is owned by
+        // `alloc`; the caller-supplied slice is borrowed and we
+        // don't free it. `plain_owned_for_free` tracks ownership.
+        var plain_owned_for_free: ?[]u8 = null;
+        defer if (plain_owned_for_free) |owned| alloc.free(owned);
+        const plain_src: []const u8 = if (plain) |p| p else blk: {
+            const stripped = try stripHtmlTags(alloc, html);
+            plain_owned_for_free = stripped;
+            break :blk stripped;
+        };
+        const plain_w = try std.unicode.utf8ToUtf16LeAllocZ(alloc, plain_src);
+        defer alloc.free(plain_w);
+
+        if (OpenClipboard(self.hwnd) == 0) {
+            return windows.unexpectedError(windows.kernel32.GetLastError());
+        }
+        defer _ = CloseClipboard();
+
+        if (EmptyClipboard() == 0) {
+            return windows.unexpectedError(windows.kernel32.GetLastError());
+        }
+
+        // CF_HTML payload: the wrapped byte stream + a trailing
+        // null. `GMEM_MOVEABLE` is required for `SetClipboardData`;
+        // the clipboard takes ownership on success, so we skip the
+        // free on that path.
+        {
+            const bytes = wrapped.len + 1;
+            const mem = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, bytes) orelse
+                return windows.unexpectedError(windows.kernel32.GetLastError());
+            errdefer _ = GlobalFree(mem);
+            const locked = GlobalLock(mem) orelse
+                return windows.unexpectedError(windows.kernel32.GetLastError());
+            {
+                defer _ = GlobalUnlock(mem);
+                const dst: [*]u8 = @ptrCast(locked);
+                @memcpy(dst[0..wrapped.len], wrapped);
+                dst[wrapped.len] = 0;
+            }
+            if (SetClipboardData(cf_html, mem) == null) {
+                return windows.unexpectedError(windows.kernel32.GetLastError());
+            }
+        }
+
+        // CF_UNICODETEXT fallback.
+        {
+            const bytes = (plain_w.len + 1) * @sizeOf(u16);
+            const mem = GlobalAlloc(GMEM_MOVEABLE | GMEM_ZEROINIT, bytes) orelse
+                return windows.unexpectedError(windows.kernel32.GetLastError());
+            errdefer _ = GlobalFree(mem);
+            const locked = GlobalLock(mem) orelse
+                return windows.unexpectedError(windows.kernel32.GetLastError());
+            {
+                defer _ = GlobalUnlock(mem);
+                const dst: [*]u16 = @ptrCast(@alignCast(locked));
+                @memcpy(dst[0 .. plain_w.len + 1], plain_w[0 .. plain_w.len + 1]);
+            }
+            if (SetClipboardData(CF_UNICODETEXT, mem) == null) {
+                return windows.unexpectedError(windows.kernel32.GetLastError());
+            }
         }
     }
 
@@ -11946,6 +16071,117 @@ test "win32 renderer repaint request coalesces until paint completes" {
 
     surface.finishRendererRepaintRequest();
     try std.testing.expect(surface.beginRendererRepaintRequest());
+}
+
+test "win32 requestRepaint preserves renderer request during live resize" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var host: Host = undefined;
+    host.is_live_resize = .init(true);
+
+    var surface: Surface = undefined;
+    surface.hwnd = @ptrFromInt(1);
+    surface.host = &host;
+    surface.paint_pending = false;
+    surface.renderer_repaint_requested = .init(true);
+
+    try surface.requestRepaint();
+
+    try std.testing.expect(surface.renderer_repaint_requested.load(.acquire));
+    try std.testing.expect(surface.live_resize_repaint_deferred);
+    try std.testing.expect(!surface.paint_pending);
+}
+
+test "win32 flushDeferredVisibleSurfaceRepaints schedules deferred visible surface once" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var active_surface: Surface = undefined;
+    active_surface.window_visible = true;
+    active_surface.live_resize_repaint_deferred = true;
+    active_surface.paint_pending = false;
+
+    var inactive_surface: Surface = undefined;
+    inactive_surface.window_visible = true;
+    inactive_surface.live_resize_repaint_deferred = true;
+    inactive_surface.paint_pending = false;
+
+    var host: Host = undefined;
+    host.tabs = .empty;
+    host.active_tab = 0;
+    defer {
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &active_surface));
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &inactive_surface));
+
+    var queue_calls: usize = 0;
+    const TestRepaint = struct {
+        var counter: *usize = undefined;
+
+        fn repaint(surface: *Surface) !void {
+            surface.paint_pending = true;
+            counter.* += 1;
+        }
+    };
+    TestRepaint.counter = &queue_calls;
+
+    host.flushDeferredVisibleSurfaceRepaintsWith(TestRepaint.repaint);
+
+    try std.testing.expectEqual(@as(usize, 1), queue_calls);
+    try std.testing.expect(active_surface.paint_pending);
+    try std.testing.expect(!active_surface.live_resize_repaint_deferred);
+    try std.testing.expect(inactive_surface.live_resize_repaint_deferred);
+
+    host.flushDeferredVisibleSurfaceRepaintsWith(TestRepaint.repaint);
+
+    try std.testing.expectEqual(@as(usize, 1), queue_calls);
+}
+
+test "win32 getSize prefers live hwnd client rect over cached size" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const hinstance = GetModuleHandleW(null);
+    const hwnd = CreateWindowExW(
+        0,
+        prompt_label_class,
+        std.unicode.utf8ToUtf16LeStringLiteral(""),
+        WS_POPUP | WS_VISIBLE,
+        0,
+        0,
+        320,
+        240,
+        null,
+        null,
+        hinstance,
+        null,
+    ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+    defer _ = DestroyWindow(hwnd);
+
+    var app: App = undefined;
+    var surface: Surface = undefined;
+    surface.app = &app;
+    surface.hwnd = hwnd;
+    surface.size = .{ .width = 80, .height = 25 };
+
+    const size = try surface.getSize();
+    try std.testing.expectEqual(@as(u32, 320), size.width);
+    try std.testing.expectEqual(@as(u32, 240), size.height);
+}
+
+test "win32 getSize falls back to cached size without hwnd" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var app: App = undefined;
+    var surface: Surface = undefined;
+    surface.app = &app;
+    surface.hwnd = null;
+    surface.size = .{ .width = 132, .height = 43 };
+
+    const size = try surface.getSize();
+    try std.testing.expectEqual(@as(u32, 132), size.width);
+    try std.testing.expectEqual(@as(u32, 43), size.height);
 }
 
 test "win32 sanitizeIpcNamespace normalizes invalid characters" {
@@ -13041,6 +17277,8 @@ test "win32 buildTabOverviewOverlayLabel reflects current host tab" {
 test "win32 buildOverlayPaintLabelText reflects live overlay mode" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
+    const snap = PaletteSnapshot.fromDefaults();
+
     const command = try buildOverlayPaintLabelText(
         std.testing.allocator,
         .command_palette,
@@ -13048,9 +17286,12 @@ test "win32 buildOverlayPaintLabelText reflects live overlay mode" {
         null,
         null,
         .{},
+        snap,
     );
     defer std.testing.allocator.free(command);
-    try std.testing.expectEqualStrings("Command 5", command);
+    // Any fuzzy match yields "Run action" since Enter runs the top
+    // candidate; the old "Command N" was tied to strict prefix match.
+    try std.testing.expectEqualStrings("Run action", command);
 
     const search = try buildOverlayPaintLabelText(
         std.testing.allocator,
@@ -13059,6 +17300,7 @@ test "win32 buildOverlayPaintLabelText reflects live overlay mode" {
         8,
         2,
         .{},
+        snap,
     );
     defer std.testing.allocator.free(search);
     try std.testing.expectEqualStrings("Find 2/8", search);
@@ -13070,6 +17312,7 @@ test "win32 buildOverlayPaintLabelText reflects live overlay mode" {
         null,
         null,
         .{},
+        snap,
     );
     defer std.testing.allocator.free(title);
     try std.testing.expectEqualStrings("Window title", title);
@@ -13077,6 +17320,9 @@ test "win32 buildOverlayPaintLabelText reflects live overlay mode" {
 
 test "win32 buildOverlayFeedbackText prefers inline banner state" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const snap = PaletteSnapshot.fromDefaults();
+    const empty_mru: []const []const u8 = &.{};
 
     const info = try buildOverlayFeedbackText(
         std.testing.allocator,
@@ -13089,6 +17335,8 @@ test "win32 buildOverlayFeedbackText prefers inline banner state" {
         null,
         .{},
         1,
+        snap,
+        empty_mru,
     );
     defer std.testing.allocator.free(info);
     try std.testing.expectEqualStrings("Info: Try: new_tab", info);
@@ -13104,6 +17352,8 @@ test "win32 buildOverlayFeedbackText prefers inline banner state" {
         null,
         .{},
         1,
+        snap,
+        empty_mru,
     );
     defer std.testing.allocator.free(err);
     try std.testing.expectEqualStrings("Error: Unknown Ghostty action", err);
@@ -13119,6 +17369,8 @@ test "win32 buildOverlayFeedbackText prefers inline banner state" {
         2,
         .{},
         1,
+        snap,
+        empty_mru,
     );
     defer std.testing.allocator.free(fallback);
     try std.testing.expect(std.mem.indexOf(u8, fallback, "next match") != null);
@@ -13466,37 +17718,45 @@ test "win32 buildSearchDetailText reflects live search context" {
 test "win32 buildOverlayAcceptLabel reflects overlay action state" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
-    const palette_idle = try buildOverlayAcceptLabel(std.testing.allocator, .command_palette, "", null, null, null);
+    const snap = PaletteSnapshot.fromDefaults();
+
+    const palette_idle = try buildOverlayAcceptLabel(std.testing.allocator, .command_palette, "", null, null, null, snap);
     defer std.testing.allocator.free(palette_idle);
     try std.testing.expectEqualStrings("Close", palette_idle);
 
-    const palette_run = try buildOverlayAcceptLabel(std.testing.allocator, .command_palette, "new_tab", null, null, null);
+    const palette_run = try buildOverlayAcceptLabel(std.testing.allocator, .command_palette, "new_tab", null, null, null, snap);
     defer std.testing.allocator.free(palette_run);
     try std.testing.expectEqualStrings("Run", palette_run);
 
-    const palette_matches = try buildOverlayAcceptLabel(std.testing.allocator, .command_palette, "toggle_", null, null, null);
+    // Under fuzzy ranking, any non-empty match yields "Run" because
+    // Enter submits the top-ranked candidate. The old "Pick" label
+    // (match count > 0 but no unique prefix) is unreachable now.
+    const palette_matches = try buildOverlayAcceptLabel(std.testing.allocator, .command_palette, "toggle_", null, null, null, snap);
     defer std.testing.allocator.free(palette_matches);
-    try std.testing.expectEqualStrings("Pick", palette_matches);
+    try std.testing.expectEqualStrings("Run", palette_matches);
 
-    const search_next = try buildOverlayAcceptLabel(std.testing.allocator, .search, "needle", "needle", 8, 2);
+    const search_next = try buildOverlayAcceptLabel(std.testing.allocator, .search, "needle", "needle", 8, 2, snap);
     defer std.testing.allocator.free(search_next);
     try std.testing.expectEqualStrings("Next", search_next);
 
-    const search_find = try buildOverlayAcceptLabel(std.testing.allocator, .search, "other", "needle", 8, 2);
+    const search_find = try buildOverlayAcceptLabel(std.testing.allocator, .search, "other", "needle", 8, 2, snap);
     defer std.testing.allocator.free(search_find);
     try std.testing.expectEqualStrings("Find", search_find);
 
-    const tab_go = try buildOverlayAcceptLabel(std.testing.allocator, .tab_overview, "2", null, null, null);
+    const tab_go = try buildOverlayAcceptLabel(std.testing.allocator, .tab_overview, "2", null, null, null, snap);
     defer std.testing.allocator.free(tab_go);
     try std.testing.expectEqualStrings("Go", tab_go);
 
-    const title_apply = try buildOverlayAcceptLabel(std.testing.allocator, .surface_title, "logs", null, null, null);
+    const title_apply = try buildOverlayAcceptLabel(std.testing.allocator, .surface_title, "logs", null, null, null, snap);
     defer std.testing.allocator.free(title_apply);
     try std.testing.expectEqualStrings("Apply", title_apply);
 }
 
 test "win32 buildOverlayHintText reflects live overlay guidance" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const snap = PaletteSnapshot.fromDefaults();
+    const empty_mru: []const []const u8 = &.{};
 
     const command_unique = try buildOverlayHintText(
         std.testing.allocator,
@@ -13507,6 +17767,8 @@ test "win32 buildOverlayHintText reflects live overlay guidance" {
         null,
         .{},
         1,
+        snap,
+        empty_mru,
     );
     defer std.testing.allocator.free(command_unique);
     try std.testing.expect(std.mem.indexOf(u8, command_unique, "reload_config") != null);
@@ -13520,6 +17782,8 @@ test "win32 buildOverlayHintText reflects live overlay guidance" {
         2,
         .{},
         1,
+        snap,
+        empty_mru,
     );
     defer std.testing.allocator.free(search_next);
     try std.testing.expect(std.mem.indexOf(u8, search_next, "2/8") != null);
@@ -13534,6 +17798,8 @@ test "win32 buildOverlayHintText reflects live overlay guidance" {
         null,
         .{ .index = 1, .total = 4 },
         2,
+        snap,
+        empty_mru,
     );
     defer std.testing.allocator.free(tab_invalid);
     try std.testing.expect(std.mem.indexOf(u8, tab_invalid, "out of range") != null);
@@ -13547,6 +17813,8 @@ test "win32 buildOverlayHintText reflects live overlay guidance" {
         null,
         .{ .index = 0, .total = 3 },
         2,
+        snap,
+        empty_mru,
     );
     defer std.testing.allocator.free(tab_title);
     try std.testing.expect(std.mem.indexOf(u8, tab_title, "tab 1/3") != null);
@@ -13595,94 +17863,111 @@ test "win32 buildInspectorButtonLabel reflects inspector and pane state" {
 test "win32 buildCommandPaletteOverlayLabel reflects palette state" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
-    const idle = try buildCommandPaletteOverlayLabel(std.testing.allocator, "");
+    const snap = PaletteSnapshot.fromDefaults();
+
+    const idle = try buildCommandPaletteOverlayLabel(std.testing.allocator, snap, "");
     defer std.testing.allocator.free(idle);
     try std.testing.expectEqualStrings("Command", idle);
 
-    const exact = try buildCommandPaletteOverlayLabel(std.testing.allocator, "new_tab");
+    const exact = try buildCommandPaletteOverlayLabel(std.testing.allocator, snap, "new_tab");
     defer std.testing.allocator.free(exact);
     try std.testing.expectEqualStrings("Run action", exact);
 
-    const unique = try buildCommandPaletteOverlayLabel(std.testing.allocator, "reload_");
+    const unique = try buildCommandPaletteOverlayLabel(std.testing.allocator, snap, "reload_");
     defer std.testing.allocator.free(unique);
     try std.testing.expectEqualStrings("Run action", unique);
 
-    const matches = try buildCommandPaletteOverlayLabel(std.testing.allocator, "toggle_");
+    const matches = try buildCommandPaletteOverlayLabel(std.testing.allocator, snap, "toggle_");
     defer std.testing.allocator.free(matches);
-    try std.testing.expectEqualStrings("Command 5", matches);
+    // Multiple fuzzy matches — top is runnable, so label says "Run action".
+    try std.testing.expectEqualStrings("Run action", matches);
 
-    const invalid = try buildCommandPaletteOverlayLabel(std.testing.allocator, "definitely_not_real");
+    const invalid = try buildCommandPaletteOverlayLabel(std.testing.allocator, snap, "definitely_not_real");
     defer std.testing.allocator.free(invalid);
     try std.testing.expectEqualStrings("Command ?", invalid);
 }
 
-test "win32 commandPaletteCompletionCandidate resolves and cycles curated matches" {
+test "win32 commandPaletteCompletionCandidate resolves and cycles defaults" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const snap = PaletteSnapshot.fromDefaults();
 
     try std.testing.expectEqualStrings(
         "reload_config",
-        commandPaletteCompletionCandidate("reload_", "reload_", false).?,
+        commandPaletteCompletionCandidate(snap, "reload_", "reload_", false).?,
     );
-    try std.testing.expectEqualStrings(
-        "toggle_split_zoom",
-        commandPaletteCompletionCandidate("toggle_", "toggle_", false).?,
-    );
-    try std.testing.expectEqualStrings(
-        "toggle_fullscreen",
-        commandPaletteCompletionCandidate("toggle_", "toggle_split_zoom", false).?,
-    );
-    try std.testing.expectEqualStrings(
-        "toggle_window_decorations",
-        commandPaletteCompletionCandidate("toggle_", "toggle_fullscreen", false).?,
-    );
-    try std.testing.expectEqualStrings(
-        "toggle_fullscreen",
-        commandPaletteCompletionCandidate("toggle_", "toggle_window_decorations", true).?,
-    );
+
+    // toggle_* has multiple matches in defaults; first-next/reverse should
+    // land on entries that all begin with "toggle_".
+    const first = commandPaletteCompletionCandidate(snap, "toggle_", "toggle_", false).?;
+    try std.testing.expect(std.mem.startsWith(u8, first, "toggle_"));
+
+    const second = commandPaletteCompletionCandidate(snap, "toggle_", first, false).?;
+    try std.testing.expect(std.mem.startsWith(u8, second, "toggle_"));
+    try std.testing.expect(!std.mem.eql(u8, first, second));
+
+    const reverse = commandPaletteCompletionCandidate(snap, "toggle_", first, true).?;
+    try std.testing.expect(std.mem.startsWith(u8, reverse, "toggle_"));
+    try std.testing.expect(!std.mem.eql(u8, reverse, first));
 }
 
 test "win32 commandPaletteBannerText shows ready banner for valid action" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
-    const banner = (try commandPaletteBannerText(std.testing.allocator, "new_tab")).?;
+    const snap = PaletteSnapshot.fromDefaults();
+    const empty_mru: []const []const u8 = &.{};
+    const banner = (try commandPaletteBannerText(std.testing.allocator, snap, "new_tab", empty_mru)).?;
     defer std.testing.allocator.free(banner);
-    try std.testing.expectEqualStrings("Ready: new_tab - open a new tab in this window", banner);
+    try std.testing.expect(std.mem.startsWith(u8, banner, "Ready: new_tab"));
+    try std.testing.expect(std.mem.indexOf(u8, banner, "Open a new tab") != null);
 }
 
 test "win32 commandPaletteBannerText suggests matching actions" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
-    const banner = (try commandPaletteBannerText(std.testing.allocator, "new_")).?;
+    const snap = PaletteSnapshot.fromDefaults();
+    const empty_mru: []const []const u8 = &.{};
+    const banner = (try commandPaletteBannerText(std.testing.allocator, snap, "new_", empty_mru)).?;
     defer std.testing.allocator.free(banner);
+    // Top-5 match cap means a specific "new_split:*" may or may not
+    // appear, but the banner should list at least new_tab and at
+    // least one new_split variant.
     try std.testing.expect(std.mem.indexOf(u8, banner, "new_tab") != null);
-    try std.testing.expect(std.mem.indexOf(u8, banner, "new_split:right") != null);
-    try std.testing.expect(std.mem.indexOf(u8, banner, "open a new tab in this window") != null);
-    try std.testing.expect(std.mem.indexOf(u8, banner, "split the active pane to the right") != null);
+    try std.testing.expect(std.mem.indexOf(u8, banner, "new_split") != null);
 }
 
 test "win32 commandPaletteBannerText resolves unique prefix" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
-    const banner = (try commandPaletteBannerText(std.testing.allocator, "reload_")).?;
+    const snap = PaletteSnapshot.fromDefaults();
+    const empty_mru: []const []const u8 = &.{};
+    const banner = (try commandPaletteBannerText(std.testing.allocator, snap, "reload_", empty_mru)).?;
     defer std.testing.allocator.free(banner);
-    try std.testing.expectEqualStrings("Ready: reload_config - reload winghostty configuration", banner);
+    try std.testing.expect(std.mem.startsWith(u8, banner, "Ready: reload_config"));
+    try std.testing.expect(std.mem.indexOf(u8, banner, "Reload") != null);
 }
 
-test "win32 commandPaletteBannerText uses Windows fullscreen wording" {
+test "win32 commandPaletteBannerText uses fullscreen description" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
-    const banner = (try commandPaletteBannerText(std.testing.allocator, "toggle_fullscreen")).?;
+    const snap = PaletteSnapshot.fromDefaults();
+    const empty_mru: []const []const u8 = &.{};
+    const banner = (try commandPaletteBannerText(std.testing.allocator, snap, "toggle_fullscreen", empty_mru)).?;
     defer std.testing.allocator.free(banner);
-    try std.testing.expectEqualStrings("Ready: toggle_fullscreen - toggle fullscreen", banner);
+    try std.testing.expect(std.mem.startsWith(u8, banner, "Ready: toggle_fullscreen"));
+    try std.testing.expect(std.mem.indexOf(u8, banner, "fullscreen") != null);
 }
 
 test "win32 commandPaletteBannerText suggests tab overview action" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
-    const banner = (try commandPaletteBannerText(std.testing.allocator, "toggle_tab")).?;
+    const snap = PaletteSnapshot.fromDefaults();
+    const empty_mru: []const []const u8 = &.{};
+    const banner = (try commandPaletteBannerText(std.testing.allocator, snap, "toggle_tab", empty_mru)).?;
     defer std.testing.allocator.free(banner);
     try std.testing.expect(std.mem.indexOf(u8, banner, "toggle_tab_overview") != null);
-    try std.testing.expect(std.mem.indexOf(u8, banner, "tab list") != null);
+    // "tab overview" is part of the default description verbatim.
+    try std.testing.expect(std.mem.indexOf(u8, banner, "tab overview") != null);
 }
 
 test "win32 desiredTabIndex cycles and clamps" {

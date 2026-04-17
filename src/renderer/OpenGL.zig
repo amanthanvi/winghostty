@@ -40,7 +40,6 @@ const log = std.log.scoped(.opengl);
 const WglSwapIntervalExt = *const fn (interval: c_int) callconv(.winapi) windows.BOOL;
 const wgl_swap_interval_ext_name: [*:0]const u8 = "wglSwapIntervalEXT";
 const enable_gl_debug_output = false;
-const enable_win32_swap_interval = false;
 
 /// We require at least OpenGL 4.3
 pub const MIN_VERSION_MAJOR = 4;
@@ -259,10 +258,6 @@ fn ensureWin32SwapInterval(self: *OpenGL) void {
     if (apprt.runtime != apprt.win32) return;
     if (self.swap_interval_configured) return;
     self.swap_interval_configured = true;
-    if (!enable_win32_swap_interval) {
-        self.swap_interval_supported = false;
-        return;
-    }
 
     const proc = apprt.win32.getProcAddress(wgl_swap_interval_ext_name) orelse {
         log.debug("WGL swap interval extension unavailable; leaving window-vsync unmanaged", .{});
