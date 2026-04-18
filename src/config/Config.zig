@@ -2362,8 +2362,10 @@ keybind: Keybinds = .{},
 
 /// Whether or not to quit after the last surface is closed.
 ///
-/// The default value is `false` in the Windows-only fork.
-@"quit-after-last-window-closed": bool = false,
+/// The default value is `true` in the Windows-only fork so closing the
+/// last terminal window tears down the process instead of leaving a
+/// background instance alive and locking the executable.
+@"quit-after-last-window-closed": bool = true,
 
 /// Controls how long Ghostty will stay running after the last open surface has
 /// been closed. This only has an effect if `quit-after-last-window-closed` is
@@ -9547,6 +9549,15 @@ test "clone default" {
 
     // I want to do this but this doesn't work (the API doesn't work)
     // try testing.expectEqualDeep(dest, source);
+}
+
+test "default quit-after-last-window-closed is enabled in the Windows fork" {
+    const testing = std.testing;
+
+    var cfg = try Config.default(testing.allocator);
+    defer cfg.deinit();
+
+    try testing.expect(cfg.@"quit-after-last-window-closed");
 }
 
 test "clone preserves conditional state" {

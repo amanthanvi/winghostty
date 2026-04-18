@@ -12252,30 +12252,36 @@ fn tabButtonProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv
                         v.tab_drag_active = false;
                         _ = SetCapture(hwnd);
                     }
+                    return 0;
                 },
                 WM_LBUTTONUP => {
+                    const drag_index = v.tab_drag_index;
+                    const was_drag = v.tab_drag_active;
+                    v.tab_drag_index = null;
+                    v.tab_drag_active = false;
                     _ = ReleaseCapture();
-                    if (v.tab_drag_index != null) {
-                        // Drag/click handling (close zone excluded at mousedown)
-                        const was_drag = v.tab_drag_active;
-                        v.tab_drag_index = null;
-                        v.tab_drag_active = false;
-                        if (!was_drag) {
+                    const click_x = signedLowWord(lParamBits(lParam));
+                    var btn_rect: RECT = undefined;
+                    _ = GetClientRect(hwnd, &btn_rect);
+                    const close_left = btn_rect.right - v.scaled(host_tab_close_zone_width);
+                    switch (tabButtonMouseUpAction(
+                        drag_index,
+                        was_drag,
+                        click_x,
+                        close_left,
+                        v.tabs.items.len,
+                    )) {
+                        .activate => {
                             _ = v.activateTabIndex(index);
-                        }
-                    } else {
-                        // No drag was started — check close zone
-                        const click_x = signedLowWord(lParamBits(lParam));
-                        var btn_rect: RECT = undefined;
-                        _ = GetClientRect(hwnd, &btn_rect);
-                        const close_left = btn_rect.right - v.scaled(host_tab_close_zone_width);
-                        if (click_x >= close_left and v.tabs.items.len > 1) {
+                        },
+                        .close => {
                             if (v.activateTabIndex(index)) {
                                 if (v.activeSurface()) |surface| {
                                     _ = v.app.closeTab(.{ .surface = surface.core() }, .this);
                                 }
                             }
-                        }
+                        },
+                        .none => {},
                     }
                     return 0;
                 },
@@ -13037,6 +13043,26 @@ fn desiredTabIndex(total: usize, current: usize, goto: apprt.action.GotoTab) ?us
             break :blk @min(idx, total - 1);
         },
     };
+}
+
+const TabButtonMouseUpAction = enum {
+    none,
+    activate,
+    close,
+};
+
+fn tabButtonMouseUpAction(
+    drag_index: ?usize,
+    was_drag: bool,
+    click_x: i32,
+    close_left: i32,
+    tab_count: usize,
+) TabButtonMouseUpAction {
+    if (drag_index != null) {
+        return if (was_drag) .none else .activate;
+    }
+    if (tab_count > 1 and click_x >= close_left) return .close;
+    return .none;
 }
 
 fn desiredMoveIndex(total: usize, current: usize, amount: isize) ?usize {
@@ -17980,6 +18006,37 @@ test "win32 desiredTabIndex cycles and clamps" {
     try std.testing.expectEqual(@as(?usize, 2), desiredTabIndex(3, 0, .last));
     try std.testing.expectEqual(@as(?usize, 0), desiredTabIndex(3, 1, @enumFromInt(0)));
     try std.testing.expectEqual(@as(?usize, 2), desiredTabIndex(3, 1, @enumFromInt(9)));
+}
+
+test "win32 tab button mouse-up still activates tab after capture release" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(
+        TabButtonMouseUpAction.activate,
+        tabButtonMouseUpAction(1, false, 40, 100, 3),
+    );
+}
+
+test "win32 tab button mouse-up keeps drag releases from reactivating" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(
+        TabButtonMouseUpAction.none,
+        tabButtonMouseUpAction(1, true, 40, 100, 3),
+    );
+}
+
+test "win32 tab button mouse-up only closes when released in close zone" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(
+        TabButtonMouseUpAction.close,
+        tabButtonMouseUpAction(null, false, 100, 100, 3),
+    );
+    try std.testing.expectEqual(
+        TabButtonMouseUpAction.none,
+        tabButtonMouseUpAction(null, false, 40, 100, 3),
+    );
 }
 
 test "win32 desiredMoveIndex wraps tab order" {
