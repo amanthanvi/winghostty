@@ -47,6 +47,7 @@ $pathScratch = Join-Path $env:TEMP 'winghostty-interactive-win11-path-test'
 $samePathA = Join-Path $pathScratch 'worktrees\feature-a\repo'
 $samePathB = '{0}\' -f ($samePathA.Replace('\', '/'))
 $otherPath = Join-Path $pathScratch 'worktrees\feature-b\repo'
+$driveRoot = [System.IO.Path]::GetPathRoot((Get-Location).Path)
 
 $idA = Get-InteractiveWin11WorktreeId -RepoRoot $samePathA
 $idB = Get-InteractiveWin11WorktreeId -RepoRoot $samePathB
@@ -55,6 +56,7 @@ $idC = Get-InteractiveWin11WorktreeId -RepoRoot $otherPath
 Assert-Equal $idA $idB 'worktree id should normalize slash direction and trailing slash'
 Assert-Match $idA '^[a-z0-9.-]+-[0-9a-f]{12}$' 'worktree id should include slug and hash suffix'
 Assert-True ($idA -ne $idC) 'different worktree paths should produce different ids'
+Assert-Equal (Get-InteractiveWin11NormalizedPath -Path $driveRoot) ([System.IO.Path]::GetFullPath($driveRoot).Replace('/', '\')) 'normalization should preserve rooted drive paths'
 
 $layout = Get-InteractiveWin11SandboxLayout -RepoRoot $samePathA
 

@@ -12,7 +12,7 @@ if ($Rebuild -and $NoBuild) {
 }
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
-$launcherPath = Join-Path $PSScriptRoot 'interactive-win11.ps1'
+$launcherPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
 
 if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_BOOTSTRAPPED) {
     $forwardedArgs = @()
@@ -22,13 +22,12 @@ if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_BOOTSTRAPPED) {
     if ($NoBuild) { $forwardedArgs += '-NoBuild' }
 
     $bootstrapCmd = Join-Path $PSScriptRoot 'dev-windows.cmd'
-    $quotedLauncherPath = '"{0}"' -f $launcherPath
     $exitCode = 0
     $env:WINGHOSTTY_INTERACTIVE_WIN11_BOOTSTRAPPED = '1'
 
     Push-Location $repoRoot
     try {
-        & $bootstrapCmd powershell.exe -ExecutionPolicy Bypass -File $quotedLauncherPath @forwardedArgs
+        & $bootstrapCmd powershell.exe -ExecutionPolicy Bypass -File $launcherPath @forwardedArgs
         if ($null -ne $LASTEXITCODE) {
             $exitCode = $LASTEXITCODE
         }

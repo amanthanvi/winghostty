@@ -3,8 +3,14 @@ function Get-InteractiveWin11NormalizedPath {
         [Parameter(Mandatory)] [string] $Path
     )
 
-    $full = [System.IO.Path]::GetFullPath($Path)
-    return $full.TrimEnd('\').Replace('/', '\')
+    $full = [System.IO.Path]::GetFullPath($Path).Replace('/', '\')
+    $root = [System.IO.Path]::GetPathRoot($full).Replace('/', '\')
+
+    if ($full.Length -gt $root.Length) {
+        return $full.TrimEnd('\')
+    }
+
+    return $full
 }
 
 function Get-InteractiveWin11WorktreeId {
