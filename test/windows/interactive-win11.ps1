@@ -39,24 +39,30 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $libPath = Join-Path $repoRoot 'scripts\interactive-win11-lib.ps1'
 . $libPath
 
-$samePathA = 'C:\Users\amant\.codex\worktrees\162b\winghostty'
-$samePathB = 'C:/Users/amant/.codex/worktrees/162b/winghostty\'
-$otherPath = 'C:\Users\amant\.codex\worktrees\main\winghostty'
+$pathScratch = Join-Path $env:TEMP 'winghostty-interactive-win11-path-test'
+$samePathA = Join-Path $pathScratch 'worktrees\feature-a\repo'
+$samePathB = '{0}\' -f ($samePathA.Replace('\', '/'))
+$otherPath = Join-Path $pathScratch 'worktrees\feature-b\repo'
 
 $idA = Get-InteractiveWin11WorktreeId -RepoRoot $samePathA
 $idB = Get-InteractiveWin11WorktreeId -RepoRoot $samePathB
 $idC = Get-InteractiveWin11WorktreeId -RepoRoot $otherPath
 
 Assert-Equal $idA $idB 'worktree id should normalize slash direction and trailing slash'
-Assert-Match $idA '^162b-winghostty-[0-9a-f]{12}$' 'worktree id should include short slug and hash suffix'
+Assert-Match $idA '^[a-z0-9.-]+-[0-9a-f]{12}$' 'worktree id should include slug and hash suffix'
 Assert-True ($idA -ne $idC) 'different worktree paths should produce different ids'
 
 $layout = Get-InteractiveWin11SandboxLayout -RepoRoot $samePathA
 
-Assert-Equal $layout.RepoRoot 'C:\Users\amant\.codex\worktrees\162b\winghostty' 'layout should preserve normalized repo root'
-Assert-True ($layout.SandboxRoot.StartsWith('C:\Users\amant\.codex\worktrees\162b\winghostty\.sandbox\win11\', [System.StringComparison]::OrdinalIgnoreCase)) 'sandbox root should live under repo-local .sandbox\win11'
+Assert-Equal $layout.RepoRoot (Get-InteractiveWin11NormalizedPath -Path $samePathA) 'layout should preserve normalized repo root'
+Assert-True ($layout.SandboxRoot.StartsWith((Join-Path $layout.RepoRoot '.sandbox\win11\'), [System.StringComparison]::OrdinalIgnoreCase)) 'sandbox root should live under repo-local .sandbox\win11'
 Assert-Equal $layout.XdgConfigHome $layout.LocalAppData 'config home should reuse localappdata'
 Assert-Equal $layout.Temp (Join-Path $layout.SandboxRoot 'temp') 'temp path should be rooted in sandbox'
+
+$launchArgs = @(Get-InteractiveWin11LaunchArguments -Layout $layout)
+Assert-Equal $launchArgs.Count 2 'launch args should include the isolation overrides'
+Assert-True ($launchArgs -contains '--single-instance=false') 'launch args should disable single-instance forwarding'
+Assert-True ($launchArgs -contains "--class=winghostty-interactive-$($layout.WorktreeId)") 'launch args should include a sandbox-unique class'
 
 $scratchRepo = Join-Path $env:TEMP 'winghostty-interactive-win11-test'
 $scratchLayout = Get-InteractiveWin11SandboxLayout -RepoRoot $scratchRepo

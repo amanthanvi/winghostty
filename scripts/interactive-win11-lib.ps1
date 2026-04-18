@@ -96,6 +96,17 @@ function Get-InteractiveWin11Environment {
     }
 }
 
+function Get-InteractiveWin11LaunchArguments {
+    param(
+        [Parameter(Mandatory)] [System.Collections.IDictionary] $Layout
+    )
+
+    return @(
+        '--single-instance=false'
+        "--class=winghostty-interactive-$($Layout.WorktreeId)"
+    )
+}
+
 function Get-InteractiveWin11LaunchAction {
     param(
         [Parameter(Mandatory)] [string] $ExePath,

@@ -78,6 +78,7 @@ if ($OpenShell) {
 
 $exePath = Get-InteractiveWin11NormalizedPath -Path (Join-Path $repoRoot 'zig-out\bin\winghostty.exe')
 $launchAction = Get-InteractiveWin11LaunchAction -ExePath $exePath -Rebuild:$Rebuild -NoBuild:$NoBuild
+$launchArgs = Get-InteractiveWin11LaunchArguments -Layout $layout
 
 if ($launchAction -eq 'build') {
     Push-Location $repoRoot
@@ -96,4 +97,4 @@ if (-not [System.IO.File]::Exists($exePath)) {
     throw "Missing winghostty.exe at $exePath"
 }
 
-Start-Process -FilePath $exePath -WorkingDirectory $repoRoot | Out-Null
+Start-Process -FilePath $exePath -ArgumentList $launchArgs -WorkingDirectory $repoRoot | Out-Null
