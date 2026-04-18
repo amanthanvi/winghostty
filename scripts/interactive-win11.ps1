@@ -22,12 +22,13 @@ if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_BOOTSTRAPPED) {
     if ($NoBuild) { $forwardedArgs += '-NoBuild' }
 
     $bootstrapCmd = Join-Path $PSScriptRoot 'dev-windows.cmd'
+    $quotedLauncherPath = '"{0}"' -f $launcherPath
     $exitCode = 0
     $env:WINGHOSTTY_INTERACTIVE_WIN11_BOOTSTRAPPED = '1'
 
     Push-Location $repoRoot
     try {
-        & $bootstrapCmd powershell.exe -ExecutionPolicy Bypass -File $launcherPath @forwardedArgs
+        & $bootstrapCmd powershell.exe -ExecutionPolicy Bypass -File $quotedLauncherPath @forwardedArgs
         if ($null -ne $LASTEXITCODE) {
             $exitCode = $LASTEXITCODE
         }

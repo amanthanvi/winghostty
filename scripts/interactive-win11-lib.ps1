@@ -1,5 +1,3 @@
-$ErrorActionPreference = 'Stop'
-
 function Get-InteractiveWin11NormalizedPath {
     param(
         [Parameter(Mandatory)] [string] $Path
@@ -76,7 +74,7 @@ function New-InteractiveWin11Sandbox {
         $Layout.Temp,
         $Layout.Logs
     )) {
-        New-Item -ItemType Directory -Force -Path $path | Out-Null
+        New-Item -ItemType Directory -Force -Path $path -ErrorAction Stop | Out-Null
     }
 }
 
@@ -147,7 +145,7 @@ function Reset-InteractiveWin11Sandbox {
         throw "Refusing to reset sandbox outside ${sandboxBase}: $target"
     }
 
-    if (Test-Path -LiteralPath $target) {
-        Remove-Item -LiteralPath $target -Recurse -Force
+    if (Test-Path -LiteralPath $target -ErrorAction Stop) {
+        Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction Stop
     }
 }

@@ -37,7 +37,11 @@ function Assert-Match {
 
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $libPath = Join-Path $repoRoot 'scripts\interactive-win11-lib.ps1'
+$callerErrorActionPreference = 'Continue'
+$ErrorActionPreference = $callerErrorActionPreference
 . $libPath
+Assert-Equal $ErrorActionPreference $callerErrorActionPreference 'dot-sourcing the helper library should not overwrite caller ErrorActionPreference'
+$ErrorActionPreference = 'Stop'
 
 $pathScratch = Join-Path $env:TEMP 'winghostty-interactive-win11-path-test'
 $samePathA = Join-Path $pathScratch 'worktrees\feature-a\repo'
