@@ -36,3 +36,5 @@ vgcore.*
 /cdb-*.txt
 /commit-msg.txt
 /src/help_strings.zig
+
+.cursor/
