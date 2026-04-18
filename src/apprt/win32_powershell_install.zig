@@ -176,10 +176,28 @@ const InteractiveMode = struct {
 
 fn analyzeInteractiveMode(argv: []const []const u8) ?InteractiveMode {
     var has_no_exit = false;
+    var expects_value = false;
 
     for (argv[1..]) |arg| {
+        if (expects_value) {
+            expects_value = false;
+            continue;
+        }
+
+        if (hasAttachedFlagValue(arg) and
+            (isNoExitFlag(arg) or isSafeInteractiveFlag(arg) or isHelpFlag(arg) or isVersionFlag(arg)))
+        {
+            return null;
+        }
+
         if (isNoExitFlag(arg)) {
             has_no_exit = true;
+            continue;
+        }
+
+        if (isValueTakingInteractiveFlag(arg)) {
+            if (hasAttachedFlagValue(arg)) return null;
+            expects_value = true;
             continue;
         }
 
@@ -194,37 +212,87 @@ fn analyzeInteractiveMode(argv: []const []const u8) ?InteractiveMode {
         {
             return null;
         }
+
+        if (isSafeInteractiveFlag(arg)) continue;
+
+        // Any positional payload or unrecognized token is treated as
+        // unsupported so we don't corrupt script / command semantics.
+        return null;
     }
 
+    if (expects_value) return null;
     return .{ .has_no_exit = has_no_exit };
 }
 
-fn isPrefixedFlag(arg: []const u8, full: []const u8, alias: ?[]const u8) bool {
-    if (arg.len < 2 or arg[0] != '-') return false;
+const FlagToken = struct {
+    name: []const u8,
+    has_attached_value: bool,
+};
+
+fn isFlagPrefixChar(c: u8) bool {
+    return c == '-' or c == '/';
+}
+
+fn parseFlagToken(arg: []const u8) ?FlagToken {
+    if (arg.len < 2 or !isFlagPrefixChar(arg[0])) return null;
 
     const flag = arg[1..];
-    if (flag.len <= full.len) {
-        if (std.ascii.eqlIgnoreCase(flag, full[0..flag.len])) return true;
-    }
-    if (alias) |value| {
-        if (std.ascii.eqlIgnoreCase(flag, value)) return true;
+    const attached_idx = std.mem.indexOfScalar(u8, flag, ':');
+    return .{
+        .name = flag[0 .. attached_idx orelse flag.len],
+        .has_attached_value = attached_idx != null,
+    };
+}
+
+fn hasAttachedFlagValue(arg: []const u8) bool {
+    const token = parseFlagToken(arg) orelse return false;
+    return token.has_attached_value;
+}
+
+fn isExactFlagName(name: []const u8, full: []const u8, aliases: []const []const u8) bool {
+    if (std.ascii.eqlIgnoreCase(name, full)) return true;
+    for (aliases) |alias| {
+        if (std.ascii.eqlIgnoreCase(name, alias)) return true;
     }
 
     return false;
 }
 
-fn isPrefixedFlagMin(arg: []const u8, full: []const u8, min_prefix_len: usize, alias: ?[]const u8) bool {
-    if (arg.len < 2 or arg[0] != '-') return false;
+fn isExactFlag(arg: []const u8, full: []const u8, aliases: []const []const u8) bool {
+    const token = parseFlagToken(arg) orelse return false;
+    return isExactFlagName(token.name, full, aliases);
+}
 
-    const flag = arg[1..];
-    if (flag.len >= min_prefix_len and flag.len <= full.len) {
-        if (std.ascii.eqlIgnoreCase(flag, full[0..flag.len])) return true;
+fn isPrefixedFlagName(name: []const u8, full: []const u8, alias: ?[]const u8) bool {
+    if (name.len <= full.len) {
+        if (std.ascii.eqlIgnoreCase(name, full[0..name.len])) return true;
     }
     if (alias) |value| {
-        if (std.ascii.eqlIgnoreCase(flag, value)) return true;
+        if (std.ascii.eqlIgnoreCase(name, value)) return true;
     }
 
     return false;
+}
+
+fn isPrefixedFlagNameMin(name: []const u8, full: []const u8, min_prefix_len: usize, alias: ?[]const u8) bool {
+    if (name.len >= min_prefix_len and name.len <= full.len) {
+        if (std.ascii.eqlIgnoreCase(name, full[0..name.len])) return true;
+    }
+    if (alias) |value| {
+        if (std.ascii.eqlIgnoreCase(name, value)) return true;
+    }
+
+    return false;
+}
+
+fn isPrefixedFlag(arg: []const u8, full: []const u8, alias: ?[]const u8) bool {
+    const token = parseFlagToken(arg) orelse return false;
+    return isPrefixedFlagName(token.name, full, alias);
+}
+
+fn isPrefixedFlagMin(arg: []const u8, full: []const u8, min_prefix_len: usize, alias: ?[]const u8) bool {
+    const token = parseFlagToken(arg) orelse return false;
+    return isPrefixedFlagNameMin(token.name, full, min_prefix_len, alias);
 }
 
 fn isCommandFlag(arg: []const u8) bool {
@@ -263,6 +331,29 @@ fn isHelpFlag(arg: []const u8) bool {
 
 fn isVersionFlag(arg: []const u8) bool {
     return isPrefixedFlag(arg, "Version", "v");
+}
+
+fn isSafeInteractiveFlag(arg: []const u8) bool {
+    return isExactFlag(arg, "Interactive", &.{"i"}) or
+        isExactFlag(arg, "Login", &.{"l"}) or
+        isExactFlag(arg, "MTA", &.{}) or
+        isExactFlag(arg, "NoLogo", &.{"nol"}) or
+        isExactFlag(arg, "NoProfile", &.{"nop"}) or
+        isExactFlag(arg, "NoProfileLoadTime", &.{}) or
+        isExactFlag(arg, "STA", &.{});
+}
+
+fn isValueTakingInteractiveFlag(arg: []const u8) bool {
+    return isExactFlag(arg, "ConfigurationFile", &.{}) or
+        isExactFlag(arg, "ConfigurationName", &.{"config"}) or
+        isExactFlag(arg, "CustomPipeName", &.{}) or
+        isExactFlag(arg, "ExecutionPolicy", &.{ "ep", "ex" }) or
+        isExactFlag(arg, "InputFormat", &.{ "if", "inp" }) or
+        isExactFlag(arg, "OutputFormat", &.{ "of", "o" }) or
+        isExactFlag(arg, "PSConsoleFile", &.{}) or
+        isExactFlag(arg, "SettingsFile", &.{"settings"}) or
+        isExactFlag(arg, "WindowStyle", &.{"w"}) or
+        isExactFlag(arg, "WorkingDirectory", &.{ "wd", "wo" });
 }
 
 fn buildCommandValue(alloc: Allocator, escaped: []const u8) ![]u8 {
@@ -362,6 +453,21 @@ test "buildInjectedArgv: preserves existing prefix flags" {
     try std.testing.expectEqualStrings("& { . 'C:\\int.ps1' }", r[6]);
 }
 
+test "buildInjectedArgv: preserves slash-prefixed interactive flags" {
+    const argv = [_][]const u8{ "pwsh.exe", "/NoProfile" };
+    const r = (try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")).?;
+    defer {
+        for (r) |s| std.testing.allocator.free(s);
+        std.testing.allocator.free(r);
+    }
+    try std.testing.expectEqual(@as(usize, 5), r.len);
+    try std.testing.expectEqualStrings("pwsh.exe", r[0]);
+    try std.testing.expectEqualStrings("/NoProfile", r[1]);
+    try std.testing.expectEqualStrings("-NoExit", r[2]);
+    try std.testing.expectEqualStrings("-Command", r[3]);
+    try std.testing.expectEqualStrings("& { . 'C:\\int.ps1' }", r[4]);
+}
+
 test "buildInjectedArgv: existing noexit is not duplicated for powershell.exe" {
     const argv = [_][]const u8{ "powershell.exe", "-NoExit", "-NoProfile" };
     const r = (try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")).?;
@@ -373,6 +479,21 @@ test "buildInjectedArgv: existing noexit is not duplicated for powershell.exe" {
     try std.testing.expectEqualStrings("powershell.exe", r[0]);
     try std.testing.expectEqualStrings("-NoExit", r[1]);
     try std.testing.expectEqualStrings("-NoProfile", r[2]);
+    try std.testing.expectEqualStrings("-Command", r[3]);
+    try std.testing.expectEqualStrings("& { . 'C:\\int.ps1' }", r[4]);
+}
+
+test "buildInjectedArgv: existing slash noexit is not duplicated" {
+    const argv = [_][]const u8{ "powershell.exe", "/NoExit", "/NoProfile" };
+    const r = (try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")).?;
+    defer {
+        for (r) |s| std.testing.allocator.free(s);
+        std.testing.allocator.free(r);
+    }
+    try std.testing.expectEqual(@as(usize, 5), r.len);
+    try std.testing.expectEqualStrings("powershell.exe", r[0]);
+    try std.testing.expectEqualStrings("/NoExit", r[1]);
+    try std.testing.expectEqualStrings("/NoProfile", r[2]);
     try std.testing.expectEqualStrings("-Command", r[3]);
     try std.testing.expectEqualStrings("& { . 'C:\\int.ps1' }", r[4]);
 }
@@ -402,6 +523,31 @@ test "buildInjectedArgv: skips long command prefix" {
     try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
 }
 
+test "buildInjectedArgv: skips attached command form" {
+    const argv = [_][]const u8{ "pwsh.exe", "-Command:Get-Date" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: skips attached file form" {
+    const argv = [_][]const u8{ "pwsh.exe", "-File:.\\script.ps1" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: skips attached encoded command form" {
+    const argv = [_][]const u8{ "pwsh.exe", "-EncodedCommand:QQA=" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: skips slash version form" {
+    const argv = [_][]const u8{ "pwsh.exe", "/Version" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: skips slash noninteractive form" {
+    const argv = [_][]const u8{ "pwsh.exe", "/NonInteractive" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
 test "buildInjectedArgv: existing noexit prefix is not duplicated" {
     const argv = [_][]const u8{ "pwsh.exe", "-NoEx", "-NoProfile" };
     const r = (try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")).?;
@@ -417,19 +563,14 @@ test "buildInjectedArgv: existing noexit prefix is not duplicated" {
     try std.testing.expectEqualStrings("& { . 'C:\\int.ps1' }", r[4]);
 }
 
-test "buildInjectedArgv: ambiguous no prefix still appends noexit" {
+test "buildInjectedArgv: skips ambiguous no prefix" {
     const argv = [_][]const u8{ "pwsh.exe", "-No" };
-    const r = (try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")).?;
-    defer {
-        for (r) |s| std.testing.allocator.free(s);
-        std.testing.allocator.free(r);
-    }
-    try std.testing.expectEqual(@as(usize, 5), r.len);
-    try std.testing.expectEqualStrings("pwsh.exe", r[0]);
-    try std.testing.expectEqualStrings("-No", r[1]);
-    try std.testing.expectEqualStrings("-NoExit", r[2]);
-    try std.testing.expectEqualStrings("-Command", r[3]);
-    try std.testing.expectEqualStrings("& { . 'C:\\int.ps1' }", r[4]);
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: skips positional script path after prefix flags" {
+    const argv = [_][]const u8{ "pwsh.exe", "-NoProfile", ".\\script.ps1" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
 }
 
 test "buildInjectedArgv: skips encoded arguments mode" {

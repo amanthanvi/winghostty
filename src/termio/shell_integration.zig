@@ -407,6 +407,69 @@ test "setup powershell: explicit command prefix launch is not wrapped" {
     try testing.expect(result == null);
 }
 
+test "setup powershell: slash-prefixed interactive launch auto injects" {
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const testing = std.testing;
+
+    var arena = ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = EnvMap.init(alloc);
+    defer env.deinit();
+
+    var res: TmpResourcesDir = try .init(alloc, .powershell);
+    defer res.deinit();
+
+    const command: config.Command = .{ .shell = "pwsh.exe /NoProfile" };
+    const result = (try setup(alloc, res.path, command, &env, .powershell)).?;
+
+    const expected_path = try std.fs.path.join(alloc, &.{ res.path, "shell-integration", "powershell", "integration.ps1" });
+    defer alloc.free(expected_path);
+    const expected_command = try std.fmt.allocPrint(
+        alloc,
+        "& {{ . '{s}' }}",
+        .{expected_path},
+    );
+    defer alloc.free(expected_command);
+
+    try testing.expectEqual(.powershell, result.shell);
+    try testing.expect(result.command == .direct);
+    try testing.expectEqual(@as(usize, 5), result.command.direct.len);
+    try testing.expectEqualStrings("pwsh.exe", result.command.direct[0]);
+    try testing.expectEqualStrings("/NoProfile", result.command.direct[1]);
+    try testing.expectEqualStrings("-NoExit", result.command.direct[2]);
+    try testing.expectEqualStrings("-Command", result.command.direct[3]);
+    try testing.expectEqualStrings(expected_command, result.command.direct[4]);
+}
+
+test "setup powershell: slash version launch is not wrapped" {
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const testing = std.testing;
+
+    var arena = ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = EnvMap.init(alloc);
+    defer env.deinit();
+
+    var res: TmpResourcesDir = try .init(alloc, .powershell);
+    defer res.deinit();
+
+    const result = try setup(
+        alloc,
+        res.path,
+        .{ .shell = "powershell.exe /Version" },
+        &env,
+        .powershell,
+    );
+
+    try testing.expect(result == null);
+}
+
 fn setupPowerShell(
     alloc: Allocator,
     command: config.Command,
@@ -435,10 +498,7 @@ fn setupPowerShell(
         alloc,
         argv.items,
         integration_path,
-    )) orelse {
-        log.info("powershell shell integration skipped: unsupported launch mode", .{});
-        return null;
-    };
+    )) orelse return null;
 
     return .{ .direct = injected };
 }
