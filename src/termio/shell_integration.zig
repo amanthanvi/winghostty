@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const EnvMap = std.process.EnvMap;
+const win32_powershell_install = @import("../apprt/win32_powershell_install.zig");
 const config = @import("../config.zig");
 const homedir = @import("../os/homedir.zig");
 const internal_os = @import("../os/main.zig");
@@ -17,10 +18,10 @@ pub const Shell = enum {
     nushell,
     zsh,
     /// PowerShell 5.1+ / pwsh 7+. Detection covers `pwsh`, `pwsh.exe`,
-    /// `powershell`, `powershell.exe`. Current setup path does not yet
-    /// auto-inject the OSC 133 / OSC 7 wrapper — users source
-    /// `integration.ps1` from `$PROFILE` manually. Full argv-level
-    /// `-NoExit -Command "& { . '$path' }"` injection is deferred.
+    /// `powershell`, `powershell.exe`. Automatic injection only wraps
+    /// interactive shell launches; explicit `-Command` / `-File` entry
+    /// points are left untouched so exit behavior and payload semantics
+    /// are preserved.
     powershell,
 };
 
@@ -83,16 +84,7 @@ pub fn setup(
             break :xdg try command.clone(alloc_arena);
         },
 
-        // PowerShell integration ships `integration.ps1` in the
-        // resources tree; full argv-level auto-injection lands with a
-        // later P6 pass. Return null here so Exec logs "no automatic
-        // shell integration" rather than lying about auto-injection.
-        // Detection still recognises `.powershell` (useful for future
-        // wire-up + user-visible telemetry); users opt into the
-        // wrapper by sourcing `integration.ps1` from `$PROFILE`.
-        .powershell => blk: {
-            break :blk null;
-        },
+        .powershell => try setupPowerShell(alloc_arena, command, resource_dir),
     } orelse return null;
 
     return .{
@@ -117,18 +109,19 @@ test "force shell" {
         var res: TmpResourcesDir = try .init(alloc, shell);
         defer res.deinit();
 
+        const command: config.Command = switch (shell) {
+            .powershell => .{ .direct = &.{"pwsh.exe"} },
+            else => .{ .shell = "sh" },
+        };
+
         const result = try setup(
             alloc,
             res.path,
-            .{ .shell = "sh" },
+            command,
             &env,
             shell,
         );
-        // PowerShell setup intentionally returns null — argv-level
-        // auto-injection is deferred; Exec must not log "automatic
-        // shell integration" for this variant. Every other shell
-        // returns a real integration handle.
-        if (shell == .powershell) {
+        if (shell == .powershell and builtin.os.tag != .windows) {
             try testing.expect(result == null);
         } else {
             try testing.expectEqual(shell, result.?.shell);
@@ -215,6 +208,7 @@ test detectShell {
     try testing.expectEqual(.powershell, try detectShell(alloc, .{ .shell = "pwsh.exe" }));
     try testing.expectEqual(.powershell, try detectShell(alloc, .{ .shell = "powershell" }));
     try testing.expectEqual(.powershell, try detectShell(alloc, .{ .shell = "PowerShell.EXE" }));
+    try testing.expectEqual(.powershell, try detectShell(alloc, .{ .shell = "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile" }));
 
     if (comptime builtin.target.os.tag.isDarwin()) {
         try testing.expect(try detectShell(alloc, .{ .shell = "/bin/bash" }) == null);
@@ -222,6 +216,231 @@ test detectShell {
 
     try testing.expectEqual(.bash, try detectShell(alloc, .{ .shell = "bash -c 'command'" }));
     try testing.expectEqual(.bash, try detectShell(alloc, .{ .shell = "\"/a b/bash\"" }));
+}
+
+test "setup powershell: interactive direct command auto injects" {
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const testing = std.testing;
+
+    var arena = ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = EnvMap.init(alloc);
+    defer env.deinit();
+
+    var res: TmpResourcesDir = try .init(alloc, .powershell);
+    defer res.deinit();
+
+    const command: config.Command = .{ .direct = &.{ "pwsh.exe", "-NoProfile" } };
+    const result = (try setup(alloc, res.path, command, &env, .powershell)).?;
+
+    const expected_path = try std.fs.path.join(alloc, &.{ res.path, "shell-integration", "powershell", "integration.ps1" });
+    defer alloc.free(expected_path);
+    const expected_command = try std.fmt.allocPrint(
+        alloc,
+        "& {{ . '{s}' }}",
+        .{expected_path},
+    );
+    defer alloc.free(expected_command);
+
+    try testing.expectEqual(.powershell, result.shell);
+    try testing.expect(result.command == .direct);
+    try testing.expectEqual(@as(usize, 5), result.command.direct.len);
+    try testing.expectEqualStrings("pwsh.exe", result.command.direct[0]);
+    try testing.expectEqualStrings("-NoProfile", result.command.direct[1]);
+    try testing.expectEqualStrings("-NoExit", result.command.direct[2]);
+    try testing.expectEqualStrings("-Command", result.command.direct[3]);
+    try testing.expectEqualStrings(expected_command, result.command.direct[4]);
+}
+
+test "setup powershell: interactive shell command auto injects" {
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const testing = std.testing;
+
+    var arena = ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = EnvMap.init(alloc);
+    defer env.deinit();
+
+    var res: TmpResourcesDir = try .init(alloc, .powershell);
+    defer res.deinit();
+
+    const command: config.Command = .{ .shell = "powershell.exe -NoProfile" };
+    const result = (try setup(alloc, res.path, command, &env, .powershell)).?;
+
+    const expected_path = try std.fs.path.join(alloc, &.{ res.path, "shell-integration", "powershell", "integration.ps1" });
+    defer alloc.free(expected_path);
+    const expected_command = try std.fmt.allocPrint(
+        alloc,
+        "& {{ . '{s}' }}",
+        .{expected_path},
+    );
+    defer alloc.free(expected_command);
+
+    try testing.expectEqual(.powershell, result.shell);
+    try testing.expect(result.command == .direct);
+    try testing.expectEqual(@as(usize, 5), result.command.direct.len);
+    try testing.expectEqualStrings("powershell.exe", result.command.direct[0]);
+    try testing.expectEqualStrings("-NoProfile", result.command.direct[1]);
+    try testing.expectEqualStrings("-NoExit", result.command.direct[2]);
+    try testing.expectEqualStrings("-Command", result.command.direct[3]);
+    try testing.expectEqualStrings(expected_command, result.command.direct[4]);
+}
+
+test "setup powershell: interactive shell command with quoted exe path auto injects" {
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const testing = std.testing;
+
+    var arena = ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = EnvMap.init(alloc);
+    defer env.deinit();
+
+    var res: TmpResourcesDir = try .init(alloc, .powershell);
+    defer res.deinit();
+
+    const command: config.Command = .{ .shell = "\"C:\\Program Files\\PowerShell\\7\\pwsh.exe\" -NoProfile" };
+    const result = (try setup(alloc, res.path, command, &env, .powershell)).?;
+
+    const expected_path = try std.fs.path.join(alloc, &.{ res.path, "shell-integration", "powershell", "integration.ps1" });
+    defer alloc.free(expected_path);
+    const expected_command = try std.fmt.allocPrint(
+        alloc,
+        "& {{ . '{s}' }}",
+        .{expected_path},
+    );
+    defer alloc.free(expected_command);
+
+    try testing.expectEqual(.powershell, result.shell);
+    try testing.expect(result.command == .direct);
+    try testing.expectEqual(@as(usize, 5), result.command.direct.len);
+    try testing.expectEqualStrings("C:\\Program Files\\PowerShell\\7\\pwsh.exe", result.command.direct[0]);
+    try testing.expectEqualStrings("-NoProfile", result.command.direct[1]);
+    try testing.expectEqualStrings("-NoExit", result.command.direct[2]);
+    try testing.expectEqualStrings("-Command", result.command.direct[3]);
+    try testing.expectEqualStrings(expected_command, result.command.direct[4]);
+}
+
+test "setup powershell: explicit command launch is not wrapped" {
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const testing = std.testing;
+
+    var arena = ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = EnvMap.init(alloc);
+    defer env.deinit();
+
+    var res: TmpResourcesDir = try .init(alloc, .powershell);
+    defer res.deinit();
+
+    const result = try setup(
+        alloc,
+        res.path,
+        .{ .direct = &.{ "pwsh.exe", "-Command", "Get-Date" } },
+        &env,
+        .powershell,
+    );
+
+    try testing.expect(result == null);
+}
+
+test "setup powershell: explicit short command launch is not wrapped" {
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const testing = std.testing;
+
+    var arena = ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = EnvMap.init(alloc);
+    defer env.deinit();
+
+    var res: TmpResourcesDir = try .init(alloc, .powershell);
+    defer res.deinit();
+
+    const result = try setup(
+        alloc,
+        res.path,
+        .{ .shell = "pwsh.exe -c Get-Date" },
+        &env,
+        .powershell,
+    );
+
+    try testing.expect(result == null);
+}
+
+test "setup powershell: explicit command prefix launch is not wrapped" {
+    if (comptime builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const testing = std.testing;
+
+    var arena = ArenaAllocator.init(testing.allocator);
+    defer arena.deinit();
+    const alloc = arena.allocator();
+
+    var env = EnvMap.init(alloc);
+    defer env.deinit();
+
+    var res: TmpResourcesDir = try .init(alloc, .powershell);
+    defer res.deinit();
+
+    const result = try setup(
+        alloc,
+        res.path,
+        .{ .shell = "powershell.exe -Com Get-Date" },
+        &env,
+        .powershell,
+    );
+
+    try testing.expect(result == null);
+}
+
+fn setupPowerShell(
+    alloc: Allocator,
+    command: config.Command,
+    resource_dir: []const u8,
+) !?config.Command {
+    if (builtin.os.tag != .windows) return null;
+
+    const integration_path = try std.fs.path.join(
+        alloc,
+        &.{ resource_dir, "shell-integration", "powershell", "integration.ps1" },
+    );
+    defer alloc.free(integration_path);
+
+    std.fs.accessAbsolute(integration_path, .{}) catch return null;
+
+    var arg_iter = try command.argIterator(alloc);
+    defer arg_iter.deinit();
+
+    var argv: std.ArrayList([]const u8) = .empty;
+    defer argv.deinit(alloc);
+    while (arg_iter.next()) |arg| {
+        try argv.append(alloc, arg);
+    }
+
+    const injected = (try win32_powershell_install.buildInjectedArgv(
+        alloc,
+        argv.items,
+        integration_path,
+    )) orelse {
+        log.info("powershell shell integration skipped: unsupported launch mode", .{});
+        return null;
+    };
+
+    return .{ .direct = injected };
 }
 
 /// Set up the shell integration features environment variable.
@@ -1051,6 +1270,10 @@ const TmpResourcesDir = struct {
         switch (shell) {
             .bash => try tmp_dir.dir.writeFile(.{
                 .sub_path = "shell-integration/bash/ghostty.bash",
+                .data = "",
+            }),
+            .powershell => try tmp_dir.dir.writeFile(.{
+                .sub_path = "shell-integration/powershell/integration.ps1",
                 .data = "",
             }),
             else => {},

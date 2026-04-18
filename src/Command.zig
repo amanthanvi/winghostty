@@ -259,6 +259,10 @@ fn startPosix(self: *Command, arena: Allocator) !void {
 
 fn startWindows(self: *Command, arena: Allocator) !void {
     const application_w = try std.unicode.utf8ToUtf16LeAllocZ(arena, self.path);
+    const application_name_w: ?[*:0]u16 = if (windowsShouldSearchPath(self.path))
+        null
+    else
+        application_w.ptr;
     const cwd = try safeWindowsCurrentDirectory(arena, self.path, self.cwd);
     const cwd_w = if (cwd) |v| try std.unicode.utf8ToUtf16LeAllocZ(arena, v) else null;
     const command_line_w = if (self.args.len > 0) b: {
@@ -346,7 +350,7 @@ fn startWindows(self: *Command, arena: Allocator) !void {
 
     var process_information: windows.PROCESS_INFORMATION = undefined;
     if (windows.exp.kernel32.CreateProcessW(
-        application_w.ptr,
+        application_name_w,
         if (command_line_w) |w| w.ptr else null,
         null,
         null,
@@ -401,6 +405,15 @@ fn isWindowsWslExecutable(path: []const u8) bool {
     const base = windowsPathBasename(path);
     return std.ascii.eqlIgnoreCase(base, "wsl.exe") or
         std.ascii.eqlIgnoreCase(base, "wsl");
+}
+
+fn windowsShouldSearchPath(path: []const u8) bool {
+    if (path.len == 0) return false;
+    if (isWindowsDriveAbsolutePath(path)) return false;
+    if (path.len >= 2 and path[1] == ':') return false;
+    if (std.mem.startsWith(u8, path, "\\\\")) return false;
+    if (path[0] == '\\' or path[0] == '/') return false;
+    return windowsPathBasename(path).len == path.len;
 }
 
 fn isWindowsDriveAbsolutePath(path: []const u8) bool {
@@ -673,6 +686,21 @@ test "Command: safeWindowsCurrentDirectory preserves cwd for non-wsl" {
         "C:\\Users\\amant",
     );
     try testing.expectEqualStrings("\\\\server\\share", result.?);
+}
+
+test "Command: windowsShouldSearchPath true for bare executable names" {
+    try testing.expect(windowsShouldSearchPath("pwsh.exe"));
+    try testing.expect(windowsShouldSearchPath("pwsh"));
+    try testing.expect(windowsShouldSearchPath("powershell.exe"));
+}
+
+test "Command: windowsShouldSearchPath false for explicit paths" {
+    try testing.expect(!windowsShouldSearchPath("C:\\Program Files\\PowerShell\\7\\pwsh.exe"));
+    try testing.expect(!windowsShouldSearchPath("C:pwsh.exe"));
+    try testing.expect(!windowsShouldSearchPath(".\\pwsh.exe"));
+    try testing.expect(!windowsShouldSearchPath("bin\\pwsh.exe"));
+    try testing.expect(!windowsShouldSearchPath("\\\\server\\share\\pwsh.exe"));
+    try testing.expect(!windowsShouldSearchPath("\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe"));
 }
 
 test "Command: os pre exec 1" {
