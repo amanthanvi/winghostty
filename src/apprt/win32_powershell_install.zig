@@ -6,8 +6,9 @@
 //!   2. `installIfStale` compares the on-disk SHA-256 against the comptime
 //!      `integration_script_sha256`. Writes atomically (temp + rename) only
 //!      when the hash differs or the file is missing.
-//!   3. `buildInjectedArgv` wraps the user's pwsh command with
-//!      `-NoLogo -NoExit -Command "& { . '<path>'; <user-cmd> }"`.
+//!   3. `buildInjectedArgv` wraps interactive PowerShell launches with
+//!      `-NoExit -Command "& { . '<path>' }"` while preserving existing
+//!      prefix flags and skipping explicit command / script entry points.
 //!
 //! Testing: `@embedFile("../...")` needs the `src/` package root.
 //!   echo 'test { _ = @import("apprt/win32_powershell_install.zig"); }' > src/_t.zig
@@ -130,69 +131,232 @@ fn atomicWriteViaTemp(dir: std.fs.Dir, basename: []const u8) bool {
 pub const InjectError = error{ OutOfMemory, EmptyCommand };
 
 /// Build an argv that sources integration.ps1 before the user's
-/// command. Structure:
-///   [original_prefix...] -NoLogo -NoExit -Command "& { . '<path>' }"
-/// Returns `[][]u8` -- caller owns both outer slice and inner strings.
+/// interactive PowerShell session. Returns `null` for non-interactive or
+/// explicit command launch modes (`-Command`, `-File`, etc.) because
+/// appending our own `-Command` would change exit behavior or drop user
+/// payload.
 pub fn buildInjectedArgv(
     alloc: Allocator,
     pwsh_argv: []const []const u8,
     integration_path: []const u8,
-) InjectError![][]u8 {
+) InjectError!?[]const [:0]const u8 {
     if (pwsh_argv.len == 0) return InjectError.EmptyCommand;
+
+    const mode = analyzeInteractiveMode(pwsh_argv) orelse return null;
 
     const escaped = escapeForPwshSingleQuote(alloc, integration_path) catch
         return InjectError.OutOfMemory;
     defer alloc.free(escaped);
 
-    const info = findCommandArg(pwsh_argv);
-    const cmd_val = buildCommandValue(alloc, escaped, info.user_body) catch
+    const cmd_val = buildCommandValue(alloc, escaped) catch
         return InjectError.OutOfMemory;
+    defer alloc.free(cmd_val);
 
-    const n = info.prefix_end;
-    const result = alloc.alloc([]u8, n + 4) catch return InjectError.OutOfMemory;
-    errdefer alloc.free(result);
+    var result: std.ArrayList([:0]const u8) = .empty;
+    errdefer {
+        for (result.items) |arg| alloc.free(arg);
+        result.deinit(alloc);
+    }
 
-    var i: usize = 0;
-    while (i < n) : (i += 1)
-        result[i] = alloc.dupe(u8, pwsh_argv[i]) catch return InjectError.OutOfMemory;
+    for (pwsh_argv) |arg| {
+        try result.append(alloc, try alloc.dupeZ(u8, arg));
+    }
 
-    result[i] = alloc.dupe(u8, "-NoLogo") catch return InjectError.OutOfMemory;
-    result[i + 1] = alloc.dupe(u8, "-NoExit") catch return InjectError.OutOfMemory;
-    result[i + 2] = alloc.dupe(u8, "-Command") catch return InjectError.OutOfMemory;
-    result[i + 3] = cmd_val;
-    return result;
+    if (!mode.has_no_exit) {
+        try result.append(alloc, try alloc.dupeZ(u8, "-NoExit"));
+    }
+    try result.append(alloc, try alloc.dupeZ(u8, "-Command"));
+    try result.append(alloc, try alloc.dupeZ(u8, cmd_val));
+    return try result.toOwnedSlice(alloc);
 }
 
-const CommandArgInfo = struct {
-    prefix_end: usize,
-    user_body: ?[]const u8,
+const InteractiveMode = struct {
+    has_no_exit: bool,
 };
 
-fn findCommandArg(argv: []const []const u8) CommandArgInfo {
-    for (argv[1..], 1..) |arg, idx| {
-        if (isCommandFlag(arg)) {
-            if (idx + 1 < argv.len)
-                return .{ .prefix_end = idx, .user_body = argv[idx + 1] };
-            return .{ .prefix_end = idx, .user_body = null };
+fn analyzeInteractiveMode(argv: []const []const u8) ?InteractiveMode {
+    var has_no_exit = false;
+    var expects_value = false;
+
+    for (argv[1..]) |arg| {
+        if (expects_value) {
+            expects_value = false;
+            continue;
         }
+
+        if (hasAttachedFlagValue(arg) and
+            (isNoExitFlag(arg) or isSafeInteractiveFlag(arg) or isHelpFlag(arg) or isVersionFlag(arg)))
+        {
+            return null;
+        }
+
+        if (isNoExitFlag(arg)) {
+            has_no_exit = true;
+            continue;
+        }
+
+        if (isValueTakingInteractiveFlag(arg)) {
+            if (hasAttachedFlagValue(arg)) return null;
+            expects_value = true;
+            continue;
+        }
+
+        if (isCommandFlag(arg) or
+            isCommandWithArgsFlag(arg) or
+            isEncodedCommandFlag(arg) or
+            isEncodedArgumentsFlag(arg) or
+            isFileFlag(arg) or
+            isNonInteractiveFlag(arg) or
+            isHelpFlag(arg) or
+            isVersionFlag(arg))
+        {
+            return null;
+        }
+
+        if (isSafeInteractiveFlag(arg)) continue;
+
+        // Any positional payload or unrecognized token is treated as
+        // unsupported so we don't corrupt script / command semantics.
+        return null;
     }
-    return .{ .prefix_end = argv.len, .user_body = null };
+
+    if (expects_value) return null;
+    return .{ .has_no_exit = has_no_exit };
+}
+
+const FlagToken = struct {
+    name: []const u8,
+    has_attached_value: bool,
+};
+
+fn isFlagPrefixChar(c: u8) bool {
+    return c == '-' or c == '/';
+}
+
+fn parseFlagToken(arg: []const u8) ?FlagToken {
+    if (arg.len < 2 or !isFlagPrefixChar(arg[0])) return null;
+
+    const flag = arg[1..];
+    const attached_idx = std.mem.indexOfScalar(u8, flag, ':');
+    return .{
+        .name = flag[0 .. attached_idx orelse flag.len],
+        .has_attached_value = attached_idx != null,
+    };
+}
+
+fn hasAttachedFlagValue(arg: []const u8) bool {
+    const token = parseFlagToken(arg) orelse return false;
+    return token.has_attached_value;
+}
+
+fn isExactFlagName(name: []const u8, full: []const u8, aliases: []const []const u8) bool {
+    if (std.ascii.eqlIgnoreCase(name, full)) return true;
+    for (aliases) |alias| {
+        if (std.ascii.eqlIgnoreCase(name, alias)) return true;
+    }
+
+    return false;
+}
+
+fn isExactFlag(arg: []const u8, full: []const u8, aliases: []const []const u8) bool {
+    const token = parseFlagToken(arg) orelse return false;
+    return isExactFlagName(token.name, full, aliases);
+}
+
+fn isPrefixedFlagName(name: []const u8, full: []const u8, alias: ?[]const u8) bool {
+    if (name.len <= full.len) {
+        if (std.ascii.eqlIgnoreCase(name, full[0..name.len])) return true;
+    }
+    if (alias) |value| {
+        if (std.ascii.eqlIgnoreCase(name, value)) return true;
+    }
+
+    return false;
+}
+
+fn isPrefixedFlagNameMin(name: []const u8, full: []const u8, min_prefix_len: usize, alias: ?[]const u8) bool {
+    if (name.len >= min_prefix_len and name.len <= full.len) {
+        if (std.ascii.eqlIgnoreCase(name, full[0..name.len])) return true;
+    }
+    if (alias) |value| {
+        if (std.ascii.eqlIgnoreCase(name, value)) return true;
+    }
+
+    return false;
+}
+
+fn isPrefixedFlag(arg: []const u8, full: []const u8, alias: ?[]const u8) bool {
+    const token = parseFlagToken(arg) orelse return false;
+    return isPrefixedFlagName(token.name, full, alias);
+}
+
+fn isPrefixedFlagMin(arg: []const u8, full: []const u8, min_prefix_len: usize, alias: ?[]const u8) bool {
+    const token = parseFlagToken(arg) orelse return false;
+    return isPrefixedFlagNameMin(token.name, full, min_prefix_len, alias);
 }
 
 fn isCommandFlag(arg: []const u8) bool {
-    if (arg.len < 2 or arg[0] != '-') return false;
-    const flag = arg[1..];
-    const full = "Command";
-    if (flag.len > full.len) return false;
-    for (flag, full[0..flag.len]) |a, b| {
-        if (std.ascii.toLower(a) != std.ascii.toLower(b)) return false;
-    }
-    return true;
+    return isPrefixedFlag(arg, "Command", "c");
 }
 
-fn buildCommandValue(alloc: Allocator, escaped: []const u8, body: ?[]const u8) ![]u8 {
-    if (body) |b|
-        return std.fmt.allocPrint(alloc, "& {{ . '{s}'; {s} }}", .{ escaped, b });
+fn isCommandWithArgsFlag(arg: []const u8) bool {
+    return isPrefixedFlag(arg, "CommandWithArgs", "cwa");
+}
+
+fn isEncodedCommandFlag(arg: []const u8) bool {
+    return isPrefixedFlag(arg, "EncodedCommand", "enc");
+}
+
+fn isEncodedArgumentsFlag(arg: []const u8) bool {
+    return isPrefixedFlag(arg, "EncodedArguments", null);
+}
+
+fn isFileFlag(arg: []const u8) bool {
+    return isPrefixedFlag(arg, "File", "f");
+}
+
+fn isNoExitFlag(arg: []const u8) bool {
+    return isPrefixedFlagMin(arg, "NoExit", 3, "noe");
+}
+
+fn isNonInteractiveFlag(arg: []const u8) bool {
+    return isPrefixedFlagMin(arg, "NonInteractive", 4, null);
+}
+
+fn isHelpFlag(arg: []const u8) bool {
+    return std.mem.eql(u8, arg, "-?") or
+        std.mem.eql(u8, arg, "/?") or
+        isPrefixedFlag(arg, "Help", "h");
+}
+
+fn isVersionFlag(arg: []const u8) bool {
+    return isPrefixedFlag(arg, "Version", "v");
+}
+
+fn isSafeInteractiveFlag(arg: []const u8) bool {
+    return isExactFlag(arg, "Interactive", &.{"i"}) or
+        isExactFlag(arg, "Login", &.{"l"}) or
+        isExactFlag(arg, "MTA", &.{}) or
+        isExactFlag(arg, "NoLogo", &.{"nol"}) or
+        isExactFlag(arg, "NoProfile", &.{"nop"}) or
+        isExactFlag(arg, "NoProfileLoadTime", &.{}) or
+        isExactFlag(arg, "STA", &.{});
+}
+
+fn isValueTakingInteractiveFlag(arg: []const u8) bool {
+    return isExactFlag(arg, "ConfigurationFile", &.{}) or
+        isExactFlag(arg, "ConfigurationName", &.{"config"}) or
+        isExactFlag(arg, "CustomPipeName", &.{}) or
+        isExactFlag(arg, "ExecutionPolicy", &.{ "ep", "ex" }) or
+        isExactFlag(arg, "InputFormat", &.{ "if", "inp" }) or
+        isExactFlag(arg, "OutputFormat", &.{ "of", "o" }) or
+        isExactFlag(arg, "PSConsoleFile", &.{}) or
+        isExactFlag(arg, "SettingsFile", &.{"settings"}) or
+        isExactFlag(arg, "WindowStyle", &.{"w"}) or
+        isExactFlag(arg, "WorkingDirectory", &.{ "wd", "wo" });
+}
+
+fn buildCommandValue(alloc: Allocator, escaped: []const u8) ![]u8 {
     return std.fmt.allocPrint(alloc, "& {{ . '{s}' }}", .{escaped});
 }
 
@@ -258,24 +422,23 @@ test "escapeForPwshSingleQuote: consecutive quotes" {
     try std.testing.expectEqualStrings("a''''b", r);
 }
 
-test "buildInjectedArgv: single arg" {
+test "buildInjectedArgv: interactive shell injects without changing banner semantics" {
     const argv = [_][]const u8{"pwsh.exe"};
-    const r = try buildInjectedArgv(std.testing.allocator, &argv, "C:\\Users\\test\\integration.ps1");
+    const r = (try buildInjectedArgv(std.testing.allocator, &argv, "C:\\Users\\test\\integration.ps1")).?;
     defer {
         for (r) |s| std.testing.allocator.free(s);
         std.testing.allocator.free(r);
     }
-    try std.testing.expectEqual(@as(usize, 5), r.len);
+    try std.testing.expectEqual(@as(usize, 4), r.len);
     try std.testing.expectEqualStrings("pwsh.exe", r[0]);
-    try std.testing.expectEqualStrings("-NoLogo", r[1]);
-    try std.testing.expectEqualStrings("-NoExit", r[2]);
-    try std.testing.expectEqualStrings("-Command", r[3]);
-    try std.testing.expectEqualStrings("& { . 'C:\\Users\\test\\integration.ps1' }", r[4]);
+    try std.testing.expectEqualStrings("-NoExit", r[1]);
+    try std.testing.expectEqualStrings("-Command", r[2]);
+    try std.testing.expectEqualStrings("& { . 'C:\\Users\\test\\integration.ps1' }", r[3]);
 }
 
-test "buildInjectedArgv: multi arg" {
-    const argv = [_][]const u8{ "pwsh.exe", "-ExecutionPolicy", "Bypass" };
-    const r = try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1");
+test "buildInjectedArgv: preserves existing prefix flags" {
+    const argv = [_][]const u8{ "pwsh.exe", "-ExecutionPolicy", "Bypass", "-NoProfile" };
+    const r = (try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")).?;
     defer {
         for (r) |s| std.testing.allocator.free(s);
         std.testing.allocator.free(r);
@@ -284,20 +447,145 @@ test "buildInjectedArgv: multi arg" {
     try std.testing.expectEqualStrings("pwsh.exe", r[0]);
     try std.testing.expectEqualStrings("-ExecutionPolicy", r[1]);
     try std.testing.expectEqualStrings("Bypass", r[2]);
-    try std.testing.expectEqualStrings("-NoLogo", r[3]);
+    try std.testing.expectEqualStrings("-NoProfile", r[3]);
     try std.testing.expectEqualStrings("-NoExit", r[4]);
     try std.testing.expectEqualStrings("-Command", r[5]);
     try std.testing.expectEqualStrings("& { . 'C:\\int.ps1' }", r[6]);
 }
 
-test "buildInjectedArgv: path with single quote" {
-    const argv = [_][]const u8{"pwsh.exe"};
-    const r = try buildInjectedArgv(std.testing.allocator, &argv, "C:\\don't\\integration.ps1");
+test "buildInjectedArgv: preserves slash-prefixed interactive flags" {
+    const argv = [_][]const u8{ "pwsh.exe", "/NoProfile" };
+    const r = (try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")).?;
     defer {
         for (r) |s| std.testing.allocator.free(s);
         std.testing.allocator.free(r);
     }
-    try std.testing.expectEqualStrings("& { . 'C:\\don''t\\integration.ps1' }", r[4]);
+    try std.testing.expectEqual(@as(usize, 5), r.len);
+    try std.testing.expectEqualStrings("pwsh.exe", r[0]);
+    try std.testing.expectEqualStrings("/NoProfile", r[1]);
+    try std.testing.expectEqualStrings("-NoExit", r[2]);
+    try std.testing.expectEqualStrings("-Command", r[3]);
+    try std.testing.expectEqualStrings("& { . 'C:\\int.ps1' }", r[4]);
+}
+
+test "buildInjectedArgv: existing noexit is not duplicated for powershell.exe" {
+    const argv = [_][]const u8{ "powershell.exe", "-NoExit", "-NoProfile" };
+    const r = (try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")).?;
+    defer {
+        for (r) |s| std.testing.allocator.free(s);
+        std.testing.allocator.free(r);
+    }
+    try std.testing.expectEqual(@as(usize, 5), r.len);
+    try std.testing.expectEqualStrings("powershell.exe", r[0]);
+    try std.testing.expectEqualStrings("-NoExit", r[1]);
+    try std.testing.expectEqualStrings("-NoProfile", r[2]);
+    try std.testing.expectEqualStrings("-Command", r[3]);
+    try std.testing.expectEqualStrings("& { . 'C:\\int.ps1' }", r[4]);
+}
+
+test "buildInjectedArgv: existing slash noexit is not duplicated" {
+    const argv = [_][]const u8{ "powershell.exe", "/NoExit", "/NoProfile" };
+    const r = (try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")).?;
+    defer {
+        for (r) |s| std.testing.allocator.free(s);
+        std.testing.allocator.free(r);
+    }
+    try std.testing.expectEqual(@as(usize, 5), r.len);
+    try std.testing.expectEqualStrings("powershell.exe", r[0]);
+    try std.testing.expectEqualStrings("/NoExit", r[1]);
+    try std.testing.expectEqualStrings("/NoProfile", r[2]);
+    try std.testing.expectEqualStrings("-Command", r[3]);
+    try std.testing.expectEqualStrings("& { . 'C:\\int.ps1' }", r[4]);
+}
+
+test "buildInjectedArgv: path with single quote" {
+    const argv = [_][]const u8{"pwsh.exe"};
+    const r = (try buildInjectedArgv(std.testing.allocator, &argv, "C:\\don't\\integration.ps1")).?;
+    defer {
+        for (r) |s| std.testing.allocator.free(s);
+        std.testing.allocator.free(r);
+    }
+    try std.testing.expectEqualStrings("& { . 'C:\\don''t\\integration.ps1' }", r[3]);
+}
+
+test "buildInjectedArgv: skips explicit command mode" {
+    const argv = [_][]const u8{ "pwsh.exe", "-Command", "Get-Date" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: skips short command alias" {
+    const argv = [_][]const u8{ "pwsh.exe", "-c", "Get-Date" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: skips long command prefix" {
+    const argv = [_][]const u8{ "pwsh.exe", "-Com", "Get-Date" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: skips attached command form" {
+    const argv = [_][]const u8{ "pwsh.exe", "-Command:Get-Date" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: skips attached file form" {
+    const argv = [_][]const u8{ "pwsh.exe", "-File:.\\script.ps1" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: skips attached encoded command form" {
+    const argv = [_][]const u8{ "pwsh.exe", "-EncodedCommand:QQA=" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: skips slash version form" {
+    const argv = [_][]const u8{ "pwsh.exe", "/Version" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: skips slash noninteractive form" {
+    const argv = [_][]const u8{ "pwsh.exe", "/NonInteractive" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: existing noexit prefix is not duplicated" {
+    const argv = [_][]const u8{ "pwsh.exe", "-NoEx", "-NoProfile" };
+    const r = (try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")).?;
+    defer {
+        for (r) |s| std.testing.allocator.free(s);
+        std.testing.allocator.free(r);
+    }
+    try std.testing.expectEqual(@as(usize, 5), r.len);
+    try std.testing.expectEqualStrings("pwsh.exe", r[0]);
+    try std.testing.expectEqualStrings("-NoEx", r[1]);
+    try std.testing.expectEqualStrings("-NoProfile", r[2]);
+    try std.testing.expectEqualStrings("-Command", r[3]);
+    try std.testing.expectEqualStrings("& { . 'C:\\int.ps1' }", r[4]);
+}
+
+test "buildInjectedArgv: skips ambiguous no prefix" {
+    const argv = [_][]const u8{ "pwsh.exe", "-No" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: skips positional script path after prefix flags" {
+    const argv = [_][]const u8{ "pwsh.exe", "-NoProfile", ".\\script.ps1" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: skips encoded arguments mode" {
+    const argv = [_][]const u8{ "powershell.exe", "-EncodedArguments", "QQA=" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: skips help mode" {
+    const argv = [_][]const u8{ "pwsh.exe", "-?" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: skips version mode" {
+    const argv = [_][]const u8{ "powershell.exe", "-Version", "5.1" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
 }
 
 test "buildInjectedArgv: empty argv" {

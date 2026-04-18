@@ -1653,9 +1653,10 @@ pub const App = struct {
         // Install the PowerShell shell-integration script into
         // %LOCALAPPDATA%\winghostty\shell-integration\powershell\
         // if missing or the on-disk hash doesn't match the embedded
-        // payload (forces updates when we ship a new version). The
-        // script itself is opt-in at the shell level — users source
-        // it from $PROFILE. Argv-level auto-injection is deferred.
+        // payload (forces updates when we ship a new version). This
+        // keeps the manual `$PROFILE` fallback on a stable path even
+        // though automatic injection now uses the resources-tree copy
+        // for interactive PowerShell launches.
         if (win32_powershell_install.resolveInstallPath(core_app.alloc)) |ps1_path| {
             defer core_app.alloc.free(ps1_path);
             const result = win32_powershell_install.installIfStale(core_app.alloc, ps1_path);

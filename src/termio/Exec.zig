@@ -803,7 +803,7 @@ const Subprocess = struct {
                 &env,
                 force,
             ) orelse {
-                log.warn("shell could not be detected, no automatic shell integration will be injected", .{});
+                log.info("automatic shell integration not injected", .{});
                 break :shell default_shell_command;
             };
 

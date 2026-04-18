@@ -454,6 +454,7 @@ test "windowsDescriptorMatchingHelper" {
         .color = false,
         .variable = true,
         .has_codepoint = true,
+        .charset = &.{},
     };
 
     try std.testing.expect(Windows.matchesDescriptor(record, .{

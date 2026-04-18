@@ -115,3 +115,22 @@ fi
 ```
 
 Shell integration requires Zsh 5.1+.
+
+### PowerShell
+
+Automatic PowerShell integration on Windows applies to both Windows
+PowerShell 5.1 (`powershell.exe`) and PowerShell 7+ (`pwsh.exe`).
+Interactive launches are wrapped by appending `-NoExit -Command "& {
+. '<path>' }"` while preserving the existing prefix flags such as
+`-NoProfile`, `-ExecutionPolicy`, or `-WorkingDirectory`.
+
+Explicit command / script entrypoints such as `-Command`,
+`-CommandWithArgs`, `-EncodedCommand`, `-File`, help/version flags, and
+`-NonInteractive` are intentionally left untouched because appending our
+own `-Command` would change exit behavior or corrupt the user payload.
+
+For the manual fallback, the Win32 runtime also installs a copy of
+`integration.ps1` to
+`%LOCALAPPDATA%\winghostty\shell-integration\powershell\integration.ps1`
+so users can source it from `$PROFILE` if automatic injection is
+disabled or the command shape is unsupported.

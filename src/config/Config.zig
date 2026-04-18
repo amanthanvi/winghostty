@@ -2018,7 +2018,6 @@ keybind: Keybinds = .{},
 /// Supported in the Windows-only fork.
 @"window-theme": WindowTheme = .auto,
 
-
 /// The color space to use when interpreting terminal colors. "Terminal colors"
 /// refers to colors specified in your configuration and colors produced by
 /// direct-color SGR sequences.
@@ -2638,7 +2637,9 @@ keybind: Keybinds = .{},
 ///   * `none` - Do not do any automatic injection. You can still manually
 ///     configure your shell to enable the integration.
 ///
-///   * `detect` - Detect the shell based on the filename.
+///   * `detect` - Detect the shell based on the filename. On Windows this
+///     includes `pwsh(.exe)` and `powershell(.exe)` for interactive shell
+///     launches.
 ///
 ///   * `bash`, `elvish`, `fish`, `nushell`, `zsh` - Use this specific shell injection scheme.
 ///
