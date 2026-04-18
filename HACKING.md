@@ -50,6 +50,10 @@ Pass `-Rebuild` when you need a fresh executable after source edits. Use
 `-ResetState` for clean first-run repros and `-OpenShell` to open a shell with
 the same sandbox environment.
 
+For a mechanical smoke check that the launched app can start its initial
+terminal under the same sandboxed env, run
+`powershell -ExecutionPolicy Bypass -File test/windows/interactive-win11-smoke.ps1`.
+
 ## Runtime Notes
 
 - The application runtime is Win32.
