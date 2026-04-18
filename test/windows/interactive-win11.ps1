@@ -87,4 +87,53 @@ catch {
 Assert-True $resetBlocked 'prefix-collision sandbox target should be refused'
 Assert-True (Test-Path $escapeRoot) 'refused sandbox target should not be deleted'
 
+$launchScratch = Join-Path $env:TEMP 'winghostty-interactive-win11-launch-test'
+Remove-Item -LiteralPath $launchScratch -Recurse -Force -ErrorAction SilentlyContinue
+
+$missingExe = Join-Path $launchScratch 'zig-out\bin\winghostty.exe'
+$existingExe = Join-Path $launchScratch 'ready\zig-out\bin\winghostty.exe'
+$directoryExe = Join-Path $launchScratch 'dir\zig-out\bin\winghostty.exe'
+New-Item -ItemType Directory -Force -Path (Split-Path -Parent $existingExe) | Out-Null
+Set-Content -Path $existingExe -Value 'stub'
+New-Item -ItemType Directory -Force -Path $directoryExe | Out-Null
+
+Assert-Equal (
+    Get-InteractiveWin11LaunchAction -ExePath $missingExe
+) 'build' 'missing binary without flags should build'
+
+Assert-Equal (
+    Get-InteractiveWin11LaunchAction -ExePath $existingExe -Rebuild
+) 'build' 'rebuild flag should force build even when binary exists'
+
+Assert-Equal (
+    Get-InteractiveWin11LaunchAction -ExePath $existingExe
+) 'launch' 'existing binary without rebuild should launch'
+
+Assert-Equal (
+    Get-InteractiveWin11LaunchAction -ExePath $directoryExe
+) 'build' 'directory at exe path should not count as launchable'
+
+$missingBinaryBlocked = $false
+try {
+    Get-InteractiveWin11LaunchAction -ExePath $missingExe -NoBuild | Out-Null
+}
+catch {
+    $missingBinaryBlocked = $true
+    Assert-True ($_.Exception.Message -like '*winghostty.exe*') 'missing binary with no-build should mention winghostty.exe'
+}
+
+Assert-True $missingBinaryBlocked 'missing binary with no-build should throw'
+
+$conflictingFlagsBlocked = $false
+try {
+    Get-InteractiveWin11LaunchAction -ExePath $existingExe -Rebuild -NoBuild | Out-Null
+}
+catch {
+    $conflictingFlagsBlocked = $true
+    Assert-True ($_.Exception.Message -like '*-Rebuild*') 'conflicting flags should mention -Rebuild'
+    Assert-True ($_.Exception.Message -like '*-NoBuild*') 'conflicting flags should mention -NoBuild'
+}
+
+Assert-True $conflictingFlagsBlocked 'rebuild and no-build together should throw'
+
 Write-Host 'interactive-win11 helper tests: PASS'

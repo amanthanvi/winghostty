@@ -96,6 +96,33 @@ function Get-InteractiveWin11Environment {
     }
 }
 
+function Get-InteractiveWin11LaunchAction {
+    param(
+        [Parameter(Mandatory)] [string] $ExePath,
+        [switch] $Rebuild,
+        [switch] $NoBuild
+    )
+
+    $resolvedExePath = Get-InteractiveWin11NormalizedPath -Path $ExePath
+    if ($Rebuild -and $NoBuild) {
+        throw 'Cannot use -Rebuild with -NoBuild together.'
+    }
+
+    if ($Rebuild) {
+        return 'build'
+    }
+
+    if ([System.IO.File]::Exists($resolvedExePath)) {
+        return 'launch'
+    }
+
+    if ($NoBuild) {
+        throw "Missing winghostty.exe at $resolvedExePath"
+    }
+
+    return 'build'
+}
+
 function Reset-InteractiveWin11Sandbox {
     param(
         [Parameter(Mandatory)] [System.Collections.IDictionary] $Layout
