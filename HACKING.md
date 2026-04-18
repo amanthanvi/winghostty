@@ -42,6 +42,14 @@ The repo also ships `scripts/dev-windows.ps1` and `scripts/dev-windows.cmd`
 to open a Windows-native shell with the expected Visual Studio and Zig cache
 environment already configured.
 
+For manual app validation on Windows, use
+`powershell -ExecutionPolicy Bypass -File scripts/interactive-win11.ps1`.
+This launches the worktree executable with repo-local runtime state under
+`.sandbox/win11/<worktree-id>/` instead of global `%LOCALAPPDATA%\winghostty`.
+Pass `-Rebuild` when you need a fresh executable after source edits. Use
+`-ResetState` for clean first-run repros and `-OpenShell` to open a shell with
+the same sandbox environment.
+
 ## Runtime Notes
 
 - The application runtime is Win32.
@@ -87,7 +95,8 @@ If your change touches input, rendering, or chrome behavior, manually verify:
 2. Precision touchpad scrolling, if available.
 3. Fast sustained scrolling for flicker, title churn, or dropped repaint.
 4. Keybindings affected by the change.
-5. A fresh `zig build -Demit-exe=true` launch of `zig-out/bin/winghostty.exe`.
+5. Launch `scripts/interactive-win11.ps1 -Rebuild`; add `-ResetState` when
+   validating first-run behavior.
 
 ## Scope Guard
 
