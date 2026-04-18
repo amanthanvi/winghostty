@@ -40,6 +40,7 @@ This fork has removed the upstream `macos/` Xcode app and the
 
 ## Self-Correction Log
 
+- 2026-04-18: In PowerShell interpolated strings, wrap a variable in `${...}` before a literal colon (`:`); `"$path: $value"` parses `$path:` as a scoped variable and fails.
 - 2026-04-12: Once Win32 can stay alive with zero windows, `wakeup()` must post to the UI thread queue, not only a window HWND, or mailbox work and quit timers will stall headless.
 - 2026-04-12: GDI brush handles (HBRUSH) returned from `WM_CTLCOLOR*` handlers must use `@bitCast` not `@intCast` to convert to LRESULT; GDI handles can have the high bit set on x64, causing `@intCast` to panic.
 - 2026-04-14: On Win32, hiding a surface HWND is not enough; tab/window visibility changes must also drive `core_surface.occlusionCallback` or hidden tabs keep rendering and can crash the WGL/NVIDIA present path.
