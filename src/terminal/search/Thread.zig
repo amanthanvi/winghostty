@@ -10,6 +10,7 @@ pub const Thread = @This();
 
 const std = @import("std");
 const builtin = @import("builtin");
+const build_options = @import("terminal_options");
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
@@ -28,6 +29,7 @@ const Terminal = @import("../Terminal.zig");
 const QueryOptions = @import("query_options.zig").QueryOptions;
 const ScreenSearch = @import("screen.zig").ScreenSearch;
 const ViewportSearch = @import("viewport.zig").ViewportSearch;
+const oni = if (build_options.oniguruma) @import("oniguruma") else struct {};
 
 const log = std.log.scoped(.search_thread);
 const darwin = if (builtin.os.tag.isDarwin()) struct {
@@ -274,8 +276,7 @@ fn drainMailbox(self: *Thread) !void {
         switch (message) {
             .change_query => |v| {
                 defer v.req.deinit();
-                try self.changeQuery(v.req.slice(), v.options);
-                self.syncRefreshTimer();
+                try self.changeQueryAndSyncRefreshTimer(v.req.slice(), v.options);
             },
             .select => |v| try self.select(v),
             .visible => |v| {
@@ -341,6 +342,15 @@ fn select(self: *Thread, sel: ScreenSearch.Select) !void {
     screen.scroll(.{ .pin = flattened.startPin() });
 }
 
+fn changeQueryAndSyncRefreshTimer(
+    self: *Thread,
+    needle: []const u8,
+    query_options: QueryOptions,
+) !void {
+    defer self.syncRefreshTimer();
+    try self.changeQuery(needle, query_options);
+}
+
 /// Change the search term to the given value.
 fn changeQuery(
     self: *Thread,
@@ -363,32 +373,47 @@ fn changeQuery(
         self.search = null;
 
         // When the search changes then we need to emit that it stopped.
-        if (self.opts.event_cb) |cb| {
-            cb(
-                .{ .total_matches = 0 },
-                self.opts.event_userdata,
-            );
-            cb(
-                .{ .selected_match = null },
-                self.opts.event_userdata,
-            );
-            cb(
-                .{ .viewport_matches = &.{} },
-                self.opts.event_userdata,
-            );
-        }
+        self.notifySearchCleared();
     }
 
     // No needle means stop the search.
     if (needle.len == 0) return;
 
     // Setup our search state.
-    self.search = try .init(self.alloc, needle, query_options);
+    self.search = Search.init(self.alloc, needle, query_options) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => {
+            log.warn("error initializing search query err={}", .{err});
+            self.notifySearchCleared();
+            return;
+        },
+    };
 
     // We need to grab the terminal lock and do an initial feed.
     self.opts.mutex.lock();
     defer self.opts.mutex.unlock();
     self.search.?.feed(self.alloc, self.opts.terminal);
+}
+
+fn notifySearchCleared(self: *Thread) void {
+    if (self.opts.event_cb) |cb| {
+        cb(
+            .{ .total_matches = 0 },
+            self.opts.event_userdata,
+        );
+        cb(
+            .{ .selected_match = null },
+            self.opts.event_userdata,
+        );
+        cb(
+            .{ .viewport_matches = &.{} },
+            self.opts.event_userdata,
+        );
+        cb(
+            .{ .match_rows = &.{} },
+            self.opts.event_userdata,
+        );
+    }
 }
 
 fn queryEquals(
@@ -771,7 +796,13 @@ const Search = struct {
                         );
                         continue;
                     },
-                    else => unreachable,
+                    else => {
+                        log.warn(
+                            "error initializing screen search for key={} err={}",
+                            .{ entry.key, err },
+                        );
+                        continue;
+                    },
                 });
             }
         }
@@ -1057,4 +1088,41 @@ test "search refresh timer requires active visible focused search" {
     try testing.expect(!shouldRunRefreshTimer(false, true, true));
     try testing.expect(!shouldRunRefreshTimer(true, false, true));
     try testing.expect(!shouldRunRefreshTimer(true, true, false));
+}
+
+test "invalid regex query clears search and stops refresh polling" {
+    if (comptime !build_options.oniguruma) return error.SkipZigTest;
+
+    const alloc = testing.allocator;
+    try oni.testing.ensureInit();
+
+    var mutex: std.Thread.Mutex = .{};
+    var t: Terminal = try .init(alloc, .{ .cols = 20, .rows = 2 });
+    defer t.deinit(alloc);
+
+    var stream = t.vtStream();
+    defer stream.deinit();
+    stream.nextSlice("Hello, world");
+
+    var ud: TestUserData = .{};
+    defer ud.deinit();
+    var thread: Thread = try .init(alloc, .{
+        .mutex = &mutex,
+        .terminal = &t,
+        .event_cb = &TestUserData.callback,
+        .event_userdata = &ud,
+    });
+    defer thread.deinit();
+
+    try thread.changeQuery("world", .{});
+    try testing.expect(thread.search != null);
+
+    thread.refresh_active = true;
+    try thread.changeQueryAndSyncRefreshTimer("[", .{ .regex = true });
+
+    try testing.expect(thread.search == null);
+    try testing.expect(!thread.refresh_active);
+    try testing.expectEqual(0, ud.total);
+    try testing.expectEqual(0, ud.viewport.len);
+    try testing.expectEqualSlices(u32, &.{}, ud.rows);
 }

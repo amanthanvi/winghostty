@@ -93,6 +93,10 @@ pub const SlidingWindow = struct {
     /// when a contiguous linear view of the circular buffer is required.
     regex_buf: std.ArrayListUnmanaged(u8) = .empty,
 
+    /// Last regex/runtime error seen by `next`. When set, the current
+    /// window is preserved rather than pruned as a no-match.
+    last_error: ?anyerror = null,
+
     /// Precompiled regex for non-default query options.
     regex_state: if (build_options.oniguruma) ?RegexState else void =
         if (build_options.oniguruma) null else {},
@@ -147,7 +151,7 @@ pub const SlidingWindow = struct {
         errdefer alloc.free(needle);
         switch (direction) {
             .forward => {},
-            .reverse => if (query_options.isDefault()) std.mem.reverse(u8, needle),
+            .reverse => std.mem.reverse(u8, needle),
         }
 
         const overlap_buf = try alloc.alloc(u8, needle.len * 2);
@@ -274,6 +278,7 @@ pub const SlidingWindow = struct {
     /// or `append()`. If the caller wants to retain the flattened highlight
     /// then they should clone it.
     pub fn next(self: *SlidingWindow) ?FlattenedHighlight {
+        self.last_error = null;
         const slices = slices: {
             // If we have less data then the needle then we can't possibly match
             const data_len = self.data.len();
@@ -290,6 +295,7 @@ pub const SlidingWindow = struct {
                 if (self.regexMatch(slices[0], slices[1])) |match| {
                     return self.highlight(match.start, match.len);
                 }
+                if (self.last_error != null) return null;
             }
         }
 
@@ -415,7 +421,10 @@ pub const SlidingWindow = struct {
         const state = if (self.regex_state) |*state| state else return null;
         const total_len = first.len + second.len;
         self.regex_buf.clearRetainingCapacity();
-        self.regex_buf.ensureTotalCapacity(self.alloc, total_len) catch return null;
+        self.regex_buf.ensureTotalCapacity(self.alloc, total_len) catch |err| {
+            self.last_error = err;
+            return null;
+        };
         self.regex_buf.appendSliceAssumeCapacity(first);
         self.regex_buf.appendSliceAssumeCapacity(second);
 
@@ -434,7 +443,10 @@ pub const SlidingWindow = struct {
                 .find_not_empty = true,
             }) catch |err| switch (err) {
                 error.Mismatch => break,
-                else => return null,
+                else => {
+                    self.last_error = err;
+                    return null;
+                },
             };
 
             const starts = region.starts();
@@ -1003,6 +1015,85 @@ test "SlidingWindow single append regex" {
         .y = 0,
     } }, s.pages.pointFromPin(.active, sel.end));
     try testing.expect(w.next() == null);
+}
+
+test "SlidingWindow invalid regex init returns recoverable error" {
+    if (comptime !build_options.oniguruma) return error.SkipZigTest;
+
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    try oni.testing.ensureInit();
+
+    var w = SlidingWindow.initWithOptions(alloc, .forward, "[", .{
+        .regex = true,
+    }) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => return,
+    };
+    defer w.deinit();
+
+    return error.TestExpectedError;
+}
+
+test "SlidingWindow regex runtime error preserves window state" {
+    if (comptime !build_options.oniguruma) return error.SkipZigTest;
+
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    try oni.testing.ensureInit();
+
+    var w: SlidingWindow = try .initWithOptions(alloc, .forward, "b[o]{2}!", .{
+        .regex = true,
+    });
+    defer w.deinit();
+
+    var s = try Screen.init(alloc, .{ .cols = 80, .rows = 24, .max_scrollback = 0 });
+    defer s.deinit();
+    try s.testWriteString("hello. boo! hello. boo!");
+
+    const node: *PageList.List.Node = s.pages.pages.first.?;
+    _ = try w.append(node);
+
+    const data_len = w.data.len();
+    const meta_len = w.meta.len();
+
+    var failing = std.testing.FailingAllocator.init(alloc, .{ .fail_index = 0 });
+    const original_alloc = w.alloc;
+    w.alloc = failing.allocator();
+    try testing.expect(w.next() == null);
+    try testing.expectEqual(@as(?anyerror, error.OutOfMemory), w.last_error);
+    try testing.expectEqual(data_len, w.data.len());
+    try testing.expectEqual(meta_len, w.meta.len());
+    w.alloc = original_alloc;
+}
+
+test "SlidingWindow reverse search works with non-default query options" {
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    if (comptime build_options.oniguruma) try oni.testing.ensureInit();
+
+    var w: SlidingWindow = try .initWithOptions(alloc, .reverse, "boo!", .{
+        .case_sensitive = true,
+    });
+    defer w.deinit();
+
+    var s = try Screen.init(alloc, .{ .cols = 80, .rows = 24, .max_scrollback = 0 });
+    defer s.deinit();
+    try s.testWriteString("hello. boo! hello. boo!");
+
+    const node: *PageList.List.Node = s.pages.pages.first.?;
+    _ = try w.append(node);
+
+    const h = w.next().?;
+    const sel = h.untracked();
+    try testing.expectEqual(point.Point{ .active = .{
+        .x = 19,
+        .y = 0,
+    } }, s.pages.pointFromPin(.active, sel.start).?);
+    try testing.expectEqual(point.Point{ .active = .{
+        .x = 22,
+        .y = 0,
+    } }, s.pages.pointFromPin(.active, sel.end).?);
 }
 
 test "SlidingWindow single append single char" {

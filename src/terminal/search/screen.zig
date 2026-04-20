@@ -325,7 +325,11 @@ pub const ScreenSearch = struct {
                 self.active.window.query_options,
             ) catch |err| switch (err) {
                 error.OutOfMemory => return error.OutOfMemory,
-                else => unreachable,
+                else => {
+                    log.warn("error reinitializing screen search after resize err={}", .{err});
+                    self.state = .complete;
+                    return;
+                },
             };
 
             // Deinit/reinit
@@ -507,7 +511,11 @@ pub const ScreenSearch = struct {
                     history_node,
                 ) catch |err| switch (err) {
                     error.OutOfMemory => return error.OutOfMemory,
-                    else => unreachable,
+                    else => {
+                        log.warn("error initializing history search err={}", .{err});
+                        self.state = .complete;
+                        break :history;
+                    },
                 };
                 errdefer search.deinit();
 
@@ -540,7 +548,11 @@ pub const ScreenSearch = struct {
                 self.active.window.query_options,
             ) catch |err| switch (err) {
                 error.OutOfMemory => return error.OutOfMemory,
-                else => unreachable,
+                else => {
+                    log.warn("error initializing active-history reconciliation search err={}", .{err});
+                    self.state = .complete;
+                    break :history;
+                },
             };
             defer window.deinit();
             while (true) {
