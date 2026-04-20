@@ -279,7 +279,10 @@ pub const SlidingWindow = struct {
     /// or `append()`. If the caller wants to retain the flattened highlight
     /// then they should clone it.
     pub fn next(self: *SlidingWindow) anyerror!?FlattenedHighlight {
-        const using_regex = build_options.oniguruma and self.regex_state != null;
+        const using_regex_engine = build_options.oniguruma and self.regex_state != null;
+        // Fixed-width option searches may still use Oniguruma for matching
+        // semantics, but only true regex queries need unbounded no-match state.
+        const preserve_full_window = build_options.oniguruma and self.query_options.regex;
         const slices = slices: {
             const data_len = self.data.len();
             if (data_len == 0) return null;
@@ -287,7 +290,7 @@ pub const SlidingWindow = struct {
             // Literal matching needs at least needle.len bytes. Regex matching
             // may match shorter than its pattern source, so it cannot use this
             // literal fast-fail path.
-            if (!using_regex and data_len < self.needle.len) return null;
+            if (!preserve_full_window and data_len < self.needle.len) return null;
 
             break :slices self.data.getPtrSlice(
                 self.data_offset,
@@ -295,12 +298,12 @@ pub const SlidingWindow = struct {
             );
         };
 
-        if (build_options.oniguruma) {
-            if (self.regex_state != null) {
-                if (try self.regexMatch(slices[0], slices[1])) |match| {
-                    return self.highlight(match.start, match.len);
-                }
+        if (build_options.oniguruma and using_regex_engine) {
+            if (try self.regexMatch(slices[0], slices[1])) |match| {
+                return self.highlight(match.start, match.len);
+            }
 
+            if (preserve_full_window) {
                 // Regexes are arbitrary-width. A no-match against the current
                 // window is not proof that a future append cannot complete it,
                 // so preserve the window instead of pruning by needle length.
@@ -309,7 +312,7 @@ pub const SlidingWindow = struct {
             }
         }
 
-        if (!(build_options.oniguruma and self.regex_state != null)) {
+        if (!using_regex_engine) {
             // Search the first slice for the needle.
             if (std.ascii.indexOfIgnoreCase(slices[0], self.needle)) |idx| {
                 return self.highlight(

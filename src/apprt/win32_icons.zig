@@ -197,16 +197,28 @@ fn drawClose(hdc: HDC, r: Rect) void {
     line(hdc, r.right, r.top, r.left, r.bottom);
 }
 
-fn drawArrowUp(hdc: HDC, r: Rect) void {
+const ArrowDir = enum { up, down };
+
+fn drawArrow(hdc: HDC, r: Rect, dir: ArrowDir) void {
     const cx = r.left + @divTrunc(r.width(), 2);
-    line(hdc, r.left, r.bottom - 1, cx, r.top);
-    line(hdc, cx, r.top, r.right, r.bottom - 1);
+    switch (dir) {
+        .up => {
+            line(hdc, r.left, r.bottom - 1, cx, r.top);
+            line(hdc, cx, r.top, r.right, r.bottom - 1);
+        },
+        .down => {
+            line(hdc, r.left, r.top, cx, r.bottom - 1);
+            line(hdc, cx, r.bottom - 1, r.right, r.top);
+        },
+    }
+}
+
+fn drawArrowUp(hdc: HDC, r: Rect) void {
+    drawArrow(hdc, r, .up);
 }
 
 fn drawArrowDown(hdc: HDC, r: Rect) void {
-    const cx = r.left + @divTrunc(r.width(), 2);
-    line(hdc, r.left, r.top, cx, r.bottom - 1);
-    line(hdc, cx, r.bottom - 1, r.right, r.top);
+    drawArrow(hdc, r, .down);
 }
 
 fn drawSplitH(hdc: HDC, r: Rect) void {

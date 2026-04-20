@@ -238,6 +238,7 @@ fn threadMain_(self: *Thread) !void {
                 cb,
                 self.event_generation,
                 self.opts.event_userdata,
+                false,
             );
         }
 
@@ -368,8 +369,8 @@ fn changeQuery(
     query_options: QueryOptions,
     generation: u64,
 ) !void {
-    log.debug("changing search needle to '{s}' options={}", .{
-        needle,
+    log.debug("changing search query len={} options={}", .{
+        needle.len,
         query_options,
     });
     self.event_generation = generation;
@@ -379,6 +380,24 @@ fn changeQuery(
     if (self.search) |*s| {
         // If our search is unchanged, do nothing.
         if (queryEquals(s.viewport.needle(), s.viewport.window.query_options, needle, query_options)) {
+            s.viewport.reset();
+            s.stale_viewport_matches = true;
+
+            {
+                self.opts.mutex.lock();
+                defer self.opts.mutex.unlock();
+                s.feed(self.alloc, self.opts.terminal);
+            }
+
+            if (self.opts.event_cb) |cb| {
+                s.notify(
+                    self.alloc,
+                    cb,
+                    generation,
+                    self.opts.event_userdata,
+                    true,
+                );
+            }
             return;
         }
 
@@ -892,12 +911,13 @@ const Search = struct {
         cb: EventCallback,
         generation: u64,
         ud: ?*anyopaque,
+        force: bool,
     ) void {
         const screen_search = self.screens.get(self.last_screen.key) orelse return;
 
         // Check our total match data
         const total = screen_search.matchesLen();
-        if (total != self.last_screen.total) {
+        if (force or total != self.last_screen.total) {
             log.debug("notifying total matches={}", .{total});
             self.last_screen.total = total;
             cb(.{ .total_matches = total }, generation, ud);
@@ -907,7 +927,7 @@ const Search = struct {
         // viewport search now. We do this as part of notify and not
         // tick because the viewport search is very fast and doesn't
         // require ticked progress or feeds.
-        if (self.stale_viewport_matches) viewport: {
+        if (force or self.stale_viewport_matches) viewport: {
             // We always make stale as false. Even if we fail below
             // we require a re-feed to re-search the viewport. The feed
             // process will make it stale again.
@@ -942,11 +962,18 @@ const Search = struct {
             cb(.{ .viewport_matches = results.items }, generation, ud);
         }
 
-        if (!std.mem.eql(u32, self.match_rows.items, self.notified_match_rows.items)) {
-            self.notified_match_rows.clearRetainingCapacity();
-            self.notified_match_rows.appendSlice(alloc, self.match_rows.items) catch |err| switch (err) {
-                error.OutOfMemory => log.warn("error caching notified search match rows err={}", .{err}),
+        if (force or !std.mem.eql(u32, self.match_rows.items, self.notified_match_rows.items)) match_rows: {
+            self.notified_match_rows.ensureTotalCapacity(
+                alloc,
+                self.match_rows.items.len,
+            ) catch |err| switch (err) {
+                error.OutOfMemory => {
+                    log.warn("error caching notified search match rows err={}", .{err});
+                    break :match_rows;
+                },
             };
+            self.notified_match_rows.clearRetainingCapacity();
+            self.notified_match_rows.appendSliceAssumeCapacity(self.match_rows.items);
 
             log.debug("notifying search match rows len={}", .{self.match_rows.items.len});
             cb(.{ .match_rows = self.match_rows.items }, generation, ud);
@@ -957,7 +984,7 @@ const Search = struct {
             const flattened = screen_search.selectedMatch() orelse break :match;
             const untracked = flattened.untracked();
             if (self.last_screen.selected) |prev| {
-                if (prev.idx == m.idx and prev.highlight.eql(untracked)) {
+                if (!force and prev.idx == m.idx and prev.highlight.eql(untracked)) {
                     // Same selection, don't update it.
                     break :match;
                 }
@@ -978,7 +1005,7 @@ const Search = struct {
                 generation,
                 ud,
             );
-        } else if (self.last_screen.selected != null) {
+        } else if (force or self.last_screen.selected != null) {
             log.debug("notifying selection cleared", .{});
             self.last_screen.selected = null;
             cb(
@@ -1021,6 +1048,17 @@ const TestUserData = struct {
         for (self.viewport) |*hl| hl.deinit(testing.allocator);
         testing.allocator.free(self.viewport);
         testing.allocator.free(self.rows);
+    }
+
+    fn clearObserved(self: *Self) void {
+        for (self.viewport) |*hl| hl.deinit(testing.allocator);
+        testing.allocator.free(self.viewport);
+        testing.allocator.free(self.rows);
+
+        self.total = 0;
+        self.selected = null;
+        self.viewport = &.{};
+        self.rows = &.{};
     }
 
     fn callback(event: Event, generation: u64, userdata: ?*anyopaque) void {
@@ -1157,4 +1195,40 @@ test "invalid regex query clears search and stops refresh polling" {
     try testing.expectEqual(0, ud.total);
     try testing.expectEqual(0, ud.viewport.len);
     try testing.expectEqualSlices(u32, &.{}, ud.rows);
+}
+
+test "equivalent query replays search state" {
+    const alloc = testing.allocator;
+    var mutex: std.Thread.Mutex = .{};
+    var t: Terminal = try .init(alloc, .{ .cols = 20, .rows = 2 });
+    defer t.deinit(alloc);
+
+    var stream = t.vtStream();
+    defer stream.deinit();
+    stream.nextSlice("Hello, world");
+
+    var ud: TestUserData = .{};
+    defer ud.deinit();
+    var thread: Thread = try .init(alloc, .{
+        .mutex = &mutex,
+        .terminal = &t,
+        .event_cb = &TestUserData.callback,
+        .event_userdata = &ud,
+    });
+    defer thread.deinit();
+
+    try thread.changeQuery("world", .{}, 1);
+    if (thread.search) |*s| {
+        s.notify(alloc, &TestUserData.callback, 1, &ud, false);
+    }
+    try testing.expectEqual(1, ud.total);
+    try testing.expectEqualSlices(u32, &.{0}, ud.rows);
+    try testing.expectEqual(1, ud.viewport.len);
+
+    ud.clearObserved();
+    try thread.changeQuery("world", .{}, 2);
+
+    try testing.expectEqual(1, ud.total);
+    try testing.expectEqualSlices(u32, &.{0}, ud.rows);
+    try testing.expectEqual(1, ud.viewport.len);
 }

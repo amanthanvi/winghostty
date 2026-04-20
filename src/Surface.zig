@@ -1139,28 +1139,59 @@ pub fn handleMessage(self: *Surface, msg: Message) !void {
             };
         },
 
+        .search_viewport_matches => |v| {
+            var payload = v;
+            if (!self.shouldAcceptSearchGeneration(payload.generation)) {
+                payload.deinit();
+                return;
+            }
+
+            _ = self.renderer_thread.mailbox.push(
+                .{ .search_viewport_matches = payload.payload },
+                .forever,
+            );
+            try self.renderer_thread.wakeup.notify();
+        },
+
+        .search_selected_match => |v| {
+            var payload = v;
+            if (!self.shouldAcceptSearchGeneration(payload.generation)) {
+                payload.deinit();
+                return;
+            }
+
+            _ = self.renderer_thread.mailbox.push(
+                .{ .search_selected_match = payload.payload },
+                .forever,
+            );
+            try self.renderer_thread.wakeup.notify();
+        },
+
         .search_total => |v| {
+            if (!self.shouldAcceptSearchGeneration(v.generation)) return;
             _ = try self.rt_app.performAction(
                 .{ .surface = self },
                 .search_total,
-                .{ .total = v },
+                .{ .total = v.total },
             );
         },
 
         .search_selected => |v| {
+            if (!self.shouldAcceptSearchGeneration(v.generation)) return;
             _ = try self.rt_app.performAction(
                 .{ .surface = self },
                 .search_selected,
-                .{ .selected = v },
+                .{ .selected = v.selected },
             );
         },
 
         .search_match_rows => |rows| {
             defer rows.deinit();
+            if (!self.shouldAcceptSearchGeneration(rows.generation)) return;
             _ = try self.rt_app.performAction(
                 .{ .surface = self },
                 .search_match_rows,
-                .{ .rows = rows.slice() },
+                .{ .rows = rows.rows.slice() },
             );
         },
     }
@@ -1408,7 +1439,7 @@ fn searchCallback(
         self.search_generation.load(.acquire),
         generation,
     )) return;
-    self.searchCallback_(event) catch |err| {
+    self.searchCallback_(event, generation) catch |err| {
         log.warn("error in search callback err={}", .{err});
     };
 }
@@ -1421,9 +1452,14 @@ fn shouldAcceptSearchEvent(current_generation: u64, event_generation: u64) bool 
     return current_generation == event_generation;
 }
 
+fn shouldAcceptSearchGeneration(self: *Surface, generation: u64) bool {
+    return shouldAcceptSearchEvent(self.search_generation.load(.acquire), generation);
+}
+
 fn searchCallback_(
     self: *Surface,
     event: terminal.search.Thread.Event,
+    generation: u64,
 ) !void {
     // NOTE: This runs on the search thread.
 
@@ -1436,14 +1472,16 @@ fn searchCallback_(
             const matches = try alloc.dupe(terminal.highlight.Flattened, matches_unowned);
             for (matches) |*m| m.* = try m.clone(alloc);
 
-            _ = self.renderer_thread.mailbox.push(
+            _ = self.surfaceMailbox().push(
                 .{ .search_viewport_matches = .{
-                    .arena = arena,
-                    .matches = matches,
+                    .generation = generation,
+                    .payload = .{
+                        .arena = arena,
+                        .matches = matches,
+                    },
                 } },
                 .forever,
             );
-            try self.renderer_thread.wakeup.notify();
         },
 
         .selected_match => |selected_| {
@@ -1454,82 +1492,112 @@ fn searchCallback_(
                 const alloc = arena.allocator();
                 const match = try sel.highlight.clone(alloc);
 
-                _ = self.renderer_thread.mailbox.push(
+                _ = self.surfaceMailbox().push(
                     .{ .search_selected_match = .{
-                        .arena = arena,
-                        .match = match,
+                        .generation = generation,
+                        .payload = .{
+                            .arena = arena,
+                            .match = match,
+                        },
                     } },
                     .forever,
                 );
 
                 // Send the selected index to the surface mailbox
                 _ = self.surfaceMailbox().push(
-                    .{ .search_selected = apprtSearchSelectedIndex(sel.idx) },
+                    .{ .search_selected = .{
+                        .generation = generation,
+                        .selected = apprtSearchSelectedIndex(sel.idx),
+                    } },
                     .forever,
                 );
             } else {
                 // Reset our selected match
-                _ = self.renderer_thread.mailbox.push(
-                    .{ .search_selected_match = null },
+                _ = self.surfaceMailbox().push(
+                    .{ .search_selected_match = .{
+                        .generation = generation,
+                        .payload = null,
+                    } },
                     .forever,
                 );
 
                 // Reset the selected index
                 _ = self.surfaceMailbox().push(
-                    .{ .search_selected = null },
+                    .{ .search_selected = .{
+                        .generation = generation,
+                        .selected = null,
+                    } },
                     .forever,
                 );
             }
-
-            try self.renderer_thread.wakeup.notify();
         },
 
         .total_matches => |total| {
             _ = self.surfaceMailbox().push(
-                .{ .search_total = total },
+                .{ .search_total = .{
+                    .generation = generation,
+                    .total = total,
+                } },
                 .forever,
             );
         },
 
         .match_rows => |rows| {
             _ = self.surfaceMailbox().push(
-                .{ .search_match_rows = try apprt.surface.Message.SearchRowsReq.init(
-                    self.alloc,
-                    rows,
-                ) },
+                .{ .search_match_rows = .{
+                    .generation = generation,
+                    .rows = try apprt.surface.Message.SearchRowsReq.init(
+                        self.alloc,
+                        rows,
+                    ),
+                } },
                 .forever,
             );
         },
 
         // When we quit, tell our renderer to reset any search state.
         .quit => {
-            _ = self.renderer_thread.mailbox.push(
-                .{ .search_selected_match = null },
-                .forever,
-            );
-            _ = self.renderer_thread.mailbox.push(
-                .{ .search_viewport_matches = .{
-                    .arena = .init(self.alloc),
-                    .matches = &.{},
+            _ = self.surfaceMailbox().push(
+                .{ .search_selected_match = .{
+                    .generation = generation,
+                    .payload = null,
                 } },
                 .forever,
             );
-            try self.renderer_thread.wakeup.notify();
+            _ = self.surfaceMailbox().push(
+                .{ .search_viewport_matches = .{
+                    .generation = generation,
+                    .payload = .{
+                        .arena = .init(self.alloc),
+                        .matches = &.{},
+                    },
+                } },
+                .forever,
+            );
 
             // Reset search totals in the surface
             _ = self.surfaceMailbox().push(
-                .{ .search_total = null },
+                .{ .search_total = .{
+                    .generation = generation,
+                    .total = null,
+                } },
                 .forever,
             );
             _ = self.surfaceMailbox().push(
-                .{ .search_selected = null },
+                .{ .search_selected = .{
+                    .generation = generation,
+                    .selected = null,
+                } },
                 .forever,
             );
             _ = self.surfaceMailbox().push(
-                .{ .search_match_rows = try apprt.surface.Message.SearchRowsReq.init(
-                    self.alloc,
-                    @as([]const u32, &.{}),
-                ) },
+                .{ .search_match_rows = .{
+                    .generation = generation,
+                    .rows = try apprt.surface.Message.SearchRowsReq.init(
+                        self.alloc,
+                        @as([]const u32, &.{}),
+                    ),
+                } },
                 .forever,
             );
         },
