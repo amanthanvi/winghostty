@@ -705,7 +705,7 @@ const Search = struct {
         alloc: Allocator,
         needle: []const u8,
         query_options: QueryOptions,
-    ) anyerror!Search {
+    ) !Search {
         var vp: ViewportSearch = try .initWithOptions(alloc, needle, query_options);
         errdefer vp.deinit();
 
