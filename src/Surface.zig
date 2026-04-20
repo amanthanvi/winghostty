@@ -1435,11 +1435,16 @@ fn searchCallback(
     // thread.
     const search: *Search = @ptrCast(@alignCast(ud.?));
     const self = search.surface;
-    if (!shouldAcceptSearchEvent(
-        self.search_generation.load(.acquire),
-        generation,
-    )) return;
-    self.searchCallback_(event, generation) catch |err| {
+    const current_generation = self.search_generation.load(.acquire);
+    const event_tag = std.meta.activeTag(event);
+    if (event_tag != .quit and
+        !shouldAcceptSearchEvent(current_generation, generation)) return;
+
+    // Shutdown clears must win over stale queued query generations. A fast
+    // type-then-close can stop the search thread before it drains the newest
+    // query message, so tag quit with the surface's current generation.
+    const accepted_generation = if (event_tag == .quit) current_generation else generation;
+    self.searchCallback_(event, accepted_generation) catch |err| {
         log.warn("error in search callback err={}", .{err});
     };
 }

@@ -19,8 +19,8 @@ reviews:
     - "!.zig-cache/**"
     - "!dist/windows/**/*.zip"
     - "!dist/windows/**/*.msix"
-    - "!**/*.png"
-    - "!**/*.ico"
+    - "!dist/windows/**/*.png"
+    - "!dist/windows/**/*.ico"
   path_instructions:
     - path: "**/*.zig"
       instructions: |

@@ -672,6 +672,10 @@ const Search = struct {
     /// is held so downstream consumers never have to touch terminal state.
     match_rows: std.ArrayList(u32),
 
+    /// Inputs used to build the current match row snapshot.
+    match_rows_screen: ?ScreenSet.Key,
+    match_rows_revision: u64,
+
     /// Last match rows snapshot emitted to the callback.
     notified_match_rows: std.ArrayList(u32),
 
@@ -710,6 +714,8 @@ const Search = struct {
             .last_complete = false,
             .stale_viewport_matches = true,
             .match_rows = .empty,
+            .match_rows_screen = null,
+            .match_rows_revision = 0,
             .notified_match_rows = .empty,
         };
     }
@@ -895,11 +901,24 @@ const Search = struct {
 
         const screen_search = self.screens.getPtr(self.last_screen.key) orelse {
             self.match_rows.clearRetainingCapacity();
+            self.match_rows_screen = null;
+            self.match_rows_revision = 0;
             return;
         };
-        self.rebuildMatchRows(alloc, screen_search) catch |err| switch (err) {
-            error.OutOfMemory => log.warn("error rebuilding search match rows err={}", .{err}),
+        const match_rows_revision = screen_search.matchRowsRevision();
+        const same_match_rows_screen = if (self.match_rows_screen) |key|
+            key == self.last_screen.key
+        else
+            false;
+        if (same_match_rows_screen and
+            self.match_rows_revision == match_rows_revision) return;
+
+        self.rebuildMatchRows(alloc, screen_search) catch |err| {
+            log.warn("error rebuilding search match rows err={}", .{err});
+            return;
         };
+        self.match_rows_screen = self.last_screen.key;
+        self.match_rows_revision = match_rows_revision;
     }
 
     /// Notify about any changes to the search state.

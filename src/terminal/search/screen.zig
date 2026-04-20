@@ -64,6 +64,9 @@ pub const ScreenSearch = struct {
     history_results: std.ArrayList(FlattenedHighlight),
     active_results: std.ArrayList(FlattenedHighlight),
 
+    /// Monotonic marker for result-set changes that affect match-row markers.
+    match_rows_revision: u64 = 0,
+
     /// The dimensions of the screen. When this changes we need to
     /// restart the whole search, currently.
     rows: size.CellCountInt,
@@ -196,6 +199,15 @@ pub const ScreenSearch = struct {
         return self.active_results.items.len + self.history_results.items.len;
     }
 
+    /// Returns a version token that changes when match-row inputs change.
+    pub fn matchRowsRevision(self: *const ScreenSearch) u64 {
+        return self.match_rows_revision;
+    }
+
+    fn markMatchRowsDirty(self: *ScreenSearch) void {
+        self.match_rows_revision +%= 1;
+    }
+
     /// Returns all matches as an owned slice (caller must free).
     /// The matches are ordered from most recent to oldest (e.g. bottom
     /// of the screen to top of the screen).
@@ -318,6 +330,8 @@ pub const ScreenSearch = struct {
         if (self.screen.pages.rows != self.rows or
             self.screen.pages.cols != self.cols)
         {
+            const previous_match_rows_revision = self.match_rows_revision;
+
             // Reinit
             const new: ScreenSearch = ScreenSearch.initWithOptions(
                 self.allocator(),
@@ -336,6 +350,7 @@ pub const ScreenSearch = struct {
             // Deinit/reinit
             self.deinit();
             self.* = new;
+            self.match_rows_revision = previous_match_rows_revision +% 1;
 
             // New result should have matching dimensions
             assert(self.screen.pages.rows == self.rows);
@@ -390,6 +405,7 @@ pub const ScreenSearch = struct {
                 const alloc = self.allocator();
                 for (self.history_results.items[i..]) |*prune_hl| prune_hl.deinit(alloc);
                 self.history_results.shrinkAndFree(alloc, i);
+                self.markMatchRowsDirty();
                 return;
             }
         }
@@ -399,6 +415,7 @@ pub const ScreenSearch = struct {
         // For the active area, we consume the entire search in one go
         // because the active area is generally small.
         const alloc = self.allocator();
+        var appended = false;
         while (true) {
             const hl = self.active.next() catch |err| switch (err) {
                 error.OutOfMemory => return error.OutOfMemory,
@@ -416,7 +433,9 @@ pub const ScreenSearch = struct {
             var hl_cloned = try hl.clone(alloc);
             errdefer hl_cloned.deinit(alloc);
             try self.active_results.append(alloc, hl_cloned);
+            appended = true;
         }
+        if (appended) self.markMatchRowsDirty();
 
         // We've consumed the entire active area, move to history.
         self.state = .history;
@@ -432,6 +451,7 @@ pub const ScreenSearch = struct {
         // Try to consume all the loaded matches in one go, because
         // the search is generally fast for loaded data.
         const alloc = self.allocator();
+        var appended = false;
         while (true) {
             const hl = history.searcher.next() catch |err| switch (err) {
                 error.OutOfMemory => return error.OutOfMemory,
@@ -449,11 +469,13 @@ pub const ScreenSearch = struct {
             var hl_cloned = try hl.clone(alloc);
             errdefer hl_cloned.deinit(alloc);
             try self.history_results.append(alloc, hl_cloned);
+            appended = true;
 
             // Since history only appends to our results in reverse order,
             // we don't need to update any selected match state. The index
             // and prior results are unaffected.
         }
+        if (appended) self.markMatchRowsDirty();
 
         // We need to be fed more data.
         self.state = .history_feed;
@@ -508,8 +530,10 @@ pub const ScreenSearch = struct {
                 if (h.start_pin.garbage) {
                     h.deinit(self.screen);
                     self.history = null;
+                    const had_results = self.history_results.items.len > 0;
                     for (self.history_results.items) |*hl| hl.deinit(alloc);
                     self.history_results.clearRetainingCapacity();
+                    if (had_results) self.markMatchRowsDirty();
                     break :state null;
                 }
 
@@ -620,6 +644,7 @@ pub const ScreenSearch = struct {
             try results.appendSlice(alloc, self.history_results.items);
             self.history_results.deinit(alloc);
             self.history_results = results;
+            self.markMatchRowsDirty();
 
             // If our prior selection was in the history area, update
             // the offset.
@@ -640,8 +665,10 @@ pub const ScreenSearch = struct {
             if (self.history) |*h| {
                 h.deinit(self.screen);
                 self.history = null;
+                const had_results = self.history_results.items.len > 0;
                 for (self.history_results.items) |*hl| hl.deinit(alloc);
                 self.history_results.clearRetainingCapacity();
+                if (had_results) self.markMatchRowsDirty();
             }
 
             // If we have a selection in the history area, we need to
@@ -679,6 +706,7 @@ pub const ScreenSearch = struct {
         // Reset our active search results and search again.
         for (self.active_results.items) |*hl| hl.deinit(alloc);
         self.active_results.clearRetainingCapacity();
+        self.markMatchRowsDirty();
         switch (self.state) {
             // If we're in the active state we run a normal tick so
             // we can move into a better state.
