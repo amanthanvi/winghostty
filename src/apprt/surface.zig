@@ -15,6 +15,8 @@ pub const Message = union(enum) {
     /// Represents a write request. Magic number comes from the max size
     /// we want this union to be.
     pub const WriteReq = MessageData(u8, 255);
+    // 64 is only the inline-small capacity; larger row snapshots allocate in
+    // MessageData.init and are not truncated.
     pub const SearchRowsReq = MessageData(u32, 64);
 
     /// Set the title of the surface.

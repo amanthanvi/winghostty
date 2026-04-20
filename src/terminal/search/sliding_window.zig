@@ -93,10 +93,6 @@ pub const SlidingWindow = struct {
     /// when a contiguous linear view of the circular buffer is required.
     regex_buf: std.ArrayListUnmanaged(u8) = .empty,
 
-    /// Last regex/runtime error seen by `next`. When set, the current
-    /// window is preserved rather than pruned as a no-match.
-    last_error: ?anyerror = null,
-
     /// Precompiled regex for non-default query options.
     regex_state: if (build_options.oniguruma) ?RegexState else void =
         if (build_options.oniguruma) null else {},
@@ -131,6 +127,7 @@ pub const SlidingWindow = struct {
     ) Allocator.Error!SlidingWindow {
         return SlidingWindow.initWithOptions(alloc, direction, needle_unowned, .{}) catch |err| switch (err) {
             error.OutOfMemory => error.OutOfMemory,
+            // Default options never request the optional regex engine.
             else => unreachable,
         };
     }
@@ -141,6 +138,10 @@ pub const SlidingWindow = struct {
         needle_unowned: []const u8,
         query_options: QueryOptions,
     ) anyerror!SlidingWindow {
+        if (comptime !build_options.oniguruma) {
+            if (!query_options.isDefault()) return error.UnsupportedQueryOptions;
+        }
+
         var data = try DataBuf.init(alloc, 0);
         errdefer data.deinit(alloc);
 
@@ -277,12 +278,16 @@ pub const SlidingWindow = struct {
     /// sliding window and are only valid until the next call to `next()`
     /// or `append()`. If the caller wants to retain the flattened highlight
     /// then they should clone it.
-    pub fn next(self: *SlidingWindow) ?FlattenedHighlight {
-        self.last_error = null;
+    pub fn next(self: *SlidingWindow) anyerror!?FlattenedHighlight {
+        const using_regex = build_options.oniguruma and self.regex_state != null;
         const slices = slices: {
-            // If we have less data then the needle then we can't possibly match
             const data_len = self.data.len();
-            if (data_len < self.needle.len) return null;
+            if (data_len == 0) return null;
+
+            // Literal matching needs at least needle.len bytes. Regex matching
+            // may match shorter than its pattern source, so it cannot use this
+            // literal fast-fail path.
+            if (!using_regex and data_len < self.needle.len) return null;
 
             break :slices self.data.getPtrSlice(
                 self.data_offset,
@@ -292,10 +297,15 @@ pub const SlidingWindow = struct {
 
         if (build_options.oniguruma) {
             if (self.regex_state != null) {
-                if (self.regexMatch(slices[0], slices[1])) |match| {
+                if (try self.regexMatch(slices[0], slices[1])) |match| {
                     return self.highlight(match.start, match.len);
                 }
-                if (self.last_error != null) return null;
+
+                // Regexes are arbitrary-width. A no-match against the current
+                // window is not proof that a future append cannot complete it,
+                // so preserve the window instead of pruning by needle length.
+                self.assertIntegrity();
+                return null;
             }
         }
 
@@ -417,14 +427,11 @@ pub const SlidingWindow = struct {
         self: *SlidingWindow,
         first: []const u8,
         second: []const u8,
-    ) ?RegexMatch {
+    ) anyerror!?RegexMatch {
         const state = if (self.regex_state) |*state| state else return null;
         const total_len = first.len + second.len;
         self.regex_buf.clearRetainingCapacity();
-        self.regex_buf.ensureTotalCapacity(self.alloc, total_len) catch |err| {
-            self.last_error = err;
-            return null;
-        };
+        try self.regex_buf.ensureTotalCapacity(self.alloc, total_len);
         self.regex_buf.appendSliceAssumeCapacity(first);
         self.regex_buf.appendSliceAssumeCapacity(second);
 
@@ -443,10 +450,7 @@ pub const SlidingWindow = struct {
                 .find_not_empty = true,
             }) catch |err| switch (err) {
                 error.Mismatch => break,
-                else => {
-                    self.last_error = err;
-                    return null;
-                },
+                else => return err,
             };
 
             const starts = region.starts();
@@ -856,7 +860,7 @@ test "SlidingWindow single append" {
 
     // We should be able to find two matches.
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 7,
@@ -868,7 +872,7 @@ test "SlidingWindow single append" {
         } }, s.pages.pointFromPin(.active, sel.end));
     }
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 19,
@@ -879,8 +883,8 @@ test "SlidingWindow single append" {
             .y = 0,
         } }, s.pages.pointFromPin(.active, sel.end));
     }
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 }
 
 test "SlidingWindow single append case insensitive ASCII" {
@@ -901,7 +905,7 @@ test "SlidingWindow single append case insensitive ASCII" {
 
     // We should be able to find two matches.
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 7,
@@ -913,7 +917,7 @@ test "SlidingWindow single append case insensitive ASCII" {
         } }, s.pages.pointFromPin(.active, sel.end));
     }
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 19,
@@ -924,8 +928,8 @@ test "SlidingWindow single append case insensitive ASCII" {
             .y = 0,
         } }, s.pages.pointFromPin(.active, sel.end));
     }
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 }
 
 test "SlidingWindow single append case sensitive" {
@@ -948,7 +952,7 @@ test "SlidingWindow single append case sensitive" {
     const node: *PageList.List.Node = s.pages.pages.first.?;
     _ = try w.append(node);
 
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
 }
 
 test "SlidingWindow single append whole word" {
@@ -971,7 +975,7 @@ test "SlidingWindow single append whole word" {
     const node: *PageList.List.Node = s.pages.pages.first.?;
     _ = try w.append(node);
 
-    const h = w.next().?;
+    const h = (try w.next()).?;
     const sel = h.untracked();
     try testing.expectEqual(point.Point{ .active = .{
         .x = 5,
@@ -981,7 +985,7 @@ test "SlidingWindow single append whole word" {
         .x = 7,
         .y = 0,
     } }, s.pages.pointFromPin(.active, sel.end));
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
 }
 
 test "SlidingWindow single append regex" {
@@ -1004,7 +1008,7 @@ test "SlidingWindow single append regex" {
     const node: *PageList.List.Node = s.pages.pages.first.?;
     _ = try w.append(node);
 
-    const h = w.next().?;
+    const h = (try w.next()).?;
     const sel = h.untracked();
     try testing.expectEqual(point.Point{ .active = .{
         .x = 19,
@@ -1014,7 +1018,7 @@ test "SlidingWindow single append regex" {
         .x = 22,
         .y = 0,
     } }, s.pages.pointFromPin(.active, sel.end));
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
 }
 
 test "SlidingWindow invalid regex init returns recoverable error" {
@@ -1059,18 +1063,53 @@ test "SlidingWindow regex runtime error preserves window state" {
 
     var failing = std.testing.FailingAllocator.init(alloc, .{ .fail_index = 0 });
     const original_alloc = w.alloc;
+    defer w.alloc = original_alloc;
     w.alloc = failing.allocator();
-    try testing.expect(w.next() == null);
-    try testing.expectEqual(@as(?anyerror, error.OutOfMemory), w.last_error);
+    try testing.expectError(error.OutOfMemory, w.next());
     try testing.expectEqual(data_len, w.data.len());
     try testing.expectEqual(meta_len, w.meta.len());
-    w.alloc = original_alloc;
+}
+
+test "SlidingWindow regex no match preserves window state" {
+    if (comptime !build_options.oniguruma) return error.SkipZigTest;
+
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    try oni.testing.ensureInit();
+
+    var w: SlidingWindow = try .initWithOptions(alloc, .forward, "boo!", .{
+        .regex = true,
+    });
+    defer w.deinit();
+
+    var s = try Screen.init(alloc, .{ .cols = 80, .rows = 24, .max_scrollback = 0 });
+    defer s.deinit();
+    try s.testWriteString("hello. bo");
+
+    const node: *PageList.List.Node = s.pages.pages.first.?;
+    _ = try w.append(node);
+
+    const data_len = w.data.len();
+    const meta_len = w.meta.len();
+    try testing.expect((try w.next()) == null);
+    try testing.expectEqual(data_len, w.data.len());
+    try testing.expectEqual(meta_len, w.meta.len());
 }
 
 test "SlidingWindow reverse search works with non-default query options" {
     const testing = std.testing;
     const alloc = testing.allocator;
-    if (comptime build_options.oniguruma) try oni.testing.ensureInit();
+    if (comptime !build_options.oniguruma) {
+        try testing.expectError(
+            error.UnsupportedQueryOptions,
+            SlidingWindow.initWithOptions(alloc, .reverse, "boo!", .{
+                .case_sensitive = true,
+            }),
+        );
+        return;
+    }
+
+    try oni.testing.ensureInit();
 
     var w: SlidingWindow = try .initWithOptions(alloc, .reverse, "boo!", .{
         .case_sensitive = true,
@@ -1084,7 +1123,7 @@ test "SlidingWindow reverse search works with non-default query options" {
     const node: *PageList.List.Node = s.pages.pages.first.?;
     _ = try w.append(node);
 
-    const h = w.next().?;
+    const h = (try w.next()).?;
     const sel = h.untracked();
     try testing.expectEqual(point.Point{ .active = .{
         .x = 19,
@@ -1114,7 +1153,7 @@ test "SlidingWindow single append single char" {
 
     // We should be able to find two matches.
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 7,
@@ -1126,7 +1165,7 @@ test "SlidingWindow single append single char" {
         } }, s.pages.pointFromPin(.active, sel.end));
     }
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 19,
@@ -1137,8 +1176,8 @@ test "SlidingWindow single append single char" {
             .y = 0,
         } }, s.pages.pointFromPin(.active, sel.end));
     }
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 }
 
 test "SlidingWindow single append no match" {
@@ -1158,8 +1197,8 @@ test "SlidingWindow single append no match" {
     _ = try w.append(node);
 
     // No matches
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 
     // Should still keep the page
     try testing.expectEqual(1, w.meta.len());
@@ -1193,7 +1232,7 @@ test "SlidingWindow two pages" {
 
     // Search should find two matches
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 76,
@@ -1205,7 +1244,7 @@ test "SlidingWindow two pages" {
         } }, s.pages.pointFromPin(.active, sel.end).?);
     }
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 7,
@@ -1216,8 +1255,8 @@ test "SlidingWindow two pages" {
             .y = 23,
         } }, s.pages.pointFromPin(.active, sel.end).?);
     }
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 }
 
 test "SlidingWindow two pages single char" {
@@ -1248,7 +1287,7 @@ test "SlidingWindow two pages single char" {
 
     // Search should find two matches
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 76,
@@ -1260,7 +1299,7 @@ test "SlidingWindow two pages single char" {
         } }, s.pages.pointFromPin(.active, sel.end).?);
     }
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 7,
@@ -1271,8 +1310,8 @@ test "SlidingWindow two pages single char" {
             .y = 23,
         } }, s.pages.pointFromPin(.active, sel.end).?);
     }
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 }
 
 test "SlidingWindow two pages match across boundary" {
@@ -1302,7 +1341,7 @@ test "SlidingWindow two pages match across boundary" {
 
     // Search should find a match
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 76,
@@ -1313,8 +1352,8 @@ test "SlidingWindow two pages match across boundary" {
             .y = 23,
         } }, s.pages.pointFromPin(.active, sel.end).?);
     }
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 
     // We shouldn't prune because we don't have enough space
     try testing.expectEqual(2, w.meta.len());
@@ -1346,8 +1385,8 @@ test "SlidingWindow two pages no match across boundary with newline" {
     _ = try w.append(node.next.?);
 
     // Search should NOT find a match
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 
     // We shouldn't prune because we don't have enough space
     try testing.expectEqual(2, w.meta.len());
@@ -1379,8 +1418,8 @@ test "SlidingWindow two pages no match across boundary with newline reverse" {
     _ = try w.append(node);
 
     // Search should NOT find a match
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 }
 
 test "SlidingWindow two pages no match prunes first page" {
@@ -1410,8 +1449,8 @@ test "SlidingWindow two pages no match prunes first page" {
     _ = try w.append(node.next.?);
 
     // Search should find nothing
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 
     // We should've pruned our page because the second page
     // has enough text to contain our needle.
@@ -1451,8 +1490,8 @@ test "SlidingWindow two pages no match keeps both pages" {
     _ = try w.append(node.next.?);
 
     // Search should find nothing
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 
     // No pruning because both pages are needed to fit needle.
     try testing.expectEqual(2, w.meta.len());
@@ -1486,7 +1525,7 @@ test "SlidingWindow single append across circular buffer boundary" {
     }
 
     // Search non-match, prunes page
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
     try testing.expectEqual(1, w.meta.len());
 
     // Change the needle, just needs to be the same length (not a real API)
@@ -1500,7 +1539,7 @@ test "SlidingWindow single append across circular buffer boundary" {
         try testing.expect(slices[1].len > 0);
     }
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 19,
@@ -1511,7 +1550,7 @@ test "SlidingWindow single append across circular buffer boundary" {
             .y = 0,
         } }, s.pages.pointFromPin(.active, sel.end).?);
     }
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
 }
 
 test "SlidingWindow single append match on boundary" {
@@ -1545,7 +1584,7 @@ test "SlidingWindow single append match on boundary" {
     }
 
     // Search non-match, prunes page
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
     try testing.expectEqual(1, w.meta.len());
 
     // Change the needle, just needs to be the same length (not a real API)
@@ -1559,7 +1598,7 @@ test "SlidingWindow single append match on boundary" {
         try testing.expect(slices[1].len > 0);
     }
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 21,
@@ -1570,7 +1609,7 @@ test "SlidingWindow single append match on boundary" {
             .y = 0,
         } }, s.pages.pointFromPin(.active, sel.end).?);
     }
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
 }
 
 test "SlidingWindow single append reversed" {
@@ -1591,7 +1630,7 @@ test "SlidingWindow single append reversed" {
 
     // We should be able to find two matches.
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 19,
@@ -1603,7 +1642,7 @@ test "SlidingWindow single append reversed" {
         } }, s.pages.pointFromPin(.active, sel.end).?);
     }
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 7,
@@ -1614,8 +1653,8 @@ test "SlidingWindow single append reversed" {
             .y = 0,
         } }, s.pages.pointFromPin(.active, sel.end).?);
     }
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 }
 
 test "SlidingWindow single append no match reversed" {
@@ -1635,8 +1674,8 @@ test "SlidingWindow single append no match reversed" {
     _ = try w.append(node);
 
     // No matches
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 
     // Should still keep the page
     try testing.expectEqual(1, w.meta.len());
@@ -1670,7 +1709,7 @@ test "SlidingWindow two pages reversed" {
 
     // Search should find two matches (in reverse order)
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 7,
@@ -1682,7 +1721,7 @@ test "SlidingWindow two pages reversed" {
         } }, s.pages.pointFromPin(.active, sel.end).?);
     }
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 76,
@@ -1693,8 +1732,8 @@ test "SlidingWindow two pages reversed" {
             .y = 22,
         } }, s.pages.pointFromPin(.active, sel.end).?);
     }
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 }
 
 test "SlidingWindow two pages match across boundary reversed" {
@@ -1724,7 +1763,7 @@ test "SlidingWindow two pages match across boundary reversed" {
 
     // Search should find a match
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 76,
@@ -1735,8 +1774,8 @@ test "SlidingWindow two pages match across boundary reversed" {
             .y = 23,
         } }, s.pages.pointFromPin(.active, sel.end).?);
     }
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 
     // In reverse mode, the last appended meta (first original page) is large
     // enough to contain needle.len - 1 bytes, so pruning occurs
@@ -1770,8 +1809,8 @@ test "SlidingWindow two pages no match prunes first page reversed" {
     _ = try w.append(node);
 
     // Search should find nothing
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 
     // We should've pruned our page because the second page
     // has enough text to contain our needle.
@@ -1811,8 +1850,8 @@ test "SlidingWindow two pages no match keeps both pages reversed" {
     _ = try w.append(node);
 
     // Search should find nothing
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 
     // No pruning because both pages are needed to fit needle.
     try testing.expectEqual(2, w.meta.len());
@@ -1846,7 +1885,7 @@ test "SlidingWindow single append across circular buffer boundary reversed" {
     }
 
     // Search non-match, prunes page
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
     try testing.expectEqual(1, w.meta.len());
 
     // Change the needle, just needs to be the same length (not a real API)
@@ -1861,7 +1900,7 @@ test "SlidingWindow single append across circular buffer boundary reversed" {
         try testing.expect(slices[1].len > 0);
     }
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 19,
@@ -1872,7 +1911,7 @@ test "SlidingWindow single append across circular buffer boundary reversed" {
             .y = 0,
         } }, s.pages.pointFromPin(.active, sel.end).?);
     }
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
 }
 
 test "SlidingWindow single append match on boundary reversed" {
@@ -1906,7 +1945,7 @@ test "SlidingWindow single append match on boundary reversed" {
     }
 
     // Search non-match, prunes page
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
     try testing.expectEqual(1, w.meta.len());
 
     // Change the needle, just needs to be the same length (not a real API)
@@ -1921,7 +1960,7 @@ test "SlidingWindow single append match on boundary reversed" {
         try testing.expect(slices[1].len > 0);
     }
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 21,
@@ -1932,7 +1971,7 @@ test "SlidingWindow single append match on boundary reversed" {
             .y = 0,
         } }, s.pages.pointFromPin(.active, sel.end).?);
     }
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
 }
 
 test "SlidingWindow single append soft wrapped" {
@@ -1957,7 +1996,7 @@ test "SlidingWindow single append soft wrapped" {
 
     // We should be able to find two matches.
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 2,
@@ -1968,8 +2007,8 @@ test "SlidingWindow single append soft wrapped" {
             .y = 2,
         } }, screen.pages.pointFromPin(.active, sel.end));
     }
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 }
 
 test "SlidingWindow single append reversed soft wrapped" {
@@ -1994,7 +2033,7 @@ test "SlidingWindow single append reversed soft wrapped" {
 
     // We should be able to find two matches.
     {
-        const h = w.next().?;
+        const h = (try w.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 2,
@@ -2005,8 +2044,8 @@ test "SlidingWindow single append reversed soft wrapped" {
             .y = 2,
         } }, screen.pages.pointFromPin(.active, sel.end));
     }
-    try testing.expect(w.next() == null);
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
+    try testing.expect((try w.next()) == null);
 }
 
 // This tests a real bug that occurred where a whitespace-only page
@@ -2036,5 +2075,5 @@ test "SlidingWindow append whitespace only node" {
     _ = try w.append(node);
 
     // No matches expected
-    try testing.expect(w.next() == null);
+    try testing.expect((try w.next()) == null);
 }

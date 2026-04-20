@@ -27,6 +27,7 @@ pub const ActiveSearch = struct {
     ) Allocator.Error!ActiveSearch {
         return ActiveSearch.initWithOptions(alloc, needle, .{}) catch |err| switch (err) {
             error.OutOfMemory => error.OutOfMemory,
+            // Default options cannot hit unsupported regex/option paths.
             else => unreachable,
         };
     }
@@ -108,7 +109,7 @@ pub const ActiveSearch = struct {
 
     /// Find the next match for the needle in the active area. This returns
     /// null when there are no more matches.
-    pub fn next(self: *ActiveSearch) ?FlattenedHighlight {
+    pub fn next(self: *ActiveSearch) anyerror!?FlattenedHighlight {
         return self.window.next();
     }
 };
@@ -127,7 +128,7 @@ test "simple search" {
     _ = try search.update(&t.screens.active.pages);
 
     {
-        const h = search.next().?;
+        const h = (try search.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 0,
@@ -139,7 +140,7 @@ test "simple search" {
         } }, t.screens.active.pages.pointFromPin(.active, sel.end).?);
     }
     {
-        const h = search.next().?;
+        const h = (try search.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 0,
@@ -150,7 +151,7 @@ test "simple search" {
             .y = 2,
         } }, t.screens.active.pages.pointFromPin(.active, sel.end).?);
     }
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) == null);
 }
 
 test "clear screen and search" {
@@ -172,7 +173,7 @@ test "clear screen and search" {
     _ = try search.update(&t.screens.active.pages);
 
     {
-        const h = search.next().?;
+        const h = (try search.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 0,
@@ -183,5 +184,5 @@ test "clear screen and search" {
             .y = 1,
         } }, t.screens.active.pages.pointFromPin(.active, sel.end).?);
     }
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) == null);
 }

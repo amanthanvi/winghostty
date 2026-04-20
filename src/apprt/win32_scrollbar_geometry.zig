@@ -454,6 +454,8 @@ test "track widens while hovered" {
     const t = trackRect(l);
     try std.testing.expectEqual(@as(f32, 800.0 - track_width_hover_dp), t.left);
     try std.testing.expectEqual(@as(f32, 800.0), t.right);
+    try std.testing.expectEqual(@as(f32, 0.0), t.top);
+    try std.testing.expectEqual(@as(f32, 600.0), t.bottom);
 }
 
 test "thumb height proportional to viewport/total" {

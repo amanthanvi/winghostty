@@ -202,7 +202,6 @@ pub const InputEffect = enum {
 /// The search state for the surface.
 const Search = struct {
     surface: *Surface,
-    generation: u64,
     state: terminal.search.Thread,
     thread: std.Thread,
 
@@ -1394,7 +1393,11 @@ fn passwordInput(self: *Surface, v: bool) !void {
     try self.queueRender();
 }
 
-fn searchCallback(event: terminal.search.Thread.Event, ud: ?*anyopaque) void {
+fn searchCallback(
+    event: terminal.search.Thread.Event,
+    generation: u64,
+    ud: ?*anyopaque,
+) void {
     // IMPORTANT: This function is run on the SEARCH THREAD! It is NOT SAFE
     // to access anything other than values that never change on the surface.
     // The surface is guaranteed to be valid for the lifetime of the search
@@ -1403,7 +1406,7 @@ fn searchCallback(event: terminal.search.Thread.Event, ud: ?*anyopaque) void {
     const self = search.surface;
     if (!shouldAcceptSearchEvent(
         self.search_generation.load(.acquire),
-        search.generation,
+        generation,
     )) return;
     self.searchCallback_(event) catch |err| {
         log.warn("error in search callback err={}", .{err});
@@ -5842,7 +5845,6 @@ pub fn setSearchQuery(
         // a stable pointer back to the thread state.
         self.search = .{
             .surface = self,
-            .generation = self.search_generation.fetchAdd(1, .acq_rel) + 1,
             .state = undefined,
             .thread = undefined,
         };
@@ -5850,13 +5852,13 @@ pub fn setSearchQuery(
         errdefer self.search = null;
 
         state.state = try .init(self.alloc, .{
-                .mutex = self.renderer_state.mutex,
-                .terminal = self.renderer_state.terminal,
-                .event_cb = &searchCallback,
-                .event_userdata = state,
-                .visible = self.visible,
-                .focused = self.focused,
-            });
+            .mutex = self.renderer_state.mutex,
+            .terminal = self.renderer_state.terminal,
+            .event_cb = &searchCallback,
+            .event_userdata = state,
+            .visible = self.visible,
+            .focused = self.focused,
+        });
         errdefer state.state.deinit();
 
         state.thread = try .spawn(
@@ -5876,13 +5878,18 @@ pub fn setSearchQuery(
         return true;
     }
 
+    var req = try terminal.search.Thread.Message.WriteReq.init(
+        self.alloc,
+        text,
+    );
+    errdefer req.deinit();
+    const generation = self.search_generation.fetchAdd(1, .acq_rel) + 1;
+
     _ = s.state.mailbox.push(
         .{ .change_query = .{
+            .generation = generation,
             .options = query_options,
-            .req = try .init(
-                self.alloc,
-                text,
-            ),
+            .req = req,
         } },
         .forever,
     );

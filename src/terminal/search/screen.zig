@@ -141,6 +141,7 @@ pub const ScreenSearch = struct {
     ) Allocator.Error!ScreenSearch {
         return ScreenSearch.initWithOptions(alloc, screen, needle_unowned, .{}) catch |err| switch (err) {
             error.OutOfMemory => error.OutOfMemory,
+            // Default options cannot hit unsupported regex/option paths.
             else => unreachable,
         };
     }
@@ -398,7 +399,15 @@ pub const ScreenSearch = struct {
         // For the active area, we consume the entire search in one go
         // because the active area is generally small.
         const alloc = self.allocator();
-        while (self.active.next()) |hl| {
+        while (true) {
+            const hl = self.active.next() catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => {
+                    log.warn("error searching active area err={}", .{err});
+                    break;
+                },
+            } orelse break;
+
             // If this fails, then we miss a result since `active.next()`
             // moves forward and prunes data. In the future, we may want
             // to have some more robust error handling but the only
@@ -423,7 +432,15 @@ pub const ScreenSearch = struct {
         // Try to consume all the loaded matches in one go, because
         // the search is generally fast for loaded data.
         const alloc = self.allocator();
-        while (history.searcher.next()) |hl| {
+        while (true) {
+            const hl = history.searcher.next() catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => {
+                    log.warn("error searching history err={}", .{err});
+                    break;
+                },
+            } orelse break;
+
             // Ignore selections that are found within the starting
             // node since those are covered by the active area search.
             if (hl.chunks.items(.node)[0] == history.start_pin.node) continue;
@@ -571,7 +588,15 @@ pub const ScreenSearch = struct {
                 for (results.items) |*hl| hl.deinit(alloc);
                 results.deinit(alloc);
             }
-            while (window.next()) |hl| {
+            while (true) {
+                const hl = window.next() catch |err| switch (err) {
+                    error.OutOfMemory => return error.OutOfMemory,
+                    else => {
+                        log.warn("error refreshing history matches err={}", .{err});
+                        break;
+                    },
+                } orelse break;
+
                 if (hl.chunks.items(.node)[0] == history_node) continue;
 
                 var hl_cloned = try hl.clone(alloc);

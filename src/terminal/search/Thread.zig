@@ -104,6 +104,10 @@ focused: bool = true,
 /// started (a needle is given).
 search: ?Search = null,
 
+/// Generation for callbacks from the currently active query. The surface
+/// uses this to reject events from superseded query-change messages.
+event_generation: u64 = 0,
+
 /// The options used to initialize this thread.
 opts: Options,
 
@@ -201,7 +205,7 @@ fn threadMain_(self: *Thread) !void {
 
         // Send the quit message
         if (self.opts.event_cb) |cb| {
-            cb(.quit, self.opts.event_userdata);
+            cb(.quit, self.event_generation, self.opts.event_userdata);
         }
     }
 
@@ -232,6 +236,7 @@ fn threadMain_(self: *Thread) !void {
             s.notify(
                 self.alloc,
                 cb,
+                self.event_generation,
                 self.opts.event_userdata,
             );
         }
@@ -276,7 +281,11 @@ fn drainMailbox(self: *Thread) !void {
         switch (message) {
             .change_query => |v| {
                 defer v.req.deinit();
-                try self.changeQueryAndSyncRefreshTimer(v.req.slice(), v.options);
+                try self.changeQueryAndSyncRefreshTimer(
+                    v.req.slice(),
+                    v.options,
+                    v.generation,
+                );
             },
             .select => |v| try self.select(v),
             .visible => |v| {
@@ -346,9 +355,10 @@ fn changeQueryAndSyncRefreshTimer(
     self: *Thread,
     needle: []const u8,
     query_options: QueryOptions,
+    generation: u64,
 ) !void {
     defer self.syncRefreshTimer();
-    try self.changeQuery(needle, query_options);
+    try self.changeQuery(needle, query_options, generation);
 }
 
 /// Change the search term to the given value.
@@ -356,13 +366,16 @@ fn changeQuery(
     self: *Thread,
     needle: []const u8,
     query_options: QueryOptions,
+    generation: u64,
 ) !void {
     log.debug("changing search needle to '{s}' options={}", .{
         needle,
         query_options,
     });
+    self.event_generation = generation;
 
     // Stop the previous search
+    var cleared_previous = false;
     if (self.search) |*s| {
         // If our search is unchanged, do nothing.
         if (queryEquals(s.viewport.needle(), s.viewport.window.query_options, needle, query_options)) {
@@ -374,6 +387,7 @@ fn changeQuery(
 
         // When the search changes then we need to emit that it stopped.
         self.notifySearchCleared();
+        cleared_previous = true;
     }
 
     // No needle means stop the search.
@@ -384,7 +398,7 @@ fn changeQuery(
         error.OutOfMemory => return error.OutOfMemory,
         else => {
             log.warn("error initializing search query err={}", .{err});
-            self.notifySearchCleared();
+            if (!cleared_previous) self.notifySearchCleared();
             return;
         },
     };
@@ -399,18 +413,22 @@ fn notifySearchCleared(self: *Thread) void {
     if (self.opts.event_cb) |cb| {
         cb(
             .{ .total_matches = 0 },
+            self.event_generation,
             self.opts.event_userdata,
         );
         cb(
             .{ .selected_match = null },
+            self.event_generation,
             self.opts.event_userdata,
         );
         cb(
             .{ .viewport_matches = &.{} },
+            self.event_generation,
             self.opts.event_userdata,
         );
         cb(
             .{ .match_rows = &.{} },
+            self.event_generation,
             self.opts.event_userdata,
         );
     }
@@ -549,7 +567,11 @@ pub const Options = struct {
     focused: bool = true,
 };
 
-pub const EventCallback = *const fn (event: Event, userdata: ?*anyopaque) void;
+pub const EventCallback = *const fn (
+    event: Event,
+    generation: u64,
+    userdata: ?*anyopaque,
+) void;
 
 /// The type used for sending messages to the thread.
 pub const Mailbox = BlockingQueue(Message, 64);
@@ -564,6 +586,7 @@ pub const Message = union(enum) {
     /// will start a search. If an existing search term is given this will
     /// stop the prior search and start a new one.
     change_query: struct {
+        generation: u64,
         options: QueryOptions,
         req: WriteReq,
     },
@@ -867,6 +890,7 @@ const Search = struct {
         self: *Search,
         alloc: Allocator,
         cb: EventCallback,
+        generation: u64,
         ud: ?*anyopaque,
     ) void {
         const screen_search = self.screens.get(self.last_screen.key) orelse return;
@@ -876,7 +900,7 @@ const Search = struct {
         if (total != self.last_screen.total) {
             log.debug("notifying total matches={}", .{total});
             self.last_screen.total = total;
-            cb(.{ .total_matches = total }, ud);
+            cb(.{ .total_matches = total }, generation, ud);
         }
 
         // Check our viewport matches. If they're stale, we do the
@@ -893,7 +917,11 @@ const Search = struct {
             defer arena.deinit();
             const arena_alloc = arena.allocator();
             var results: std.ArrayList(FlattenedHighlight) = .empty;
-            while (self.viewport.next()) |hl| {
+            while (self.viewport.next() catch |err| {
+                log.warn("error collecting viewport matches err={}", .{err});
+                self.viewport.reset();
+                break :viewport;
+            }) |hl| {
                 const hl_cloned = hl.clone(arena_alloc) catch continue;
                 results.append(arena_alloc, hl_cloned) catch |err| switch (err) {
                     error.OutOfMemory => {
@@ -911,7 +939,7 @@ const Search = struct {
             }
 
             log.debug("notifying viewport matches len={}", .{results.items.len});
-            cb(.{ .viewport_matches = results.items }, ud);
+            cb(.{ .viewport_matches = results.items }, generation, ud);
         }
 
         if (!std.mem.eql(u32, self.match_rows.items, self.notified_match_rows.items)) {
@@ -921,7 +949,7 @@ const Search = struct {
             };
 
             log.debug("notifying search match rows len={}", .{self.match_rows.items.len});
-            cb(.{ .match_rows = self.match_rows.items }, ud);
+            cb(.{ .match_rows = self.match_rows.items }, generation, ud);
         }
 
         // Check our last selected match data.
@@ -947,6 +975,7 @@ const Search = struct {
                     .idx = m.idx,
                     .highlight = flattened,
                 } },
+                generation,
                 ud,
             );
         } else if (self.last_screen.selected != null) {
@@ -954,6 +983,7 @@ const Search = struct {
             self.last_screen.selected = null;
             cb(
                 .{ .selected_match = null },
+                generation,
                 ud,
             );
         }
@@ -962,7 +992,7 @@ const Search = struct {
         if (!self.last_complete and self.isComplete()) {
             log.debug("notifying search complete", .{});
             self.last_complete = true;
-            cb(.complete, ud);
+            cb(.complete, generation, ud);
         }
     }
 
@@ -993,7 +1023,8 @@ const TestUserData = struct {
         testing.allocator.free(self.rows);
     }
 
-    fn callback(event: Event, userdata: ?*anyopaque) void {
+    fn callback(event: Event, generation: u64, userdata: ?*anyopaque) void {
+        _ = generation;
         const ud: *Self = @ptrCast(@alignCast(userdata.?));
         switch (event) {
             .quit => {},
@@ -1049,6 +1080,7 @@ test {
     // Start our search
     _ = thread.mailbox.push(
         .{ .change_query = .{
+            .generation = 1,
             .options = .{},
             .req = try .init(
                 alloc,
@@ -1114,11 +1146,11 @@ test "invalid regex query clears search and stops refresh polling" {
     });
     defer thread.deinit();
 
-    try thread.changeQuery("world", .{});
+    try thread.changeQuery("world", .{}, 1);
     try testing.expect(thread.search != null);
 
     thread.refresh_active = true;
-    try thread.changeQueryAndSyncRefreshTimer("[", .{ .regex = true });
+    try thread.changeQueryAndSyncRefreshTimer("[", .{ .regex = true }, 2);
 
     try testing.expect(thread.search == null);
     try testing.expect(!thread.refresh_active);

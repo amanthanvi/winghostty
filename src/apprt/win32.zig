@@ -14353,7 +14353,7 @@ fn hostButtonProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
         const prev = if (v.isOverlayButton(hwnd))
             v.overlay_button_prev_proc
         else if (v.searchControlSurface(hwnd)) |surface|
-            surface.search_bar_button_prev_proc
+            surface.searchBarButtonPrevProc(hwnd)
         else
             v.chrome_button_prev_proc;
         if (prev) |proc| {
@@ -16406,7 +16406,7 @@ pub const Surface = struct {
     search_bar_case_hwnd: ?HWND = null,
     search_bar_word_hwnd: ?HWND = null,
     search_bar_close_hwnd: ?HWND = null,
-    search_bar_button_prev_proc: ?*const anyopaque = null,
+    search_bar_button_prev_procs: [6]?*const anyopaque = [_]?*const anyopaque{null} ** 6,
     search_bar_prev_placement: ChildPlacement = .{},
     search_bar_next_placement: ChildPlacement = .{},
     search_bar_regex_placement: ChildPlacement = .{},
@@ -16434,6 +16434,25 @@ pub const Surface = struct {
     /// and by `Surface.destroyWindow` so a close-while-pending doesn't
     /// leak. Migration of the last live `MessageBoxW` (AGENTS.md:84).
     pending_clipboard_op: ?PendingClipboardOp = null,
+
+    fn searchBarButtonPrevProc(self: *const Surface, hwnd: HWND) ?*const anyopaque {
+        const role: SearchBarButtonRole = if (self.search_bar_prev_hwnd != null and hwnd == self.search_bar_prev_hwnd.?)
+            .prev
+        else if (self.search_bar_next_hwnd != null and hwnd == self.search_bar_next_hwnd.?)
+            .next
+        else if (self.search_bar_regex_hwnd != null and hwnd == self.search_bar_regex_hwnd.?)
+            .regex
+        else if (self.search_bar_case_hwnd != null and hwnd == self.search_bar_case_hwnd.?)
+            .case_sensitive
+        else if (self.search_bar_word_hwnd != null and hwnd == self.search_bar_word_hwnd.?)
+            .whole_word
+        else if (self.search_bar_close_hwnd != null and hwnd == self.search_bar_close_hwnd.?)
+            .close
+        else
+            return null;
+
+        return self.search_bar_button_prev_procs[@intFromEnum(role)];
+    }
 
     pub fn init(
         self: *Surface,
@@ -16913,7 +16932,10 @@ pub const Surface = struct {
     fn queuePaintRequest(self: *Surface, update_now: bool) !void {
         const hwnd = self.hwnd orelse return error.NoWindow;
         if (self.paint_pending) {
-            if (update_now) _ = UpdateWindow(hwnd);
+            if (update_now) {
+                self.requestRendererFrameNow();
+                try self.forcePaintRequestNow();
+            }
             return;
         }
 
@@ -17917,7 +17939,11 @@ pub const Surface = struct {
             self.app.hinstance,
             null,
         ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
-        host.subclassButton(self.search_bar_prev_hwnd.?, &hostButtonProc, &self.search_bar_button_prev_proc);
+        host.subclassButton(
+            self.search_bar_prev_hwnd.?,
+            &hostButtonProc,
+            &self.search_bar_button_prev_procs[@intFromEnum(SearchBarButtonRole.prev)],
+        );
 
         self.search_bar_next_hwnd = CreateWindowExW(
             0,
@@ -17933,7 +17959,11 @@ pub const Surface = struct {
             self.app.hinstance,
             null,
         ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
-        host.subclassButton(self.search_bar_next_hwnd.?, &hostButtonProc, &self.search_bar_button_prev_proc);
+        host.subclassButton(
+            self.search_bar_next_hwnd.?,
+            &hostButtonProc,
+            &self.search_bar_button_prev_procs[@intFromEnum(SearchBarButtonRole.next)],
+        );
 
         self.search_bar_regex_hwnd = CreateWindowExW(
             0,
@@ -17949,7 +17979,11 @@ pub const Surface = struct {
             self.app.hinstance,
             null,
         ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
-        host.subclassButton(self.search_bar_regex_hwnd.?, &hostButtonProc, &self.search_bar_button_prev_proc);
+        host.subclassButton(
+            self.search_bar_regex_hwnd.?,
+            &hostButtonProc,
+            &self.search_bar_button_prev_procs[@intFromEnum(SearchBarButtonRole.regex)],
+        );
 
         self.search_bar_case_hwnd = CreateWindowExW(
             0,
@@ -17965,7 +17999,11 @@ pub const Surface = struct {
             self.app.hinstance,
             null,
         ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
-        host.subclassButton(self.search_bar_case_hwnd.?, &hostButtonProc, &self.search_bar_button_prev_proc);
+        host.subclassButton(
+            self.search_bar_case_hwnd.?,
+            &hostButtonProc,
+            &self.search_bar_button_prev_procs[@intFromEnum(SearchBarButtonRole.case_sensitive)],
+        );
 
         self.search_bar_word_hwnd = CreateWindowExW(
             0,
@@ -17981,7 +18019,11 @@ pub const Surface = struct {
             self.app.hinstance,
             null,
         ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
-        host.subclassButton(self.search_bar_word_hwnd.?, &hostButtonProc, &self.search_bar_button_prev_proc);
+        host.subclassButton(
+            self.search_bar_word_hwnd.?,
+            &hostButtonProc,
+            &self.search_bar_button_prev_procs[@intFromEnum(SearchBarButtonRole.whole_word)],
+        );
 
         self.search_bar_close_hwnd = CreateWindowExW(
             0,
@@ -17997,7 +18039,11 @@ pub const Surface = struct {
             self.app.hinstance,
             null,
         ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
-        host.subclassButton(self.search_bar_close_hwnd.?, &hostButtonProc, &self.search_bar_button_prev_proc);
+        host.subclassButton(
+            self.search_bar_close_hwnd.?,
+            &hostButtonProc,
+            &self.search_bar_button_prev_procs[@intFromEnum(SearchBarButtonRole.close)],
+        );
 
         self.search_bar_results_hwnd = CreateWindowExW(
             0,
@@ -18045,7 +18091,7 @@ pub const Surface = struct {
         self.search_bar_edit_hwnd = null;
         self.search_bar_bg_hwnd = null;
         self.search_bar_edit_prev_proc = null;
-        self.search_bar_button_prev_proc = null;
+        self.search_bar_button_prev_procs = [_]?*const anyopaque{null} ** 6;
         self.search_bar_bg_placement = .{};
         self.search_bar_edit_placement = .{};
         self.search_bar_prev_placement = .{};

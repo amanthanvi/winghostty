@@ -39,6 +39,7 @@ pub const ViewportSearch = struct {
     ) Allocator.Error!ViewportSearch {
         return ViewportSearch.initWithOptions(alloc, needle_unowned, .{}) catch |err| switch (err) {
             error.OutOfMemory => error.OutOfMemory,
+            // Default options cannot hit unsupported regex/option paths.
             else => unreachable,
         };
     }
@@ -188,7 +189,7 @@ pub const ViewportSearch = struct {
 
     /// Find the next match for the needle in the active area. This returns
     /// null when there are no more matches.
-    pub fn next(self: *ViewportSearch) ?FlattenedHighlight {
+    pub fn next(self: *ViewportSearch) anyerror!?FlattenedHighlight {
         return self.window.next();
     }
 
@@ -245,7 +246,7 @@ test "simple search" {
     try testing.expect(try search.update(&t.screens.active.pages));
 
     {
-        const h = search.next().?;
+        const h = (try search.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 0,
@@ -257,7 +258,7 @@ test "simple search" {
         } }, t.screens.active.pages.pointFromPin(.active, sel.end).?);
     }
     {
-        const h = search.next().?;
+        const h = (try search.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 0,
@@ -268,7 +269,7 @@ test "simple search" {
             .y = 2,
         } }, t.screens.active.pages.pointFromPin(.active, sel.end).?);
     }
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) == null);
 }
 
 test "clear screen and search" {
@@ -290,7 +291,7 @@ test "clear screen and search" {
     try testing.expect(try search.update(&t.screens.active.pages));
 
     {
-        const h = search.next().?;
+        const h = (try search.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 0,
@@ -301,7 +302,7 @@ test "clear screen and search" {
             .y = 1,
         } }, t.screens.active.pages.pointFromPin(.active, sel.end).?);
     }
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) == null);
 }
 
 test "clear screen and search dirty tracking" {
@@ -337,7 +338,7 @@ test "clear screen and search dirty tracking" {
     try testing.expect(try search.update(&t.screens.active.pages));
 
     {
-        const h = search.next().?;
+        const h = (try search.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 0,
@@ -348,7 +349,7 @@ test "clear screen and search dirty tracking" {
             .y = 1,
         } }, t.screens.active.pages.pointFromPin(.active, sel.end).?);
     }
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) == null);
 }
 
 test "history search, no active area" {
@@ -377,7 +378,7 @@ test "history search, no active area" {
     try testing.expect(try search.update(&t.screens.active.pages));
 
     {
-        const h = search.next().?;
+        const h = (try search.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .screen = .{
             .x = 0,
@@ -388,9 +389,9 @@ test "history search, no active area" {
             .y = 0,
         } }, t.screens.active.pages.pointFromPin(.screen, sel.end).?);
     }
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) == null);
 
     // Viewport doesn't contain active
     try testing.expect(!try search.update(&t.screens.active.pages));
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) == null);
 }

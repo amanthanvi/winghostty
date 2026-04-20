@@ -53,6 +53,7 @@ pub const PageListSearch = struct {
     ) Allocator.Error!PageListSearch {
         return PageListSearch.initWithOptions(alloc, needle, .{}, list, start) catch |err| switch (err) {
             error.OutOfMemory => error.OutOfMemory,
+            // Default options cannot hit unsupported regex/option paths.
             else => unreachable,
         };
     }
@@ -109,7 +110,7 @@ pub const PageListSearch = struct {
     ///
     /// This does NOT access the PageList, so it can be called without
     /// a lock held.
-    pub fn next(self: *PageListSearch) ?FlattenedHighlight {
+    pub fn next(self: *PageListSearch) anyerror!?FlattenedHighlight {
         return self.window.next();
     }
 
@@ -166,7 +167,7 @@ test "simple search" {
     defer search.deinit();
 
     {
-        const h = search.next().?;
+        const h = (try search.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 0,
@@ -178,7 +179,7 @@ test "simple search" {
         } }, t.screens.active.pages.pointFromPin(.active, sel.end).?);
     }
     {
-        const h = search.next().?;
+        const h = (try search.next()).?;
         const sel = h.untracked();
         try testing.expectEqual(point.Point{ .active = .{
             .x = 0,
@@ -189,7 +190,7 @@ test "simple search" {
             .y = 0,
         } }, t.screens.active.pages.pointFromPin(.active, sel.end).?);
     }
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) == null);
 
     // We should not be able to feed since we have one page
     try testing.expect(!try search.feed());
@@ -223,17 +224,17 @@ test "feed multiple pages with matches" {
     defer search.deinit();
 
     // First match on the last page
-    const sel1 = search.next();
+    const sel1 = try search.next();
     try testing.expect(sel1 != null);
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) == null);
 
     // Feed should succeed and load the first page
     try testing.expect(try search.feed());
 
     // Now we should find the match on the first page
-    const sel2 = search.next();
+    const sel2 = try search.next();
     try testing.expect(sel2 != null);
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) == null);
 
     // No more pages to feed
     try testing.expect(!try search.feed());
@@ -266,13 +267,13 @@ test "feed multiple pages no matches" {
     defer search.deinit();
 
     // No matches on last page
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) == null);
 
     // Feed first page
     try testing.expect(try search.feed());
 
     // Still no matches
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) == null);
 
     // No more pages
     try testing.expect(!try search.feed());
@@ -307,13 +308,13 @@ test "feed iteratively through multiple matches" {
     defer search.deinit();
 
     // Match on page 2
-    try testing.expect(search.next() != null);
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) != null);
+    try testing.expect((try search.next()) == null);
 
     // Feed page 1
     try testing.expect(try search.feed());
-    try testing.expect(search.next() != null);
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) != null);
+    try testing.expect((try search.next()) == null);
 
     // No more pages
     try testing.expect(!try search.feed());
@@ -348,13 +349,13 @@ test "feed with match spanning page boundary" {
     defer search.deinit();
 
     // No complete match on last page alone (only has "st")
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) == null);
 
     // Feed first page - this should give us enough data to find "Test"
     try testing.expect(try search.feed());
 
     // Should find the spanning match
-    const h = search.next().?;
+    const h = (try search.next()).?;
     const sel = h.untracked();
     try testing.expect(sel.start.node != sel.end.node);
     {
@@ -367,7 +368,7 @@ test "feed with match spanning page boundary" {
     }
 
     // No more matches
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) == null);
 
     // No more pages
     try testing.expect(!try search.feed());
@@ -403,9 +404,9 @@ test "feed with match spanning page boundary with newline" {
     defer search.deinit();
 
     // Should not find any matches since we broke with an explicit newline.
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) == null);
     try testing.expect(try search.feed());
-    try testing.expect(search.next() == null);
+    try testing.expect((try search.next()) == null);
     try testing.expect(!try search.feed());
 }
 
