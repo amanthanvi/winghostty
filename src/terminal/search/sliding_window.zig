@@ -432,16 +432,7 @@ pub const SlidingWindow = struct {
     ) anyerror!?RegexMatch {
         const state = if (self.regex_state) |*state| state else return null;
         const boundary_sensitive = self.regexNeedsEdgeContext();
-        const total_len = first.len + second.len;
-        self.regex_buf.clearRetainingCapacity();
-        try self.regex_buf.ensureTotalCapacity(self.alloc, total_len);
-        self.regex_buf.appendSliceAssumeCapacity(first);
-        self.regex_buf.appendSliceAssumeCapacity(second);
-
-        const haystack = self.regex_buf.items;
-        if (self.direction == .reverse) {
-            std.mem.reverse(u8, haystack);
-        }
+        const haystack = try self.buildRegexHaystack(first, second);
 
         var search_start: usize = 0;
         var last_match: ?RegexMatch = null;
@@ -466,9 +457,11 @@ pub const SlidingWindow = struct {
                 search_start = start_i + 1;
                 continue;
             }
-            if (boundary_sensitive and
-                (start_i == 0 or end_i == haystack.len))
-            {
+            if (boundary_sensitive and self.regexMatchTouchesSyntheticEdge(
+                start_i,
+                end_i,
+                haystack.len,
+            )) {
                 search_start = start_i + 1;
                 continue;
             }
@@ -489,6 +482,85 @@ pub const SlidingWindow = struct {
         }
 
         return last_match;
+    }
+
+    fn buildRegexHaystack(
+        self: *SlidingWindow,
+        first: []const u8,
+        second: []const u8,
+    ) anyerror![]const u8 {
+        const total_len = first.len + second.len;
+        self.regex_buf.clearRetainingCapacity();
+        try self.regex_buf.ensureTotalCapacity(self.alloc, total_len);
+
+        switch (self.direction) {
+            .forward => {
+                self.regex_buf.appendSliceAssumeCapacity(first);
+                self.regex_buf.appendSliceAssumeCapacity(second);
+            },
+            .reverse => {
+                // Reverse-mode storage is byte-reversed search order for
+                // literal scans. Restore a forward UTF-8 haystack before
+                // handing text to Oniguruma.
+                self.appendReverseForRegex(second);
+                self.appendReverseForRegex(first);
+            },
+        }
+
+        return self.regex_buf.items;
+    }
+
+    fn appendReverseForRegex(self: *SlidingWindow, bytes: []const u8) void {
+        var i = bytes.len;
+        while (i > 0) {
+            i -= 1;
+            self.regex_buf.appendAssumeCapacity(bytes[i]);
+        }
+    }
+
+    fn regexMatchTouchesSyntheticEdge(
+        self: *const SlidingWindow,
+        start: usize,
+        end: usize,
+        haystack_len: usize,
+    ) bool {
+        if (start == 0 and self.hasRegexContextBeforeHaystack()) return true;
+        if (end == haystack_len and self.hasRegexContextAfterHaystack()) return true;
+        return false;
+    }
+
+    fn hasRegexContextBeforeHaystack(self: *const SlidingWindow) bool {
+        return switch (self.direction) {
+            .forward => self.hasSearchOrderContextBeforeWindow(),
+            .reverse => self.hasSearchOrderContextAfterWindow(),
+        };
+    }
+
+    fn hasRegexContextAfterHaystack(self: *const SlidingWindow) bool {
+        return switch (self.direction) {
+            .forward => self.hasSearchOrderContextAfterWindow(),
+            .reverse => self.hasSearchOrderContextBeforeWindow(),
+        };
+    }
+
+    fn hasSearchOrderContextBeforeWindow(self: *const SlidingWindow) bool {
+        if (self.data_offset > 0) return true;
+
+        var it = self.meta.iterator(.forward);
+        const meta = it.next() orelse return false;
+        return switch (self.direction) {
+            .forward => meta.node.prev != null,
+            .reverse => meta.node.next != null,
+        };
+    }
+
+    fn hasSearchOrderContextAfterWindow(self: *const SlidingWindow) bool {
+        var it = self.meta.iterator(.reverse);
+        const meta = it.next() orelse return false;
+        return switch (self.direction) {
+            .forward => meta.node.next != null,
+            .reverse => meta.node.prev != null,
+        };
     }
 
     fn regexNeedsEdgeContext(self: *const SlidingWindow) bool {
@@ -1028,6 +1100,43 @@ test "SlidingWindow single append whole word" {
     try testing.expect((try w.next()) == null);
 }
 
+test "SlidingWindow whole word matches true page edge" {
+    if (comptime !build_options.oniguruma) return error.SkipZigTest;
+
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    try oni.testing.ensureInit();
+
+    var w: SlidingWindow = try .initWithOptions(alloc, .forward, "boo", .{
+        .whole_word = true,
+    });
+    defer w.deinit();
+
+    var s = try Screen.init(alloc, .{ .cols = 80, .rows = 24, .max_scrollback = 1000 });
+    defer s.deinit();
+
+    const first_page_rows = s.pages.pages.first.?.data.capacity.rows;
+    for (0..first_page_rows - 1) |_| try s.testWriteString("\n");
+    for (0..s.pages.cols - 4) |_| try s.testWriteString("x");
+    try s.testWriteString(" boo");
+    try testing.expect(s.pages.pages.first == s.pages.pages.last);
+
+    const first_node: *PageList.List.Node = s.pages.pages.first.?;
+    _ = try w.append(first_node);
+
+    const h = (try w.next()).?;
+    const sel = h.untracked();
+    try testing.expectEqual(point.Point{ .active = .{
+        .x = 77,
+        .y = 23,
+    } }, s.pages.pointFromPin(.active, sel.start));
+    try testing.expectEqual(point.Point{ .active = .{
+        .x = 79,
+        .y = 23,
+    } }, s.pages.pointFromPin(.active, sel.end));
+    try testing.expect((try w.next()) == null);
+}
+
 test "SlidingWindow whole word does not match synthetic page edge" {
     if (comptime !build_options.oniguruma) return error.SkipZigTest;
 
@@ -1045,16 +1154,15 @@ test "SlidingWindow whole word does not match synthetic page edge" {
 
     const first_page_rows = s.pages.pages.first.?.data.capacity.rows;
     for (0..first_page_rows - 1) |_| try s.testWriteString("\n");
-    for (0..s.pages.cols - 3) |_| try s.testWriteString("x");
-    try s.testWriteString("boo");
-    try testing.expect(s.pages.pages.first == s.pages.pages.last);
+    for (0..s.pages.cols - 4) |_| try s.testWriteString("x");
+    try s.testWriteString(" boo");
+    try s.testWriteString("x");
+    try testing.expect(s.pages.pages.first != s.pages.pages.last);
 
     const first_node: *PageList.List.Node = s.pages.pages.first.?;
     _ = try w.append(first_node);
     try testing.expect((try w.next()) == null);
 
-    try s.testWriteString("x");
-    try testing.expect(s.pages.pages.first != s.pages.pages.last);
     _ = try w.append(first_node.next.?);
     try testing.expect((try w.next()) == null);
 }
@@ -1234,6 +1342,37 @@ test "SlidingWindow reverse search works with non-default query options" {
     } }, s.pages.pointFromPin(.active, sel.start).?);
     try testing.expectEqual(point.Point{ .active = .{
         .x = 22,
+        .y = 0,
+    } }, s.pages.pointFromPin(.active, sel.end).?);
+}
+
+test "SlidingWindow reverse regex searches UTF-8 haystack in forward order" {
+    if (comptime !build_options.oniguruma) return error.SkipZigTest;
+
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    try oni.testing.ensureInit();
+
+    var w: SlidingWindow = try .initWithOptions(alloc, .reverse, "caf.", .{
+        .regex = true,
+    });
+    defer w.deinit();
+
+    var s = try Screen.init(alloc, .{ .cols = 80, .rows = 24, .max_scrollback = 0 });
+    defer s.deinit();
+    try s.testWriteString("caf\xc3\xa9 one caf\xc3\xa9");
+
+    const node: *PageList.List.Node = s.pages.pages.first.?;
+    _ = try w.append(node);
+
+    const h = (try w.next()).?;
+    const sel = h.untracked();
+    try testing.expectEqual(point.Point{ .active = .{
+        .x = 9,
+        .y = 0,
+    } }, s.pages.pointFromPin(.active, sel.start).?);
+    try testing.expectEqual(point.Point{ .active = .{
+        .x = 12,
         .y = 0,
     } }, s.pages.pointFromPin(.active, sel.end).?);
 }

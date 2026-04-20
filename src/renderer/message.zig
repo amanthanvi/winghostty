@@ -59,7 +59,7 @@ pub const Message = union(enum) {
 
     /// The selected match from the search thread. May be null to indicate
     /// no match currently.
-    search_selected_match: ?SearchMatch,
+    search_selected_match: SearchSelectedMatch,
 
     /// Activate or deactivate the inspector.
     inspector: bool,
@@ -68,8 +68,22 @@ pub const Message = union(enum) {
     macos_display_id: u32,
 
     pub const SearchMatches = struct {
+        generation: u64,
         arena: ArenaAllocator,
         matches: []const terminal.highlight.Flattened,
+
+        pub fn deinit(self: *SearchMatches) void {
+            self.arena.deinit();
+        }
+    };
+
+    pub const SearchSelectedMatch = struct {
+        generation: u64,
+        match: ?SearchMatch,
+
+        pub fn deinit(self: *SearchSelectedMatch) void {
+            if (self.match) |*m| m.arena.deinit();
+        }
     };
 
     pub const SearchMatch = struct {

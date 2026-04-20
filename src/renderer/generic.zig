@@ -801,7 +801,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
             if (self.overlay) |*overlay| overlay.deinit(self.alloc);
             self.terminal_state.deinit(self.alloc);
             if (self.search_selected_match) |*m| m.arena.deinit();
-            if (self.search_matches) |*m| m.arena.deinit();
+            if (self.search_matches) |*m| m.deinit();
             self.swap_chain.deinit();
 
             if (DisplayLink != void) {
@@ -1227,7 +1227,7 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
                     self.terminal_state.rows != pre_update_rows or
                     self.terminal_state.cols != pre_update_cols;
                 if (dims_changed) {
-                    if (self.search_matches) |*m| m.arena.deinit();
+                    if (self.search_matches) |*m| m.deinit();
                     self.search_matches = null;
                     if (self.search_selected_match) |*m| m.arena.deinit();
                     self.search_selected_match = null;

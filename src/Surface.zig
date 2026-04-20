@@ -581,6 +581,7 @@ pub fn init(
         &self.renderer,
         &self.renderer_state,
         app_mailbox,
+        &self.search_generation,
     );
     errdefer render_thread.deinit();
 
@@ -1161,7 +1162,10 @@ pub fn handleMessage(self: *Surface, msg: Message) !void {
             }
 
             _ = self.renderer_thread.mailbox.push(
-                .{ .search_selected_match = payload.payload },
+                .{ .search_selected_match = .{
+                    .generation = payload.generation,
+                    .match = payload.payload,
+                } },
                 .forever,
             );
             try self.renderer_thread.wakeup.notify();
@@ -1461,6 +1465,10 @@ fn shouldAcceptSearchGeneration(self: *Surface, generation: u64) bool {
     return shouldAcceptSearchEvent(self.search_generation.load(.acquire), generation);
 }
 
+fn nextSearchGeneration(self: *Surface) u64 {
+    return self.search_generation.fetchAdd(1, .acq_rel) + 1;
+}
+
 fn searchCallback_(
     self: *Surface,
     event: terminal.search.Thread.Event,
@@ -1481,6 +1489,7 @@ fn searchCallback_(
                 .{ .search_viewport_matches = .{
                     .generation = generation,
                     .payload = .{
+                        .generation = generation,
                         .arena = arena,
                         .matches = matches,
                     },
@@ -1573,6 +1582,7 @@ fn searchCallback_(
                 .{ .search_viewport_matches = .{
                     .generation = generation,
                     .payload = .{
+                        .generation = generation,
                         .arena = .init(self.alloc),
                         .matches = &.{},
                     },
@@ -5887,6 +5897,7 @@ pub fn endSearch(self: *Surface) !bool {
     const performed = self.search != null;
 
     if (self.search) |*s| {
+        _ = self.nextSearchGeneration();
         s.deinit();
         self.search = null;
     }
@@ -5946,6 +5957,7 @@ pub fn setSearchQuery(
 
     // Zero-length text means stop searching.
     if (text.len == 0) {
+        _ = self.nextSearchGeneration();
         s.deinit();
         self.search = null;
         return true;
@@ -5956,7 +5968,7 @@ pub fn setSearchQuery(
         text,
     );
     errdefer req.deinit();
-    const generation = self.search_generation.fetchAdd(1, .acq_rel) + 1;
+    const generation = self.nextSearchGeneration();
 
     _ = s.state.mailbox.push(
         .{ .change_query = .{

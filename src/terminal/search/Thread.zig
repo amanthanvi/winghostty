@@ -380,6 +380,8 @@ fn changeQuery(
     if (self.search) |*s| {
         // If our search is unchanged, do nothing.
         if (queryEquals(s.viewport.needle(), s.viewport.window.query_options, needle, query_options)) {
+            // Reset clears both the viewport fingerprint and sliding-window
+            // buffer, so the forced notify below rescans from a clean state.
             s.viewport.reset();
             s.stale_viewport_matches = true;
 
@@ -445,6 +447,8 @@ fn notifySearchCleared(self: *Thread) void {
             self.event_generation,
             self.opts.event_userdata,
         );
+        // The previous Search is about to be discarded; do not mutate its
+        // notified row snapshot just to publish the explicit clear event.
         cb(
             .{ .match_rows = &.{} },
             self.event_generation,
@@ -465,6 +469,8 @@ fn queryEquals(
         return std.mem.eql(u8, prev_needle, next_needle);
     }
 
+    // Whole-word without explicit case sensitivity still uses the regex
+    // engine's ignorecase path, so equivalent queries are ASCII-insensitive.
     return std.ascii.eqlIgnoreCase(prev_needle, next_needle);
 }
 
@@ -787,6 +793,12 @@ const Search = struct {
         return result;
     }
 
+    fn clearMatchRowsCache(self: *Search) void {
+        self.match_rows.clearRetainingCapacity();
+        self.match_rows_screen = null;
+        self.match_rows_revision = 0;
+    }
+
     /// Grab the mutex and update any state that requires it, such as
     /// feeding additional data to the searches or updating the active screen.
     pub fn feed(
@@ -818,6 +830,9 @@ const Search = struct {
                 };
 
                 if (remove) {
+                    if (self.match_rows_screen) |key| {
+                        if (key == entry.key) self.clearMatchRowsCache();
+                    }
                     entry.value.deinit();
                     _ = self.screens.remove(entry.key);
                 }
@@ -900,9 +915,7 @@ const Search = struct {
         }
 
         const screen_search = self.screens.getPtr(self.last_screen.key) orelse {
-            self.match_rows.clearRetainingCapacity();
-            self.match_rows_screen = null;
-            self.match_rows_revision = 0;
+            self.clearMatchRowsCache();
             return;
         };
         const match_rows_revision = screen_search.matchRowsRevision();

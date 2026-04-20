@@ -39,7 +39,7 @@ pub const Message = union(enum) {
         payload: renderer.Message.SearchMatches,
 
         pub fn deinit(self: *SearchViewportMatches) void {
-            self.payload.arena.deinit();
+            self.payload.deinit();
         }
     };
     pub const SearchSelectedMatch = struct {
