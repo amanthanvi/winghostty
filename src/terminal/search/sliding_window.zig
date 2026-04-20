@@ -2,6 +2,7 @@ const std = @import("std");
 const assert = @import("../../quirks.zig").inlineAssert;
 const Allocator = std.mem.Allocator;
 const CircBuf = @import("../../datastruct/main.zig").CircBuf;
+const build_options = @import("terminal_options");
 const terminal = @import("../main.zig");
 const point = terminal.point;
 const size = terminal.size;
@@ -12,6 +13,8 @@ const Screen = terminal.Screen;
 const Terminal = terminal.Terminal;
 const PageFormatter = @import("../formatter.zig").PageFormatter;
 const FlattenedHighlight = terminal.highlight.Flattened;
+const QueryOptions = @import("query_options.zig").QueryOptions;
+const oni = if (build_options.oniguruma) @import("oniguruma") else struct {};
 
 /// Searches page nodes via a sliding window. The sliding window maintains
 /// the invariant that data isn't pruned until (1) we've searched it and
@@ -66,6 +69,9 @@ pub const SlidingWindow = struct {
     /// The needle we're searching for. Does own the memory.
     needle: []const u8,
 
+    /// Match behavior for the current query.
+    query_options: QueryOptions,
+
     /// The search direction. If the direction is forward then pages should
     /// be appended in forward linked list order from the PageList. If the
     /// direction is reverse then pages should be appended in reverse order.
@@ -83,6 +89,14 @@ pub const SlidingWindow = struct {
     /// ends on another. The length is always `needle.len * 2`.
     overlap_buf: []u8,
 
+    /// Scratch buffer used by regex / whole-word / case-sensitive paths
+    /// when a contiguous linear view of the circular buffer is required.
+    regex_buf: std.ArrayListUnmanaged(u8) = .empty,
+
+    /// Precompiled regex for non-default query options.
+    regex_state: if (build_options.oniguruma) ?RegexState else void =
+        if (build_options.oniguruma) null else {},
+
     const Direction = enum { forward, reverse };
     const DataBuf = CircBuf(u8, 0);
     const MetaBuf = CircBuf(Meta, undefined);
@@ -96,11 +110,33 @@ pub const SlidingWindow = struct {
         }
     };
 
+    const RegexState = if (build_options.oniguruma) struct {
+        pattern: []u8,
+        regex: oni.Regex,
+
+        fn deinit(self: *RegexState, alloc: Allocator) void {
+            self.regex.deinit();
+            alloc.free(self.pattern);
+        }
+    } else void;
+
     pub fn init(
         alloc: Allocator,
         direction: Direction,
         needle_unowned: []const u8,
     ) Allocator.Error!SlidingWindow {
+        return SlidingWindow.initWithOptions(alloc, direction, needle_unowned, .{}) catch |err| switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            else => unreachable,
+        };
+    }
+
+    pub fn initWithOptions(
+        alloc: Allocator,
+        direction: Direction,
+        needle_unowned: []const u8,
+        query_options: QueryOptions,
+    ) anyerror!SlidingWindow {
         var data = try DataBuf.init(alloc, 0);
         errdefer data.deinit(alloc);
 
@@ -111,11 +147,19 @@ pub const SlidingWindow = struct {
         errdefer alloc.free(needle);
         switch (direction) {
             .forward => {},
-            .reverse => std.mem.reverse(u8, needle),
+            .reverse => if (query_options.isDefault()) std.mem.reverse(u8, needle),
         }
 
         const overlap_buf = try alloc.alloc(u8, needle.len * 2);
         errdefer alloc.free(overlap_buf);
+
+        var regex_state = if (build_options.oniguruma) @as(?RegexState, null) else {};
+        if (build_options.oniguruma and !query_options.isDefault()) {
+            regex_state = try initRegexState(alloc, needle_unowned, query_options);
+        }
+        errdefer if (build_options.oniguruma) {
+            if (regex_state) |*state| state.deinit(alloc);
+        };
 
         return .{
             .alloc = alloc,
@@ -123,12 +167,18 @@ pub const SlidingWindow = struct {
             .meta = meta,
             .chunk_buf = .empty,
             .needle = needle,
+            .query_options = query_options,
             .direction = direction,
             .overlap_buf = overlap_buf,
+            .regex_state = regex_state,
         };
     }
 
     pub fn deinit(self: *SlidingWindow) void {
+        if (build_options.oniguruma) {
+            if (self.regex_state) |*state| state.deinit(self.alloc);
+        }
+        self.regex_buf.deinit(self.alloc);
         self.alloc.free(self.overlap_buf);
         self.alloc.free(self.needle);
         self.chunk_buf.deinit(self.alloc);
@@ -146,6 +196,66 @@ pub const SlidingWindow = struct {
         self.meta.clear();
         self.data.clear();
         self.data_offset = 0;
+    }
+
+    fn initRegexState(
+        alloc: Allocator,
+        needle_unowned: []const u8,
+        query_options: QueryOptions,
+    ) !RegexState {
+        const pattern = try buildRegexPattern(alloc, needle_unowned, query_options);
+        errdefer alloc.free(pattern);
+
+        var regex = try oni.Regex.init(
+            pattern,
+            .{
+                .ignorecase = !query_options.case_sensitive,
+                .word_is_ascii = true,
+            },
+            oni.Encoding.utf8,
+            oni.Syntax.default,
+            null,
+        );
+        errdefer regex.deinit();
+
+        return .{
+            .pattern = pattern,
+            .regex = regex,
+        };
+    }
+
+    fn buildRegexPattern(
+        alloc: Allocator,
+        needle_unowned: []const u8,
+        query_options: QueryOptions,
+    ) ![]u8 {
+        const base = if (query_options.regex)
+            try alloc.dupe(u8, needle_unowned)
+        else
+            try escapeRegexLiteral(alloc, needle_unowned);
+        errdefer alloc.free(base);
+
+        if (!query_options.whole_word) return base;
+        const wrapped = try std.fmt.allocPrint(alloc, "\\b(?:{s})\\b", .{base});
+        alloc.free(base);
+        return wrapped;
+    }
+
+    fn escapeRegexLiteral(alloc: Allocator, input: []const u8) ![]u8 {
+        var out: std.ArrayListUnmanaged(u8) = .empty;
+        defer out.deinit(alloc);
+
+        for (input) |c| {
+            switch (c) {
+                '\\', '.', '^', '$', '|', '?', '*', '+', '(', ')', '[', ']', '{', '}' => {
+                    try out.append(alloc, '\\');
+                },
+                else => {},
+            }
+            try out.append(alloc, c);
+        }
+
+        return try out.toOwnedSlice(alloc);
     }
 
     /// Search the window for the next occurrence of the needle. As
@@ -175,52 +285,62 @@ pub const SlidingWindow = struct {
             );
         };
 
-        // Search the first slice for the needle.
-        if (std.ascii.indexOfIgnoreCase(slices[0], self.needle)) |idx| {
-            return self.highlight(
-                idx,
-                self.needle.len,
-            );
+        if (build_options.oniguruma) {
+            if (self.regex_state != null) {
+                if (self.regexMatch(slices[0], slices[1])) |match| {
+                    return self.highlight(match.start, match.len);
+                }
+            }
         }
 
-        // Search the overlap buffer for the needle.
-        if (slices[0].len > 0 and slices[1].len > 0) overlap: {
-            // Get up to needle.len - 1 bytes from each side (as much as
-            // we can) and store it in the overlap buffer.
-            const prefix: []const u8 = prefix: {
-                const len = @min(slices[0].len, self.needle.len - 1);
-                const idx = slices[0].len - len;
-                break :prefix slices[0][idx..];
-            };
-            const suffix: []const u8 = suffix: {
-                const len = @min(slices[1].len, self.needle.len - 1);
-                break :suffix slices[1][0..len];
-            };
-            const overlap_len = prefix.len + suffix.len;
-            assert(overlap_len <= self.overlap_buf.len);
-            @memcpy(self.overlap_buf[0..prefix.len], prefix);
-            @memcpy(self.overlap_buf[prefix.len..overlap_len], suffix);
+        if (!(build_options.oniguruma and self.regex_state != null)) {
+            // Search the first slice for the needle.
+            if (std.ascii.indexOfIgnoreCase(slices[0], self.needle)) |idx| {
+                return self.highlight(
+                    idx,
+                    self.needle.len,
+                );
+            }
 
-            // Search the overlap
-            const idx = std.ascii.indexOfIgnoreCase(
-                self.overlap_buf[0..overlap_len],
-                self.needle,
-            ) orelse break :overlap;
+            // Search the overlap buffer for the needle.
+            if (slices[0].len > 0 and slices[1].len > 0) overlap: {
+                // Get up to needle.len - 1 bytes from each side (as much as
+                // we can) and store it in the overlap buffer.
+                const prefix: []const u8 = prefix: {
+                    const len = @min(slices[0].len, self.needle.len - 1);
+                    const idx = slices[0].len - len;
+                    break :prefix slices[0][idx..];
+                };
+                const suffix: []const u8 = suffix: {
+                    const len = @min(slices[1].len, self.needle.len - 1);
+                    break :suffix slices[1][0..len];
+                };
+                const overlap_len = prefix.len + suffix.len;
+                assert(overlap_len <= self.overlap_buf.len);
+                @memcpy(self.overlap_buf[0..prefix.len], prefix);
+                @memcpy(self.overlap_buf[prefix.len..overlap_len], suffix);
 
-            // We found a match in the overlap buffer. We need to map the
-            // index back to the data buffer in order to get our selection.
-            return self.highlight(
-                slices[0].len - prefix.len + idx,
-                self.needle.len,
-            );
-        }
+                // Search the overlap
+                const idx = std.ascii.indexOfIgnoreCase(
+                    self.overlap_buf[0..overlap_len],
+                    self.needle,
+                ) orelse break :overlap;
 
-        // Search the last slice for the needle.
-        if (std.ascii.indexOfIgnoreCase(slices[1], self.needle)) |idx| {
-            return self.highlight(
-                slices[0].len + idx,
-                self.needle.len,
-            );
+                // We found a match in the overlap buffer. We need to map the
+                // index back to the data buffer in order to get our selection.
+                return self.highlight(
+                    slices[0].len - prefix.len + idx,
+                    self.needle.len,
+                );
+            }
+
+            // Search the last slice for the needle.
+            if (std.ascii.indexOfIgnoreCase(slices[1], self.needle)) |idx| {
+                return self.highlight(
+                    slices[0].len + idx,
+                    self.needle.len,
+                );
+            }
         }
 
         // Special case 1-lengthed needles to delete the entire buffer.
@@ -280,6 +400,70 @@ pub const SlidingWindow = struct {
 
         self.assertIntegrity();
         return null;
+    }
+
+    const RegexMatch = struct {
+        start: usize,
+        len: usize,
+    };
+
+    fn regexMatch(
+        self: *SlidingWindow,
+        first: []const u8,
+        second: []const u8,
+    ) ?RegexMatch {
+        const state = if (self.regex_state) |*state| state else return null;
+        const total_len = first.len + second.len;
+        self.regex_buf.clearRetainingCapacity();
+        self.regex_buf.ensureTotalCapacity(self.alloc, total_len) catch return null;
+        self.regex_buf.appendSliceAssumeCapacity(first);
+        self.regex_buf.appendSliceAssumeCapacity(second);
+
+        const haystack = self.regex_buf.items;
+        if (self.direction == .reverse) {
+            std.mem.reverse(u8, haystack);
+        }
+
+        var search_start: usize = 0;
+        var last_match: ?RegexMatch = null;
+        while (search_start <= haystack.len) {
+            var region: oni.Region = .{};
+            defer region.deinit();
+
+            _ = state.regex.searchAdvanced(haystack, search_start, haystack.len, &region, .{
+                .find_not_empty = true,
+            }) catch |err| switch (err) {
+                error.Mismatch => break,
+                else => return null,
+            };
+
+            const starts = region.starts();
+            const ends = region.ends();
+            if (starts.len == 0 or ends.len == 0) break;
+
+            const start_i: usize = @intCast(starts[0]);
+            const end_i: usize = @intCast(ends[0]);
+            if (end_i <= start_i) {
+                search_start = start_i + 1;
+                continue;
+            }
+
+            last_match = if (self.direction == .forward)
+                .{
+                    .start = start_i,
+                    .len = end_i - start_i,
+                }
+            else
+                .{
+                    .start = haystack.len - end_i,
+                    .len = end_i - start_i,
+                };
+
+            if (self.direction == .forward) break;
+            search_start = start_i + 1;
+        }
+
+        return last_match;
     }
 
     /// Return a flattened highlight for the given start and length.
@@ -729,6 +913,95 @@ test "SlidingWindow single append case insensitive ASCII" {
         } }, s.pages.pointFromPin(.active, sel.end));
     }
     try testing.expect(w.next() == null);
+    try testing.expect(w.next() == null);
+}
+
+test "SlidingWindow single append case sensitive" {
+    if (comptime !build_options.oniguruma) return error.SkipZigTest;
+
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    try oni.testing.ensureInit();
+
+    var w: SlidingWindow = try .initWithOptions(alloc, .forward, "Boo!", .{
+        .case_sensitive = true,
+    });
+    defer w.deinit();
+
+    var s = try Screen.init(alloc, .{ .cols = 80, .rows = 24, .max_scrollback = 0 });
+    defer s.deinit();
+    try s.testWriteString("hello. boo! hello. boo!");
+
+    try testing.expect(s.pages.pages.first == s.pages.pages.last);
+    const node: *PageList.List.Node = s.pages.pages.first.?;
+    _ = try w.append(node);
+
+    try testing.expect(w.next() == null);
+}
+
+test "SlidingWindow single append whole word" {
+    if (comptime !build_options.oniguruma) return error.SkipZigTest;
+
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    try oni.testing.ensureInit();
+
+    var w: SlidingWindow = try .initWithOptions(alloc, .forward, "boo", .{
+        .whole_word = true,
+    });
+    defer w.deinit();
+
+    var s = try Screen.init(alloc, .{ .cols = 80, .rows = 24, .max_scrollback = 0 });
+    defer s.deinit();
+    try s.testWriteString("booo boo barbar");
+
+    try testing.expect(s.pages.pages.first == s.pages.pages.last);
+    const node: *PageList.List.Node = s.pages.pages.first.?;
+    _ = try w.append(node);
+
+    const h = w.next().?;
+    const sel = h.untracked();
+    try testing.expectEqual(point.Point{ .active = .{
+        .x = 5,
+        .y = 0,
+    } }, s.pages.pointFromPin(.active, sel.start));
+    try testing.expectEqual(point.Point{ .active = .{
+        .x = 7,
+        .y = 0,
+    } }, s.pages.pointFromPin(.active, sel.end));
+    try testing.expect(w.next() == null);
+}
+
+test "SlidingWindow single append regex" {
+    if (comptime !build_options.oniguruma) return error.SkipZigTest;
+
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    try oni.testing.ensureInit();
+
+    var w: SlidingWindow = try .initWithOptions(alloc, .forward, "b[o]{2}!", .{
+        .regex = true,
+    });
+    defer w.deinit();
+
+    var s = try Screen.init(alloc, .{ .cols = 80, .rows = 24, .max_scrollback = 0 });
+    defer s.deinit();
+    try s.testWriteString("hello. baa! hello. boo!");
+
+    try testing.expect(s.pages.pages.first == s.pages.pages.last);
+    const node: *PageList.List.Node = s.pages.pages.first.?;
+    _ = try w.append(node);
+
+    const h = w.next().?;
+    const sel = h.untracked();
+    try testing.expectEqual(point.Point{ .active = .{
+        .x = 19,
+        .y = 0,
+    } }, s.pages.pointFromPin(.active, sel.start));
+    try testing.expectEqual(point.Point{ .active = .{
+        .x = 22,
+        .y = 0,
+    } }, s.pages.pointFromPin(.active, sel.end));
     try testing.expect(w.next() == null);
 }
 

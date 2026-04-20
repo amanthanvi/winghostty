@@ -11,6 +11,7 @@ const Selection = terminal.Selection;
 const Screen = terminal.Screen;
 const Terminal = @import("../Terminal.zig");
 const SlidingWindow = @import("sliding_window.zig").SlidingWindow;
+const QueryOptions = @import("query_options.zig").QueryOptions;
 
 /// Searches for a term in a PageList structure.
 ///
@@ -50,6 +51,19 @@ pub const PageListSearch = struct {
         list: *PageList,
         start: *PageList.List.Node,
     ) Allocator.Error!PageListSearch {
+        return PageListSearch.initWithOptions(alloc, needle, .{}, list, start) catch |err| switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            else => unreachable,
+        };
+    }
+
+    pub fn initWithOptions(
+        alloc: Allocator,
+        needle: []const u8,
+        query_options: QueryOptions,
+        list: *PageList,
+        start: *PageList.List.Node,
+    ) anyerror!PageListSearch {
         // We put a tracked pin into the node that we're starting from.
         // By using a tracked pin, we can keep our pagelist references safe
         // because if the pagelist prunes pages, the tracked pin will
@@ -62,7 +76,7 @@ pub const PageListSearch = struct {
         errdefer list.untrackPin(pin);
 
         // Create our sliding window we'll use for searching.
-        var window: SlidingWindow = try .init(alloc, .reverse, needle);
+        var window: SlidingWindow = try .initWithOptions(alloc, .reverse, needle, query_options);
         errdefer window.deinit();
 
         // We always feed our initial page data into the window, because

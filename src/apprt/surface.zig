@@ -15,6 +15,7 @@ pub const Message = union(enum) {
     /// Represents a write request. Magic number comes from the max size
     /// we want this union to be.
     pub const WriteReq = MessageData(u8, 255);
+    pub const SearchRowsReq = MessageData(u32, 64);
 
     /// Set the title of the surface.
     /// TODO: we should change this to a "WriteReq" style structure in
@@ -107,6 +108,9 @@ pub const Message = union(enum) {
 
     /// Selected search index change
     search_selected: ?usize,
+
+    /// Search match rows for scrollbar markers.
+    search_match_rows: SearchRowsReq,
 
     pub const ReportTitleStyle = enum {
         csi_21_t,

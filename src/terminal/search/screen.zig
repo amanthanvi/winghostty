@@ -15,6 +15,7 @@ const Terminal = @import("../Terminal.zig");
 const ActiveSearch = @import("active.zig").ActiveSearch;
 const PageListSearch = @import("pagelist.zig").PageListSearch;
 const SlidingWindow = @import("sliding_window.zig").SlidingWindow;
+const QueryOptions = @import("query_options.zig").QueryOptions;
 
 const log = std.log.scoped(.search_screen);
 
@@ -138,11 +139,23 @@ pub const ScreenSearch = struct {
         screen: *Screen,
         needle_unowned: []const u8,
     ) Allocator.Error!ScreenSearch {
+        return ScreenSearch.initWithOptions(alloc, screen, needle_unowned, .{}) catch |err| switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            else => unreachable,
+        };
+    }
+
+    pub fn initWithOptions(
+        alloc: Allocator,
+        screen: *Screen,
+        needle_unowned: []const u8,
+        query_options: QueryOptions,
+    ) anyerror!ScreenSearch {
         var result: ScreenSearch = .{
             .screen = screen,
             .rows = screen.pages.rows,
             .cols = screen.pages.cols,
-            .active = try .init(alloc, needle_unowned),
+            .active = try .initWithOptions(alloc, needle_unowned, query_options),
             .history = null,
             .state = .active,
             .active_results = .empty,
@@ -217,6 +230,43 @@ pub const ScreenSearch = struct {
         return results;
     }
 
+    /// Returns the unique screen row for each match as an owned slice,
+    /// sorted from oldest to newest. Callers must hold the screen lock.
+    pub fn matchRows(
+        self: *ScreenSearch,
+        alloc: Allocator,
+    ) Allocator.Error![]u32 {
+        var rows: std.ArrayList(u32) = .empty;
+        errdefer rows.deinit(alloc);
+
+        try self.appendMatchRows(alloc, &rows, self.active_results.items);
+        try self.appendMatchRows(alloc, &rows, self.history_results.items);
+        if (rows.items.len == 0) return try rows.toOwnedSlice(alloc);
+
+        std.mem.sort(u32, rows.items, {}, std.sort.asc(u32));
+
+        var write: usize = 1;
+        for (rows.items[1..]) |row| {
+            if (row == rows.items[write - 1]) continue;
+            rows.items[write] = row;
+            write += 1;
+        }
+        rows.shrinkRetainingCapacity(write);
+        return try rows.toOwnedSlice(alloc);
+    }
+
+    fn appendMatchRows(
+        self: *ScreenSearch,
+        alloc: Allocator,
+        rows: *std.ArrayList(u32),
+        matches_: []const FlattenedHighlight,
+    ) Allocator.Error!void {
+        for (matches_) |hl| {
+            const pt = self.screen.pages.pointFromPin(.screen, hl.startPin()) orelse continue;
+            try rows.append(alloc, pt.screen.y);
+        }
+    }
+
     /// Search the full screen state. This will block until the search
     /// is complete. For performance, it is recommended to use `tick` and
     /// `feed` to incrementally make progress on the search instead.
@@ -268,11 +318,15 @@ pub const ScreenSearch = struct {
             self.screen.pages.cols != self.cols)
         {
             // Reinit
-            const new: ScreenSearch = try .init(
+            const new: ScreenSearch = ScreenSearch.initWithOptions(
                 self.allocator(),
                 self.screen,
                 self.needle(),
-            );
+                self.active.window.query_options,
+            ) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => unreachable,
+            };
 
             // Deinit/reinit
             self.deinit();
@@ -445,12 +499,16 @@ pub const ScreenSearch = struct {
                 // No history search yet, but we now have history. So let's
                 // initialize.
 
-                var search: PageListSearch = try .init(
+                var search: PageListSearch = PageListSearch.initWithOptions(
                     alloc,
                     self.needle(),
+                    self.active.window.query_options,
                     list,
                     history_node,
-                );
+                ) catch |err| switch (err) {
+                    error.OutOfMemory => return error.OutOfMemory,
+                    else => unreachable,
+                };
                 errdefer search.deinit();
 
                 const pin = try list.trackPin(.{ .node = history_node });
@@ -475,11 +533,15 @@ pub const ScreenSearch = struct {
             // collect all the results into a new list. We ASSUME that
             // reloadActive is being called frequently enough that there isn't
             // a massive amount of history to search here.
-            var window: SlidingWindow = try .init(
+            var window: SlidingWindow = SlidingWindow.initWithOptions(
                 alloc,
                 .forward,
                 self.needle(),
-            );
+                self.active.window.query_options,
+            ) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => unreachable,
+            };
             defer window.deinit();
             while (true) {
                 _ = try window.append(history.start_pin.node);
@@ -1549,4 +1611,27 @@ test "select after clearing scrollback" {
     // the FlattenedHighlight contained dangling node pointers.
     _ = try search.select(.next);
     _ = try search.select(.prev);
+}
+
+test "matchRows returns ascending unique screen rows" {
+    const alloc = testing.allocator;
+    var t: Terminal = try .init(alloc, .{
+        .cols = 20,
+        .rows = 4,
+        .max_scrollback = std.math.maxInt(usize),
+    });
+    defer t.deinit(alloc);
+
+    var s = t.vtStream();
+    defer s.deinit();
+    s.nextSlice("Fizz Fizz\r\nnoop\r\nFizz");
+
+    var search: ScreenSearch = try .init(alloc, t.screens.active, "Fizz");
+    defer search.deinit();
+    try search.searchAll();
+
+    const rows = try search.matchRows(alloc);
+    defer alloc.free(rows);
+
+    try testing.expectEqualSlices(u32, &.{ 0, 2 }, rows);
 }

@@ -175,6 +175,7 @@ command_timer: ?std.time.Instant = null,
 
 /// Search state
 search: ?Search = null,
+search_generation: std.atomic.Value(u64) = .init(0),
 
 /// Used to rate limit BEL handling.
 last_bell_time: ?std.time.Instant = null,
@@ -200,6 +201,8 @@ pub const InputEffect = enum {
 
 /// The search state for the surface.
 const Search = struct {
+    surface: *Surface,
+    generation: u64,
     state: terminal.search.Thread,
     thread: std.Thread,
 
@@ -1152,6 +1155,15 @@ pub fn handleMessage(self: *Surface, msg: Message) !void {
                 .{ .selected = v },
             );
         },
+
+        .search_match_rows => |rows| {
+            defer rows.deinit();
+            _ = try self.rt_app.performAction(
+                .{ .surface = self },
+                .search_match_rows,
+                .{ .rows = rows.slice() },
+            );
+        },
     }
 }
 
@@ -1387,10 +1399,23 @@ fn searchCallback(event: terminal.search.Thread.Event, ud: ?*anyopaque) void {
     // to access anything other than values that never change on the surface.
     // The surface is guaranteed to be valid for the lifetime of the search
     // thread.
-    const self: *Surface = @ptrCast(@alignCast(ud.?));
+    const search: *Search = @ptrCast(@alignCast(ud.?));
+    const self = search.surface;
+    if (!shouldAcceptSearchEvent(
+        self.search_generation.load(.acquire),
+        search.generation,
+    )) return;
     self.searchCallback_(event) catch |err| {
         log.warn("error in search callback err={}", .{err});
     };
+}
+
+fn apprtSearchSelectedIndex(idx: usize) usize {
+    return idx + 1;
+}
+
+fn shouldAcceptSearchEvent(current_generation: u64, event_generation: u64) bool {
+    return current_generation == event_generation;
 }
 
 fn searchCallback_(
@@ -1436,7 +1461,7 @@ fn searchCallback_(
 
                 // Send the selected index to the surface mailbox
                 _ = self.surfaceMailbox().push(
-                    .{ .search_selected = sel.idx },
+                    .{ .search_selected = apprtSearchSelectedIndex(sel.idx) },
                     .forever,
                 );
             } else {
@@ -1463,6 +1488,16 @@ fn searchCallback_(
             );
         },
 
+        .match_rows => |rows| {
+            _ = self.surfaceMailbox().push(
+                .{ .search_match_rows = try apprt.surface.Message.SearchRowsReq.init(
+                    self.alloc,
+                    rows,
+                ) },
+                .forever,
+            );
+        },
+
         // When we quit, tell our renderer to reset any search state.
         .quit => {
             _ = self.renderer_thread.mailbox.push(
@@ -1485,6 +1520,13 @@ fn searchCallback_(
             );
             _ = self.surfaceMailbox().push(
                 .{ .search_selected = null },
+                .forever,
+            );
+            _ = self.surfaceMailbox().push(
+                .{ .search_match_rows = try apprt.surface.Message.SearchRowsReq.init(
+                    self.alloc,
+                    @as([]const u32, &.{}),
+                ) },
                 .forever,
             );
         },
@@ -1656,6 +1698,16 @@ fn updateRendererHealth(self: *Surface, health: rendererpkg.Health) void {
     ) catch |err| {
         log.warn("failed to notify app of renderer health change err={}", .{err});
     };
+}
+
+test "surface apprtSearchSelectedIndex converts to one-based display index" {
+    try std.testing.expectEqual(@as(usize, 1), apprtSearchSelectedIndex(0));
+    try std.testing.expectEqual(@as(usize, 8), apprtSearchSelectedIndex(7));
+}
+
+test "surface shouldAcceptSearchEvent rejects stale search generations" {
+    try std.testing.expect(shouldAcceptSearchEvent(7, 7));
+    try std.testing.expect(!shouldAcceptSearchEvent(8, 7));
 }
 
 /// Called when the scrollbar state changes.
@@ -5773,6 +5825,14 @@ pub fn endSearch(self: *Surface) !bool {
 }
 
 pub fn setSearchText(self: *Surface, text: []const u8) !bool {
+    return try self.setSearchQuery(text, .{});
+}
+
+pub fn setSearchQuery(
+    self: *Surface,
+    text: []const u8,
+    query_options: terminal.search.QueryOptions,
+) !bool {
     const s: *Search = if (self.search) |*s| s else init: {
         // If we're stopping the search and we had no prior search,
         // then there is nothing to do.
@@ -5781,17 +5841,22 @@ pub fn setSearchText(self: *Surface, text: []const u8) !bool {
         // We need to assign directly to self.search because we need
         // a stable pointer back to the thread state.
         self.search = .{
-            .state = try .init(self.alloc, .{
-                .mutex = self.renderer_state.mutex,
-                .terminal = self.renderer_state.terminal,
-                .event_cb = &searchCallback,
-                .event_userdata = self,
-                .visible = self.visible,
-                .focused = self.focused,
-            }),
+            .surface = self,
+            .generation = self.search_generation.fetchAdd(1, .acq_rel) + 1,
+            .state = undefined,
             .thread = undefined,
         };
         const state: *Search = &self.search.?;
+        errdefer self.search = null;
+
+        state.state = try .init(self.alloc, .{
+                .mutex = self.renderer_state.mutex,
+                .terminal = self.renderer_state.terminal,
+                .event_cb = &searchCallback,
+                .event_userdata = state,
+                .visible = self.visible,
+                .focused = self.focused,
+            });
         errdefer state.state.deinit();
 
         state.thread = try .spawn(
@@ -5812,10 +5877,13 @@ pub fn setSearchText(self: *Surface, text: []const u8) !bool {
     }
 
     _ = s.state.mailbox.push(
-        .{ .change_needle = try .init(
-            self.alloc,
-            text,
-        ) },
+        .{ .change_query = .{
+            .options = query_options,
+            .req = try .init(
+                self.alloc,
+                text,
+            ),
+        } },
         .forever,
     );
     s.state.wakeup.notify() catch {};

@@ -7,6 +7,7 @@ const FlattenedHighlight = @import("../highlight.zig").Flattened;
 const PageList = @import("../PageList.zig");
 const SlidingWindow = @import("sliding_window.zig").SlidingWindow;
 const Terminal = @import("../Terminal.zig");
+const QueryOptions = @import("query_options.zig").QueryOptions;
 
 /// Searches for a substring within the active area of a PageList.
 ///
@@ -24,10 +25,21 @@ pub const ActiveSearch = struct {
         alloc: Allocator,
         needle: []const u8,
     ) Allocator.Error!ActiveSearch {
+        return ActiveSearch.initWithOptions(alloc, needle, .{}) catch |err| switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            else => unreachable,
+        };
+    }
+
+    pub fn initWithOptions(
+        alloc: Allocator,
+        needle: []const u8,
+        query_options: QueryOptions,
+    ) anyerror!ActiveSearch {
         // We just do a forward search since the active area is usually
         // pretty small so search results are instant anyways. This avoids
         // a small amount of work to reverse things.
-        var window: SlidingWindow = try .init(alloc, .forward, needle);
+        var window: SlidingWindow = try .initWithOptions(alloc, .forward, needle, query_options);
         errdefer window.deinit();
         return .{ .window = window };
     }

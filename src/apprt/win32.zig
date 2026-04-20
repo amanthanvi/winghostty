@@ -193,6 +193,7 @@ const WM_ENTERSIZEMOVE = 0x0231;
 const WM_EXITSIZEMOVE = 0x0232;
 const SIZE_MAXIMIZED: u32 = 2;
 const SIZE_MINIMIZED: u32 = 1;
+const SIZE_RESTORED: u32 = 0;
 const WM_SYSKEYDOWN = 0x0104;
 const WM_SYSKEYUP = 0x0105;
 const WM_WINHOSTTY_WAKE = WM_APP + 1;
@@ -223,6 +224,13 @@ const SWP_NOMOVE = 0x0002;
 const SWP_NOZORDER = 0x0004;
 const SWP_NOACTIVATE = 0x0010;
 const SWP_FRAMECHANGED = 0x0020;
+const RDW_INVALIDATE: UINT = 0x0001;
+const RDW_INTERNALPAINT: UINT = 0x0002;
+const RDW_ERASE: UINT = 0x0004;
+const RDW_NOCHILDREN: UINT = 0x0040;
+const RDW_ALLCHILDREN: UINT = 0x0080;
+const RDW_UPDATENOW: UINT = 0x0100;
+const RDW_FRAME: UINT = 0x0400;
 const MONITOR_DEFAULTTONEAREST = 0x00000002;
 const MONITOR_DEFAULTTOPRIMARY = 0x00000001;
 const HRESULT = i32;
@@ -234,6 +242,7 @@ const CF_HTML_NAME = std.unicode.utf8ToUtf16LeStringLiteral("HTML Format");
 extern "user32" fn RegisterClipboardFormatW(lpszFormat: [*:0]const u16) callconv(.winapi) UINT;
 const GMEM_MOVEABLE = 0x0002;
 const GMEM_ZEROINIT = 0x0040;
+const LWA_COLORKEY = 0x00000001;
 const LWA_ALPHA = 0x00000002;
 const TRANSPARENT = 1;
 const OPAQUE = 2;
@@ -250,6 +259,10 @@ const MK_CONTROL = 0x0008;
 const MK_LBUTTON = 0x0001;
 const MK_MBUTTON = 0x0010;
 const MK_RBUTTON = 0x0002;
+
+fn hostCompositionRedrawFlags() UINT {
+    return RDW_INVALIDATE | RDW_ERASE | RDW_FRAME | RDW_NOCHILDREN | RDW_UPDATENOW;
+}
 const MK_SHIFT = 0x0004;
 const MK_XBUTTON1 = 0x0020;
 const MK_XBUTTON2 = 0x0040;
@@ -258,10 +271,19 @@ const BS_PUSHBUTTON = 0x00000000;
 const BS_DEFPUSHBUTTON = 0x00000001;
 const BS_FLAT = 0x00008000;
 const BS_OWNERDRAW = 0x0000000B;
+const SS_CENTER = 0x00000001;
+const SS_RIGHT = 0x00000002;
+const SS_CENTERIMAGE = 0x00000200;
+const SS_OWNERDRAW = 0x0000000D;
 const ES_AUTOHSCROLL = 0x0080;
 const BN_CLICKED = 0;
 const EM_SETSEL = 0x00B1;
+const EM_SETMARGINS = 0x00D3;
+const EM_SETCUEBANNER = 0x1501;
+const EC_LEFTMARGIN: usize = 0x0001;
+const EC_RIGHTMARGIN: usize = 0x0002;
 const ODT_BUTTON = 4;
+const ODT_STATIC = 5;
 const ODS_SELECTED = 0x0001;
 const ODS_DISABLED = 0x0004;
 const ODS_FOCUS = 0x0010;
@@ -288,6 +310,7 @@ const host_caption_button_h: i32 = default_metrics.caption_button_h;
 const host_overlay_height: i32 = default_metrics.height_overlay;
 const host_inspector_panel_height: i32 = default_metrics.height_inspector;
 const host_status_height: i32 = default_metrics.height_status;
+const host_search_bar_height: i32 = default_metrics.height_search_bar;
 const host_overlay_padding: i32 = default_metrics.overlay_padding;
 const host_overlay_label_width: i32 = default_metrics.overlay_label_width;
 const host_overlay_row_height: i32 = default_metrics.overlay_row_height;
@@ -341,6 +364,13 @@ const SPI_GETCLIENTAREAANIMATION: UINT = 0x1042;
 /// See src/apprt/win32_tween.zig for the scheduler contract.
 const TWEEN_TIMER_ID: UINT_PTR = 0x77684701; // "whgT1" in 32-bit hex
 const TWEEN_TIMER_INTERVAL_MS: UINT = 16;
+const SEARCH_TIMER_ID: UINT_PTR = 0x77684702; // "whgT2" in 32-bit hex
+const SEARCH_TIMER_INTERVAL_MS: UINT = 20;
+const SCROLLBAR_TIMER_ID: UINT_PTR = 0x77684703; // "whgT3" in 32-bit hex
+const SCROLLBAR_TIMER_INTERVAL_MS: UINT = 16;
+const RESIZE_SETTLE_TIMER_ID: UINT_PTR = 0x77684704; // "whgT4" in 32-bit hex
+const RESIZE_SETTLE_TIMER_INTERVAL_MS: UINT = 16;
+const RESIZE_SETTLE_REPAINT_TICKS: u8 = 12;
 const FW_NORMAL: i32 = 400;
 const DEFAULT_CHARSET: u8 = 1;
 const OUT_DEFAULT_PRECIS: u8 = 0;
@@ -395,6 +425,15 @@ const CTX_TAB_CLOSE_OTHERS: usize = 4022;
 const CTX_TAB_MOVE_LEFT: usize = 4023;
 const CTX_TAB_MOVE_RIGHT: usize = 4024;
 const CTX_PROFILE_BASE: usize = 4100; // profile dropdown items: CTX_PROFILE_BASE + index
+const SEARCH_BG_ID: usize = 2100;
+const SEARCH_EDIT_ID: usize = 2101;
+const SEARCH_PREV_ID: usize = 2102;
+const SEARCH_NEXT_ID: usize = 2103;
+const SEARCH_REGEX_ID: usize = 2104;
+const SEARCH_CASE_ID: usize = 2105;
+const SEARCH_WORD_ID: usize = 2106;
+const SEARCH_RESULTS_ID: usize = 2107;
+const SEARCH_CLOSE_ID: usize = 2108;
 const MF_POPUP: UINT = 0x00000010;
 const MF_CHECKED: UINT = 0x00000008;
 
@@ -694,6 +733,7 @@ extern "user32" fn TrackMouseEvent(lpEventTrack: *TRACKMOUSEEVENT) callconv(.win
 extern "user32" fn BeginPaint(hWnd: HWND, lpPaint: *PAINTSTRUCT) callconv(.winapi) HDC;
 extern "user32" fn EndPaint(hWnd: HWND, lpPaint: *const PAINTSTRUCT) callconv(.winapi) BOOL;
 extern "user32" fn GetDC(hWnd: HWND) callconv(.winapi) HDC;
+extern "gdi32" fn RectVisible(hdc: HDC, lprc: *const RECT) callconv(.winapi) BOOL;
 extern "user32" fn OpenClipboard(hWndNewOwner: ?HWND) callconv(.winapi) BOOL;
 extern "user32" fn CloseClipboard() callconv(.winapi) BOOL;
 extern "user32" fn EmptyClipboard() callconv(.winapi) BOOL;
@@ -711,6 +751,7 @@ extern "user32" fn PostThreadMessageW(idThread: DWORD, Msg: UINT, wParam: WPARAM
 extern "user32" fn PostQuitMessage(nExitCode: i32) callconv(.winapi) void;
 extern "user32" fn ReleaseDC(hWnd: HWND, hDC: HDC) callconv(.winapi) i32;
 extern "user32" fn RegisterHotKey(hWnd: ?HWND, id: i32, fsModifiers: UINT, vk: UINT) callconv(.winapi) BOOL;
+extern "user32" fn RedrawWindow(hWnd: HWND, lprcUpdate: ?*const RECT, hrgnUpdate: ?*anyopaque, flags: UINT) callconv(.winapi) BOOL;
 extern "user32" fn SetTimer(hWnd: ?HWND, nIDEvent: UINT_PTR, uElapse: UINT, lpTimerFunc: ?*const anyopaque) callconv(.winapi) UINT_PTR;
 extern "user32" fn SetCursor(hCursor: HCURSOR) callconv(.winapi) HCURSOR;
 extern "user32" fn SetCapture(hWnd: HWND) callconv(.winapi) ?HWND;
@@ -930,6 +971,7 @@ const WS_EX_ACCEPTFILES: u32 = 0x00000010;
 const class_name = std.unicode.utf8ToUtf16LeStringLiteral("winghostty.win32");
 const host_class_name = std.unicode.utf8ToUtf16LeStringLiteral("winghostty.win32.host");
 const palette_list_class_name = std.unicode.utf8ToUtf16LeStringLiteral("winghostty.win32.palette_list");
+const scrollbar_class_name = std.unicode.utf8ToUtf16LeStringLiteral("winghostty.win32.scrollbar");
 
 /// Palette list row height at 96 DPI. Scaled via `Host.scaled` at paint.
 const palette_row_height: i32 = 36;
@@ -944,6 +986,14 @@ const prompt_ok_label_utf8 = "OK";
 const prompt_cancel_label_utf8 = "Cancel";
 const prompt_ok_label = std.unicode.utf8ToUtf16LeStringLiteral("OK");
 const prompt_cancel_label = std.unicode.utf8ToUtf16LeStringLiteral("Cancel");
+const search_prev_label = std.unicode.utf8ToUtf16LeStringLiteral("Prev match");
+const search_next_label = std.unicode.utf8ToUtf16LeStringLiteral("Next match");
+const search_regex_label = std.unicode.utf8ToUtf16LeStringLiteral("Regex");
+const search_case_label = std.unicode.utf8ToUtf16LeStringLiteral("Case sensitive");
+const search_word_label = std.unicode.utf8ToUtf16LeStringLiteral("Whole word");
+const search_close_label = std.unicode.utf8ToUtf16LeStringLiteral("Close search");
+const search_edit_cue = std.unicode.utf8ToUtf16LeStringLiteral("Find in scrollback");
+const scrollbar_transparent_key = rgb(0xFF, 0x00, 0xFF);
 const host_overlay_command_palette_label_utf8 = "Command:";
 const host_overlay_profile_label_utf8 = "Profile:";
 const host_overlay_surface_title_label_utf8 = "Window title:";
@@ -958,6 +1008,9 @@ const host_tab_new_button_label = std.unicode.utf8ToUtf16LeStringLiteral("+");
 const host_tab_dropdown_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{25BE}"); // dropdown chevron
 const host_banner_inspector_active = "Inspector active. Toggle inspector to return to the terminal view.";
 const host_banner_inspector_inactive = "Inspector hidden. Terminal view is active.";
+const search_results_idle = "Type to search";
+const search_results_pending = "Searching";
+const search_results_none = "No matches";
 const clipboard_read_title = std.unicode.utf8ToUtf16LeStringLiteral("Allow clipboard paste?");
 const clipboard_read_message = std.unicode.utf8ToUtf16LeStringLiteral("winghostty needs confirmation before completing this clipboard paste or read request.");
 const clipboard_write_title = std.unicode.utf8ToUtf16LeStringLiteral("Allow clipboard write?");
@@ -1043,13 +1096,98 @@ fn applyProfileSurfaceConfig(
     config: *configpkg.Config,
     profile: *const windows_shell.Profile,
 ) !void {
+    try applyProfileCommandConfig(config, profile);
+    config.@"working-directory" = .home;
+}
+
+fn applyProfileCommandConfig(
+    config: *configpkg.Config,
+    profile: *const windows_shell.Profile,
+) !void {
     const alloc = config._arena.?.allocator();
 
     // newConfig() returns a shallow clone, so aliased fields such as
     // command remain owned by the source config arena. Replacing command on
     // the clone must not deinit the inherited value.
     config.command = try profile.command.clone(alloc);
-    config.@"working-directory" = .home;
+}
+
+fn splitWorkingDirectoryCandidate(live_pwd: ?[]const u8, cached_pwd: ?[]const u8) ?[]const u8 {
+    if (live_pwd) |pwd| {
+        if (pwd.len > 0) return pwd;
+    }
+    if (cached_pwd) |pwd| {
+        if (pwd.len > 0) return pwd;
+    }
+    return null;
+}
+
+fn applySplitWorkingDirectoryPath(
+    config: *configpkg.Config,
+    source_pwd: ?[]const u8,
+) !bool {
+    if (!config.@"split-inherit-working-directory") return false;
+    const pwd = source_pwd orelse return false;
+    if (pwd.len == 0) return false;
+
+    const alloc = config._arena.?.allocator();
+    config.@"working-directory" = .{ .path = try alloc.dupe(u8, pwd) };
+    return true;
+}
+
+fn shouldTreatWslSplitPwdAsStartupFallback(
+    alloc: Allocator,
+    command: ?configpkg.Command,
+    candidate: []const u8,
+    startup_cwd: ?[]const u8,
+) !bool {
+    const cmd = command orelse return false;
+    if (!windows_shell.isWslCommand(cmd)) return false;
+    const startup = startup_cwd orelse return false;
+    if (candidate.len == 0 or startup.len == 0) return false;
+
+    if (std.ascii.eqlIgnoreCase(candidate, startup)) return true;
+    const startup_wsl = (try windows_shell.pathToWsl(alloc, startup)) orelse return false;
+    defer alloc.free(startup_wsl);
+    return std.mem.eql(u8, candidate, startup_wsl);
+}
+
+fn applySplitWorkingDirectoryFromSource(
+    config: *configpkg.Config,
+    source: *Surface,
+    startup_cwd: ?[]const u8,
+) !bool {
+    if (!config.@"split-inherit-working-directory") return false;
+
+    const alloc = config._arena.?.allocator();
+    const live_pwd = source.core().pwd(alloc) catch |err| blk: {
+        log.warn("win32 split cwd inheritance could not query live cwd err={}", .{err});
+        break :blk null;
+    };
+
+    if (live_pwd) |pwd| {
+        if (try shouldTreatWslSplitPwdAsStartupFallback(
+            alloc,
+            config.command,
+            pwd,
+            startup_cwd,
+        )) {
+            if (source.pwd) |cached| {
+                if (cached.len > 0) return try applySplitWorkingDirectoryPath(config, cached);
+            }
+            config.@"working-directory" = .home;
+            return true;
+        }
+    }
+
+    const candidate = splitWorkingDirectoryCandidate(live_pwd, source.pwd) orelse return false;
+    if (live_pwd) |pwd| {
+        if (candidate.ptr == pwd.ptr and candidate.len == pwd.len) {
+            config.@"working-directory" = .{ .path = pwd };
+            return true;
+        }
+    }
+    return try applySplitWorkingDirectoryPath(config, candidate);
 }
 
 fn defaultIpcNamespace() []const u8 {
@@ -1504,6 +1642,7 @@ pub const App = struct {
     class_atom: ATOM = 0,
     host_class_atom: ATOM = 0,
     palette_list_class_atom: ATOM = 0,
+    scrollbar_class_atom: ATOM = 0,
     hosts: std.ArrayListUnmanaged(*Host) = .empty,
     windows: std.ArrayListUnmanaged(*Surface) = .empty,
     next_host_id: u32 = 1,
@@ -1514,6 +1653,7 @@ pub const App = struct {
     launcher_profile_target: ProfileOpenTarget = .tab,
     startup_profile_picker: bool = false,
     wheel_settings: SystemWheelSettings = .{},
+    system_dynamic_scrollbars: bool = true,
     ipc_pipe_name: ?[:0]const u16 = null,
     ipc_thread: ?std.Thread = null,
     ipc_stop_requested: std.atomic.Value(bool) = .init(false),
@@ -1678,6 +1818,7 @@ pub const App = struct {
 
         self.initComApartment();
         self.refreshSystemWheelSettings();
+        self.refreshSystemScrollbarPreference();
         self.resolved_theme = resolveTheme(&self.config);
         self.loadPaletteMru();
         self.settings_window = win32_settings.SettingsWindow.init(.{
@@ -2230,19 +2371,24 @@ pub const App = struct {
 
     fn setUpdateNotice(self: *App, version_text: []const u8, release_url: []const u8) !void {
         if (self.update_notice) |*notice| {
+            if (ownedBytesEquals(notice.version_text, version_text) and
+                ownedBytesEquals(notice.release_url, release_url))
+            {
+                return;
+            }
             notice.deinit(self.core_app.alloc);
             self.update_notice = null;
         }
 
         self.update_notice = try UpdateNotice.init(self.core_app.alloc, version_text, release_url);
-        for (self.hosts.items) |host| host.invalidateChrome();
+        for (self.hosts.items) |host| host.invalidateBannerText();
     }
 
     fn clearUpdateNotice(self: *App) void {
         if (self.update_notice) |*notice| {
             notice.deinit(self.core_app.alloc);
             self.update_notice = null;
-            for (self.hosts.items) |host| host.invalidateChrome();
+            for (self.hosts.items) |host| host.invalidateBannerText();
         }
     }
 
@@ -2396,11 +2542,17 @@ pub const App = struct {
                 defer config.deinit();
                 const source = self.findSurfaceForTarget(target) orelse return false;
                 const tab_info = self.findTabForSurface(source) orelse return false;
+                const inherited_profile_key = try self.applySplitProfileConfigFromSource(&config, source);
+                _ = try applySplitWorkingDirectoryFromSource(&config, source, self.startup_cwd);
                 const surface = try self.createWindowSurface(&config, default_title, .{
                     .host_id = source.host_id,
                     .tab_id = tab_info.tab.id,
                     .clone_state_from = source,
+                    .split_direction = splitDirectionFromAction(value),
                 });
+                if (inherited_profile_key) |key| {
+                    try appendOwnedString(self.core_app.alloc, &surface.launch_profile_key, key);
+                }
                 self.activateSurface(surface);
                 return true;
             },
@@ -2710,14 +2862,14 @@ pub const App = struct {
 
             .inspector => {
                 if (self.findSurfaceForTarget(target)) |surface| {
-                    return try surface.setInspectorVisible(nextInspectorVisible(surface.inspector_visible, value));
+                    return try self.setInspectorActionForSurface(surface, value);
                 }
                 return false;
             },
 
             .show_gtk_inspector => {
                 if (self.findSurfaceForTarget(target)) |surface| {
-                    return try surface.setInspectorVisible(nextInspectorVisible(surface.inspector_visible, .show));
+                    return try self.setInspectorActionForSurface(surface, .show);
                 }
                 return false;
             },
@@ -2796,25 +2948,7 @@ pub const App = struct {
 
             .start_search => {
                 if (self.findSurfaceForTarget(target)) |surface| {
-                    try surface.setSearchActive(true, value.needle);
-                    // Open the overlay FIRST so the surface HWND
-                    // resizes + the terminal reflows BEFORE the
-                    // search thread starts computing viewport
-                    // matches. Without this order, the search
-                    // thread computes pins against the pre-resize
-                    // viewport; then the surface shrinks by ~40 px
-                    // (overlay height), rows reflow, and the
-                    // renderer paints those stale pins on post-
-                    // resize row coordinates — producing the
-                    // user-reported "search highlight off by
-                    // 2–3 rows" (task #45). Opening the overlay
-                    // before `setSearchText` guarantees the search
-                    // thread's first compute runs against the
-                    // post-resize viewport.
                     try surface.showSearchOverlay(value.needle);
-                    if (value.needle.len > 0) {
-                        _ = try surface.core_surface.setSearchText(value.needle);
-                    }
                     return true;
                 }
                 return false;
@@ -2822,13 +2956,7 @@ pub const App = struct {
 
             .end_search => {
                 if (self.findSurfaceForTarget(target)) |surface| {
-                    try surface.setSearchActive(false, "");
-                    if (surface.host) |host| {
-                        if (host.overlay_mode == .search) {
-                            host.hideOverlay();
-                            try host.layout();
-                        }
-                    }
+                    try surface.closeDockedSearchBar(false, false);
                     return true;
                 }
                 return false;
@@ -2845,6 +2973,14 @@ pub const App = struct {
             .search_selected => {
                 if (self.findSurfaceForTarget(target)) |surface| {
                     try surface.setSearchSelected(value.selected);
+                    return true;
+                }
+                return false;
+            },
+
+            .search_match_rows => {
+                if (self.findSurfaceForTarget(target)) |surface| {
+                    try surface.setSearchMatchRows(value.rows);
                     return true;
                 }
                 return false;
@@ -3099,6 +3235,30 @@ pub const App = struct {
         }
     }
 
+    fn ensureScrollbarClass(self: *App) !void {
+        if (self.scrollbar_class_atom != 0) return;
+
+        var wc: WNDCLASSEXW = .{
+            .cbSize = @sizeOf(WNDCLASSEXW),
+            .style = 0,
+            .lpfnWndProc = &scrollbarProc,
+            .cbClsExtra = 0,
+            .cbWndExtra = 0,
+            .hInstance = self.hinstance,
+            .hIcon = null,
+            .hCursor = LoadCursorW(null, IDC_ARROW),
+            .hbrBackground = null,
+            .lpszMenuName = null,
+            .lpszClassName = scrollbar_class_name,
+            .hIconSm = null,
+        };
+
+        self.scrollbar_class_atom = RegisterClassExW(&wc);
+        if (self.scrollbar_class_atom == 0) {
+            return windows.unexpectedError(windows.kernel32.GetLastError());
+        }
+    }
+
     fn createWindowSurface(
         self: *App,
         config: *const configpkg.Config,
@@ -3110,6 +3270,19 @@ pub const App = struct {
 
         try surface.init(self, title, config, opts);
         return surface;
+    }
+
+    fn applySplitProfileConfigFromSource(
+        self: *App,
+        config: *configpkg.Config,
+        source: *Surface,
+    ) !?[]const u8 {
+        _ = self;
+        const key = source.launch_profile_key orelse return null;
+        const host = source.host orelse return null;
+        const profile = (try host.profileForKey(key)) orelse return null;
+        try applyProfileCommandConfig(config, profile);
+        return profile.key;
     }
 
     fn createProfileSurface(
@@ -3162,6 +3335,15 @@ pub const App = struct {
         };
     }
 
+    fn refreshSystemScrollbarPreference(self: *App) void {
+        self.system_dynamic_scrollbars = readDynamicScrollbars(self.system_dynamic_scrollbars);
+        for (self.windows.items) |surface| {
+            surface.refreshScrollbarWindow() catch |err| {
+                log.warn("win32 scrollbar refresh failed err={}", .{err});
+            };
+        }
+    }
+
     fn reconfigureTheme(self: *App) void {
         self.resolved_theme = resolveTheme(&self.config);
         for (self.hosts.items) |host| {
@@ -3169,6 +3351,7 @@ pub const App = struct {
             host.recreateChromeFont();
             if (host.hwnd) |hwnd| applyDwmThemeWithBuild(hwnd, &self.resolved_theme, &self.config, self.os_build);
         }
+        for (self.windows.items) |surface| surface.invalidateScrollbarWindow();
     }
 
     fn applyLauncherQuickSlotPreferences(self: *App, profiles: []windows_shell.Profile) void {
@@ -3185,6 +3368,7 @@ pub const App = struct {
 
     fn setLauncherQuickSlotPreference(self: *App, slot_ordinal: usize, key: []const u8) !void {
         if (slot_ordinal >= self.launcher_quick_slot_keys.len) return;
+        if (!launcherQuickSlotAssignmentNeedsChange(self.launcher_quick_slot_keys, slot_ordinal, key)) return;
         var duplicate_slot: ?usize = null;
         for (self.launcher_quick_slot_keys, 0..) |existing, index| {
             if (existing) |value| {
@@ -3210,16 +3394,12 @@ pub const App = struct {
 
         for (self.hosts.items) |host| {
             host.reapplyLauncherProfilePreferences() catch {};
-            if (host.overlay_mode == .profile) {
-                _ = host.syncOverlayLabel() catch false;
-                _ = host.syncOverlayHint() catch false;
-                _ = host.syncOverlayButtons() catch false;
-            }
-            host.refreshChrome() catch {};
+            host.refreshProfileChrome();
         }
     }
 
     fn clearLauncherQuickSlotPreferences(self: *App) void {
+        if (launcherQuickSlotPinsAlreadyClear(self.launcher_quick_slot_keys)) return;
         for (&self.launcher_quick_slot_keys) |*value| {
             appendOwnedString(self.core_app.alloc, value, null) catch {};
         }
@@ -3228,12 +3408,7 @@ pub const App = struct {
             if (host.profiles != null) {
                 _ = host.reloadProfiles() catch false;
             }
-            if (host.overlay_mode == .profile) {
-                _ = host.syncOverlayLabel() catch false;
-                _ = host.syncOverlayHint() catch false;
-                _ = host.syncOverlayButtons() catch false;
-            }
-            host.refreshChrome() catch {};
+            host.refreshProfileChrome();
         }
     }
 
@@ -3247,6 +3422,7 @@ pub const App = struct {
     fn createHost(self: *App, title: LPCWSTR, clone_state_from: ?*const Surface, passive_show: bool) !*Host {
         try self.ensureHostWindowClass();
         try self.ensurePaletteListClass();
+        try self.ensureScrollbarClass();
 
         const host = try self.core_app.alloc.create(Host);
         errdefer self.core_app.alloc.destroy(host);
@@ -3394,6 +3570,36 @@ pub const App = struct {
         return null;
     }
 
+    fn tabHasInspectorForSurface(self: *App, surface: *Surface) bool {
+        const found = self.findTabForSurface(surface) orelse return surface.inspector_visible;
+        var it = found.tab.tree.iterator();
+        while (it.next()) |entry| {
+            if (entry.view.inspector_visible) return true;
+        }
+        return false;
+    }
+
+    fn setTabInspectorVisibleForSurface(self: *App, surface: *Surface, visible: bool) !bool {
+        const found = self.findTabForSurface(surface) orelse return try surface.setInspectorVisible(visible);
+        var changed = false;
+        var it = found.tab.tree.iterator();
+        while (it.next()) |entry| {
+            if (try entry.view.setInspectorVisible(visible)) changed = true;
+        }
+        return changed;
+    }
+
+    fn setInspectorActionForSurface(self: *App, surface: *Surface, mode: apprt.action.Inspector) !bool {
+        return try self.setTabInspectorVisibleForSurface(
+            surface,
+            nextTabInspectorVisible(self.tabHasInspectorForSurface(surface), mode),
+        );
+    }
+
+    fn toggleInspectorForSurface(self: *App, surface: *Surface) !bool {
+        return try self.setInspectorActionForSurface(surface, .toggle);
+    }
+
     fn hostTabStatus(self: *App, surface: *const Surface) HostTabStatus {
         const host = surface.host orelse return .{};
         const total = host.tabs.items.len;
@@ -3422,11 +3628,68 @@ pub const App = struct {
     }
 
     fn activateSurface(self: *App, surface: *Surface) void {
+        const was_windows_hidden = self.windows_hidden;
         self.windows_hidden = false;
         if (self.findTabForSurface(surface)) |found| {
-            if (found.tab.findHandle(surface)) |handle| found.tab.focused = handle;
+            const handle = found.tab.findHandle(surface) orelse found.tab.focused;
+            const host_window_visible = if (found.host.hwnd) |hwnd|
+                IsWindowVisible(hwnd) != 0
+            else
+                false;
+            const needs_host_sync = surfaceFocusedActivationNeedsHostSync(
+                was_windows_hidden,
+                host_window_visible,
+                found.index,
+                found.host.active_tab,
+                surface.window_visible,
+                surface.window_focused,
+            );
+            if (found.tab.focused != handle) found.tab.focused = handle;
+            if (!needs_host_sync) {
+                surface.presentWindow();
+                return;
+            }
         }
         self.showHostSurface(surface, true);
+    }
+
+    fn activateSurfaceNoFocus(self: *App, surface: *Surface) void {
+        const was_windows_hidden = self.windows_hidden;
+        self.windows_hidden = false;
+        if (self.findTabForSurface(surface)) |found| {
+            const handle = found.tab.findHandle(surface) orelse found.tab.focused;
+            const host_window_visible = if (found.host.hwnd) |hwnd|
+                IsWindowVisible(hwnd) != 0
+            else
+                false;
+            const needs_host_sync = surfaceActivationNeedsHostSync(
+                was_windows_hidden,
+                host_window_visible,
+                found.index,
+                found.host.active_tab,
+                surface.window_visible,
+            );
+            if (found.tab.focused != handle) found.tab.focused = handle;
+            if (!needs_host_sync) {
+                surface.setVisible(true);
+                return;
+            }
+        }
+        self.showHostSurface(surface, false);
+    }
+
+    fn noteSurfaceFocused(self: *App, surface: *Surface) bool {
+        const found = self.findTabForSurface(surface) orelse return false;
+        const handle = found.tab.findHandle(surface) orelse return false;
+        const changed = surfaceFocusStateChanged(
+            found.host.active_tab,
+            found.tab.focused,
+            found.index,
+            handle,
+        );
+        found.host.active_tab = found.index;
+        found.tab.focused = handle;
+        return changed;
     }
 
     fn syncHostWindowState(self: *App, source: *Surface) !void {
@@ -3495,7 +3758,6 @@ pub const App = struct {
                 if (self.activeTab(host)) |tab| if (tab.focusedSurface()) |replacement| self.activateSurface(replacement);
                 // Relayout when tab bar visibility may have changed (auto-hide crossing 1-tab threshold)
                 host.layout() catch {};
-                if (host.hwnd) |host_hwnd| _ = InvalidateRect(host_hwnd, null, 0);
             }
         }
 
@@ -4628,6 +4890,12 @@ const ChildPlacement = struct {
     visible_known: bool = false,
 };
 
+const ScrollbarPolicy = enum {
+    never,
+    dynamic,
+    always,
+};
+
 const VisibleTabRange = struct {
     start: usize,
     count: usize,
@@ -4699,6 +4967,43 @@ const Tab = struct {
     }
 };
 
+const ChromeTextDirty = packed struct(u8) {
+    overlay: bool = true,
+    inspector: bool = true,
+    banner: bool = true,
+    status: bool = true,
+    _padding: u4 = 0,
+
+    fn markTop(self: *ChromeTextDirty) void {
+        self.overlay = true;
+        self.inspector = true;
+        self.banner = true;
+    }
+
+    fn markAll(self: *ChromeTextDirty) void {
+        self.markTop();
+        self.status = true;
+    }
+};
+
+const ChromeRepaintMask = packed struct(u8) {
+    top: bool = false,
+    content: bool = false,
+    status: bool = false,
+    search_frames: bool = false,
+    _padding: u4 = 0,
+
+    fn markChrome(self: *ChromeRepaintMask) void {
+        self.top = true;
+        self.status = true;
+        self.search_frames = true;
+    }
+
+    fn isEmpty(self: ChromeRepaintMask) bool {
+        return !self.top and !self.content and !self.status and !self.search_frames;
+    }
+};
+
 const Host = struct {
     app: *App,
     id: u32,
@@ -4764,10 +5069,12 @@ const Host = struct {
     pending_dpi_update: bool = false,
     chrome_font: ?*anyopaque = null, // HFONT, owned
 
-    // Cached chrome paint strings — rebuilt only when chrome_text_dirty is set,
-    // so WM_PAINT can skip per-frame heap allocation + UTF-16 conversion.
+    // Cached chrome paint strings — rebuilt only when their per-zone
+    // dirty bits are set, so WM_PAINT can skip unrelated UTF-16 churn.
     chrome_repaint_dirty: bool = true,
-    chrome_text_dirty: bool = true,
+    chrome_paint_pending: bool = false,
+    chrome_paint_mask: ChromeRepaintMask = .{},
+    chrome_text_dirty: ChromeTextDirty = .{},
     cached_status_w: ?[:0]const u16 = null,
     cached_detail_w: ?[:0]const u16 = null,
     cached_banner_w: ?[:0]const u16 = null,
@@ -4849,6 +5156,10 @@ const Host = struct {
     // in the method section. Matches Win32's main-thread-paint model.
     tween_sched: win32_tween.Scheduler = .{},
     tween_timer_active: bool = false,
+    search_timer_active: bool = false,
+    scrollbar_timer_active: bool = false,
+    resize_settle_timer_active: bool = false,
+    resize_settle_repaint_ticks: u8 = 0,
 
     fn nextTabId(self: *Host) u32 {
         const id = self.next_tab_id;
@@ -4922,9 +5233,10 @@ const Host = struct {
     fn tickTweens(self: *Host) void {
         const now = GetTickCount64();
         const still_alive = self.tween_sched.tick(now);
-        if (self.hwnd) |h| {
-            _ = InvalidateRect(h, null, 0);
-        }
+        // Current host-level tweens only animate tab-strip chrome
+        // (underline slide + close-button fade), so invalidating the
+        // full host every 16 ms is avoidable overpaint.
+        self.repaintTopChrome();
         // The Host-level InvalidateRect doesn't cascade to child
         // button HWNDs (flag = 0 so no WS_CLIPCHILDREN bubble).
         // Explicitly invalidate each fading tab button so its
@@ -4945,6 +5257,44 @@ const Host = struct {
             }
         }
         if (!still_alive) self.killTweenTimer();
+    }
+
+    fn ensureResizeSettleTimer(self: *Host) void {
+        if (self.resize_settle_timer_active) return;
+        const hwnd = self.hwnd orelse return;
+        const prev = SetTimer(hwnd, RESIZE_SETTLE_TIMER_ID, RESIZE_SETTLE_TIMER_INTERVAL_MS, null);
+        if (prev == 0) {
+            std.log.warn("resize-settle: SetTimer failed; final pane repaint may wait for input", .{});
+            return;
+        }
+        self.resize_settle_timer_active = true;
+    }
+
+    fn killResizeSettleTimer(self: *Host) void {
+        if (!self.resize_settle_timer_active) return;
+        const hwnd = self.hwnd orelse {
+            self.resize_settle_timer_active = false;
+            return;
+        };
+        _ = KillTimer(hwnd, RESIZE_SETTLE_TIMER_ID);
+        self.resize_settle_timer_active = false;
+    }
+
+    fn startResizeSettleRepaints(self: *Host) void {
+        self.resize_settle_repaint_ticks = RESIZE_SETTLE_REPAINT_TICKS;
+        self.ensureResizeSettleTimer();
+    }
+
+    fn tickResizeSettleRepaint(self: *Host) void {
+        if (self.resize_settle_repaint_ticks == 0) {
+            self.killResizeSettleTimer();
+            return;
+        }
+
+        self.forceVisibleSurfaceRepaintsNow();
+        self.forceHostCompositionPaint();
+        self.resize_settle_repaint_ticks -= 1;
+        if (self.resize_settle_repaint_ticks == 0) self.killResizeSettleTimer();
     }
 
     /// Retarget the focused-tab underline toward the pixel rect
@@ -4970,7 +5320,7 @@ const Host = struct {
             self.tab_underline.target_width = new_width;
             self.tab_underline.start_left = new_left;
             self.tab_underline.start_width = new_width;
-            if (self.hwnd) |h| _ = InvalidateRect(h, null, 0);
+            self.repaintTopChrome();
             return;
         }
 
@@ -5074,7 +5424,7 @@ const Host = struct {
 
         if (self.caption_hover != new_hover) {
             self.caption_hover = new_hover;
-            self.invalidateChrome();
+            self.repaintTopChrome();
         }
 
         // Arm a one-shot WM_NCMOUSELEAVE so we can clear the hover
@@ -5099,7 +5449,7 @@ const Host = struct {
         self.caption_track_armed = false;
         if (self.caption_hover != .none) {
             self.caption_hover = .none;
-            self.invalidateChrome();
+            self.repaintTopChrome();
         }
     }
 
@@ -5431,6 +5781,18 @@ const Host = struct {
             if (self.hwnd) |h| _ = KillTimer(h, TWEEN_TIMER_ID);
             self.tween_timer_active = false;
         }
+        if (self.search_timer_active) {
+            if (self.hwnd) |h| _ = KillTimer(h, SEARCH_TIMER_ID);
+            self.search_timer_active = false;
+        }
+        if (self.scrollbar_timer_active) {
+            if (self.hwnd) |h| _ = KillTimer(h, SCROLLBAR_TIMER_ID);
+            self.scrollbar_timer_active = false;
+        }
+        if (self.resize_settle_timer_active) {
+            if (self.hwnd) |h| _ = KillTimer(h, RESIZE_SETTLE_TIMER_ID);
+            self.resize_settle_timer_active = false;
+        }
         self.tween_sched.deinit();
 
         if (self.banner_text) |value| self.app.core_app.alloc.free(value);
@@ -5471,7 +5833,19 @@ const Host = struct {
             var it = tab.tree.iterator();
             while (it.next()) |entry| {
                 entry.view.host_active = active;
-                if (!active) entry.view.setVisible(false);
+                if (!active) {
+                    entry.view.setVisible(false);
+                    _ = entry.view.hideSearchBarControls();
+                }
+            }
+        }
+    }
+
+    fn invalidateActiveSearchBarLayoutCaches(self: *Host) void {
+        if (self.activeTab()) |tab| {
+            var it = tab.tree.iterator();
+            while (it.next()) |entry| {
+                entry.view.invalidateSearchBarLayoutCache();
             }
         }
     }
@@ -5555,11 +5929,16 @@ const Host = struct {
             self.active_tab = a;
         }
         self.layout() catch {};
-        self.invalidateChrome();
     }
 
     fn activateTabIndex(self: *Host, index: usize) bool {
         if (index >= self.tabs.items.len) return false;
+        if (self.active_tab != index) {
+            // Hide inactive tab HWNDs/search controls before the active
+            // index changes so rapid Ctrl+Tab repeats don't leave previous
+            // tab toolbar fragments painted over the next tab.
+            self.prepareActiveTabVisibility(index);
+        }
         self.active_tab = index;
         // The underline retarget happens in `layoutTabStrip` —
         // `active_tab` is read there and fed to `retargetTabUnderline`
@@ -5569,8 +5948,10 @@ const Host = struct {
         self.layout() catch {};
         if (self.tabs.items[index].focusedSurface()) |surface| {
             self.app.activateSurface(surface);
+            self.forceHostCompositionPaint();
             return true;
         }
+        self.forceHostCompositionPaint();
         return false;
     }
 
@@ -5582,23 +5963,15 @@ const Host = struct {
 
     fn navigateActiveSearch(self: *Host, dir: input.Binding.Action.NavigateSearch) bool {
         const surface = self.activeSurface() orelse return false;
-        if (!surface.search_active) return false;
-        _ = surface.core_surface.performBindingAction(.{ .navigate_search = dir }) catch return false;
-        self.refreshChrome() catch {};
+        if (!surface.search_active and !surface.search_bar.visible) return false;
+        _ = surface.navigateDockedSearch(dir) catch return false;
         return true;
     }
 
     fn dismissActiveSearch(self: *Host) bool {
         const surface = self.activeSurface() orelse return false;
-        if (!surface.search_active and self.overlay_mode != .search) return false;
-        _ = surface.core_surface.endSearch() catch {};
-        if (self.overlay_mode == .search) {
-            self.hideOverlay();
-            self.layout() catch {};
-            refocusActiveSurface(self);
-        } else {
-            self.refreshChrome() catch {};
-        }
+        if (!surface.search_active and !surface.search_bar.visible and self.overlay_mode != .search) return false;
+        surface.closeDockedSearchBar(true, true) catch return false;
         return true;
     }
 
@@ -5620,6 +5993,7 @@ const Host = struct {
         if (self.overlay_mode != .command_palette) return false;
         self.hideOverlay();
         self.layout() catch {};
+        self.forceHostCompositionPaint();
         refocusActiveSurface(self);
         return true;
     }
@@ -5641,11 +6015,11 @@ const Host = struct {
             self.app.launcher_profile_hint,
             self.selected_profile,
         )) |index| {
-            try self.setSelectedProfileIndex(index);
+            _ = try self.setSelectedProfileIndex(index);
             return true;
         }
         if (self.selected_profile >= profiles.len) self.selected_profile = 0;
-        try self.setSelectedProfileIndex(self.selected_profile);
+        _ = try self.setSelectedProfileIndex(self.selected_profile);
         return true;
     }
 
@@ -5660,11 +6034,11 @@ const Host = struct {
             self.app.launcher_profile_hint,
             self.selected_profile,
         )) |index| {
-            try self.setSelectedProfileIndex(index);
+            _ = try self.setSelectedProfileIndex(index);
             return;
         }
         if (self.selected_profile >= profiles.len) self.selected_profile = 0;
-        try self.setSelectedProfileIndex(self.selected_profile);
+        _ = try self.setSelectedProfileIndex(self.selected_profile);
     }
 
     fn ensureProfiles(self: *Host) !bool {
@@ -5687,19 +6061,52 @@ const Host = struct {
         return &profiles[index];
     }
 
-    fn setSelectedProfileIndex(self: *Host, index: usize) !void {
-        const profiles = self.profiles orelse return;
-        if (profiles.len == 0) return;
+    fn profileForKey(self: *Host, key: []const u8) !?*windows_shell.Profile {
+        if (!(try self.ensureProfiles())) return null;
+        const profiles = self.profiles orelse return null;
+        const index = profileIndexByKey(profiles, key) orelse return null;
+        return &profiles[index];
+    }
+
+    fn setSelectedProfileIndex(self: *Host, index: usize) !bool {
+        const profiles = self.profiles orelse return false;
+        if (profiles.len == 0) return false;
         const next_index = @min(index, profiles.len - 1);
+        const next_key = profiles[next_index].key;
+        if (!selectedProfileSelectionNeedsChange(
+            self.selected_profile,
+            next_index,
+            self.focused_quick_slot,
+            self.selected_profile_key,
+            self.app.launcher_profile_key,
+            next_key,
+        )) return false;
         self.selected_profile = next_index;
         self.setFocusedQuickSlot(null);
-        try appendOwnedString(self.app.core_app.alloc, &self.selected_profile_key, profiles[next_index].key);
-        try appendOwnedString(self.app.core_app.alloc, &self.app.launcher_profile_key, profiles[next_index].key);
+        try appendOwnedString(self.app.core_app.alloc, &self.selected_profile_key, next_key);
+        try appendOwnedString(self.app.core_app.alloc, &self.app.launcher_profile_key, next_key);
+        return true;
     }
 
     fn setLauncherProfileTarget(self: *Host, target: ProfileOpenTarget) void {
+        if (self.app.launcher_profile_target == target) return;
         self.app.launcher_profile_target = target;
-        self.refreshChrome() catch {};
+        self.refreshProfileChrome();
+    }
+
+    fn refreshProfileChrome(self: *Host) void {
+        const status_h = self.statusBarHeight();
+        if (!profileChromeVisible(self.overlay_mode, status_h)) return;
+        if (self.overlay_mode == .profile) {
+            _ = self.syncOverlayLabel() catch false;
+            _ = self.syncOverlayHint() catch false;
+            _ = self.syncOverlayButtons() catch false;
+        }
+        if (profileChromeNeedsFullTextInvalidation(self.overlay_mode, status_h)) {
+            self.invalidateChromeText();
+        } else {
+            self.invalidateOverlayText();
+        }
     }
 
     fn cycleLauncherProfileTarget(self: *Host, reverse: bool) bool {
@@ -5715,6 +6122,7 @@ const Host = struct {
         if (self.overlay_mode == .profile) {
             self.hideOverlay();
             self.layout() catch {};
+            self.forceHostCompositionPaint();
             return true;
         }
         const initial = self.overlayInitialText(.profile);
@@ -5728,8 +6136,9 @@ const Host = struct {
         if (!(self.ensureProfiles() catch false)) return false;
         const profiles = self.profiles.?;
         const next = nextTabOverviewSelection(self.selected_profile + 1, profiles.len, reverse) - 1;
-        self.setSelectedProfileIndex(next) catch return false;
-        self.refreshChrome() catch {};
+        if (self.setSelectedProfileIndex(next) catch return false) {
+            self.refreshProfileChrome();
+        }
         return true;
     }
 
@@ -5745,13 +6154,10 @@ const Host = struct {
             .ambiguous, .invalid => fallback,
         };
         const next = nextTabOverviewSelection(current_index + 1, profiles.len, reverse) - 1;
-        try self.setSelectedProfileIndex(next);
+        const selection_changed = try self.setSelectedProfileIndex(next);
         _ = try self.setOverlayEditText(profiles[next].key);
         _ = SendMessageW(edit_hwnd, EM_SETSEL, 0, -1);
-        _ = try self.syncOverlayLabel();
-        _ = try self.syncOverlayHint();
-        _ = try self.syncOverlayButtons();
-        try self.refreshChrome();
+        if (selection_changed) self.refreshProfileChrome();
         return true;
     }
 
@@ -5772,8 +6178,9 @@ const Host = struct {
         if (!(self.ensureProfiles() catch false)) return false;
         const profiles = self.profiles.?;
         if (index >= profiles.len) return false;
-        self.setSelectedProfileIndex(index) catch return false;
-        self.refreshChrome() catch {};
+        if (self.setSelectedProfileIndex(index) catch return false) {
+            self.refreshProfileChrome();
+        }
         return self.openSelectedProfile(open_target);
     }
 
@@ -5798,7 +6205,7 @@ const Host = struct {
         const selection = resolveProfileSelection(self.profiles.?, text, self.selectedProfileIndex() orelse 0);
         switch (selection) {
             .exact => |index| {
-                try self.setSelectedProfileIndex(index);
+                _ = try self.setSelectedProfileIndex(index);
             },
             .ambiguous => |count| {
                 const message = try std.fmt.allocPrint(
@@ -5819,10 +6226,17 @@ const Host = struct {
         return true;
     }
 
-    fn inspectorPanelVisible(self: *const Host) bool {
-        if (self.overlay_mode != .none) return false;
-        const surface = self.activeSurface() orelse return false;
-        return surface.inspector_visible;
+    fn inspectorPanelVisible(self: *Host) bool {
+        return inspectorPanelVisibleForState(self.overlay_mode, self.activeTabHasInspector());
+    }
+
+    fn activeTabHasInspector(self: *Host) bool {
+        const tab = self.activeTab() orelse return false;
+        var it = tab.tree.iterator();
+        while (it.next()) |entry| {
+            if (entry.view.inspector_visible) return true;
+        }
+        return false;
     }
 
     fn isActiveTabButton(self: *Host, child: HWND) bool {
@@ -6007,7 +6421,7 @@ const Host = struct {
 
         self.banner_kind = next_kind;
         try appendOwnedString(self.app.core_app.alloc, &self.banner_text, text);
-        self.invalidateChrome();
+        self.invalidateBannerText();
     }
 
     fn clearUpdateActionRects(self: *Host) void {
@@ -6084,6 +6498,14 @@ const Host = struct {
             null
         else
             @ptrFromInt(@as(usize, @intCast(previous)));
+        const edit_margin = @as(u16, @intCast(@max(self.scaled(10), 6)));
+        const packed_margins: isize = @intCast(@as(usize, edit_margin) | (@as(usize, edit_margin) << 16));
+        _ = SendMessageW(
+            edit_hwnd,
+            EM_SETMARGINS,
+            EC_LEFTMARGIN | EC_RIGHTMARGIN,
+            packed_margins,
+        );
 
         self.overlay_hint_hwnd = CreateWindowExW(
             0,
@@ -6222,9 +6644,11 @@ const Host = struct {
         // overlayEditProc key handlers; we still capture keys there
         // so focus on the button is just the initial landing spot).
         const is_confirm = mode == .confirm;
+        const show_accept = overlayAcceptButtonVisible(mode);
         _ = applyChildVisibility(edit_hwnd, &self.overlay_edit_placement, !is_confirm);
-        _ = applyChildVisibility(accept_hwnd, &self.overlay_accept_placement, true);
+        _ = applyChildVisibility(accept_hwnd, &self.overlay_accept_placement, show_accept);
         _ = applyChildVisibility(cancel_hwnd, &self.overlay_cancel_placement, true);
+        self.invalidateOverlayTransitionPlacementCache();
 
         const initial_text = initial orelse "";
         _ = try self.setOverlayEditText(initial_text);
@@ -6246,6 +6670,7 @@ const Host = struct {
             _ = SetFocus(edit_hwnd);
             _ = SendMessageW(edit_hwnd, EM_SETSEL, 0, -1);
         }
+        self.forceOverlayTransitionPaint();
     }
 
     fn hideOverlay(self: *Host) void {
@@ -6269,6 +6694,21 @@ const Host = struct {
         if (self.palette_list_hwnd) |hwnd| _ = applyChildVisibility(hwnd, &self.palette_list_placement, false);
         self.palette_list_ranked_count = 0;
         self.palette_list_scroll = 0;
+        self.invalidateOverlayTransitionPlacementCache();
+        self.forceHostCompositionPaint();
+    }
+
+    fn invalidateOverlayTransitionPlacementCache(self: *Host) void {
+        self.overlay_edit_placement.rect_known = false;
+        self.overlay_accept_placement.rect_known = false;
+        self.overlay_cancel_placement.rect_known = false;
+        self.palette_list_placement.rect_known = false;
+        if (self.activeTab()) |tab| {
+            var it = tab.tree.iterator();
+            while (it.next()) |entry| {
+                entry.view.placement.rect_known = false;
+            }
+        }
     }
 
     /// Bring up a non-modal confirmation prompt. Ownership of the
@@ -6713,7 +7153,102 @@ const Host = struct {
             if (self.overlay_edit_hwnd) |edit| _ = SendMessageW(edit, WM_SETFONT, @intFromPtr(font), 1);
             if (self.overlay_label_hwnd) |label| _ = SendMessageW(label, WM_SETFONT, @intFromPtr(font), 1);
             if (self.overlay_hint_hwnd) |hint| _ = SendMessageW(hint, WM_SETFONT, @intFromPtr(font), 1);
+            for (self.app.windows.items) |surface| {
+                if (surface.host != self) continue;
+                surface.applySearchBarFont(font);
+            }
         }
+    }
+
+    fn ensureSearchTimer(self: *Host) void {
+        if (self.search_timer_active) return;
+        const hwnd = self.hwnd orelse return;
+        _ = SetTimer(hwnd, SEARCH_TIMER_ID, SEARCH_TIMER_INTERVAL_MS, null);
+        self.search_timer_active = true;
+    }
+
+    fn killSearchTimer(self: *Host) void {
+        if (!self.search_timer_active) return;
+        if (self.hwnd) |hwnd| _ = KillTimer(hwnd, SEARCH_TIMER_ID);
+        self.search_timer_active = false;
+    }
+
+    fn refreshSearchTimerState(self: *Host) void {
+        const tab = self.activeTab() orelse {
+            self.killSearchTimer();
+            return;
+        };
+
+        var wants_timer = false;
+        var it = tab.tree.iterator();
+        while (it.next()) |entry| {
+            if (!entry.view.search_bar.visible) continue;
+            if (entry.view.search_bar.query.len == 0) continue;
+            if (!entry.view.search_bar.searched) {
+                wants_timer = true;
+                break;
+            }
+        }
+
+        if (wants_timer) self.ensureSearchTimer() else self.killSearchTimer();
+    }
+
+    fn tickSearchBars(self: *Host) void {
+        const now_ms: i64 = @intCast(GetTickCount64());
+        if (self.activeTab()) |tab| {
+            var it = tab.tree.iterator();
+            while (it.next()) |entry| {
+                if (!entry.view.search_bar.visible) continue;
+                if (!entry.view.search_bar.shouldRunSearch(now_ms)) continue;
+                _ = entry.view.runPendingSearchNow() catch |err| {
+                    log.warn("win32 search refresh failed err={}", .{err});
+                    continue;
+                };
+            }
+        }
+        self.refreshSearchTimerState();
+    }
+
+    fn ensureScrollbarTimer(self: *Host) void {
+        if (self.scrollbar_timer_active) return;
+        const hwnd = self.hwnd orelse return;
+        _ = SetTimer(hwnd, SCROLLBAR_TIMER_ID, SCROLLBAR_TIMER_INTERVAL_MS, null);
+        self.scrollbar_timer_active = true;
+    }
+
+    fn killScrollbarTimer(self: *Host) void {
+        if (!self.scrollbar_timer_active) return;
+        if (self.hwnd) |hwnd| _ = KillTimer(hwnd, SCROLLBAR_TIMER_ID);
+        self.scrollbar_timer_active = false;
+    }
+
+    fn refreshScrollbarTimerState(self: *Host) void {
+        const tab = self.activeTab() orelse {
+            self.killScrollbarTimer();
+            return;
+        };
+
+        var wants_timer = false;
+        var it = tab.tree.iterator();
+        while (it.next()) |entry| {
+            if (entry.view.scrollbarNeedsHeartbeat()) {
+                wants_timer = true;
+                break;
+            }
+        }
+
+        if (wants_timer) self.ensureScrollbarTimer() else self.killScrollbarTimer();
+    }
+
+    fn tickScrollbars(self: *Host) void {
+        const now_ms = GetTickCount64();
+        if (self.activeTab()) |tab| {
+            var it = tab.tree.iterator();
+            while (it.next()) |entry| {
+                entry.view.tickScrollbar(now_ms);
+            }
+        }
+        self.refreshScrollbarTimerState();
     }
 
     fn showContextMenu(self: *Host, screen_x: i32, screen_y: i32) void {
@@ -6928,20 +7463,353 @@ const Host = struct {
                 _ = self.app.performAction(.{ .surface = surface.core() }, .new_window, .{}) catch {};
             },
             CTX_INSPECTOR => {
-                _ = surface.setInspectorVisible(!surface.inspector_visible) catch {};
-                self.refreshChrome() catch {};
+                _ = self.app.toggleInspectorForSurface(surface) catch {};
             },
             else => {},
         }
     }
 
-    fn isOverlayButton(self: *Host, child: HWND) bool {
+    fn isOverlayButton(self: *const Host, child: HWND) bool {
         return (self.overlay_accept_hwnd != null and child == self.overlay_accept_hwnd.?) or
             (self.overlay_cancel_hwnd != null and child == self.overlay_cancel_hwnd.?);
     }
 
+    fn searchControlSurface(self: *const Host, child: HWND) ?*Surface {
+        for (self.app.windows.items) |surface| {
+            if (surface.host != self) continue;
+            if ((surface.search_bar_edit_hwnd != null and child == surface.search_bar_edit_hwnd.?) or
+                (surface.search_bar_prev_hwnd != null and child == surface.search_bar_prev_hwnd.?) or
+                (surface.search_bar_next_hwnd != null and child == surface.search_bar_next_hwnd.?) or
+                (surface.search_bar_regex_hwnd != null and child == surface.search_bar_regex_hwnd.?) or
+                (surface.search_bar_case_hwnd != null and child == surface.search_bar_case_hwnd.?) or
+                (surface.search_bar_word_hwnd != null and child == surface.search_bar_word_hwnd.?) or
+                (surface.search_bar_results_hwnd != null and child == surface.search_bar_results_hwnd.?) or
+                (surface.search_bar_close_hwnd != null and child == surface.search_bar_close_hwnd.?))
+            {
+                return surface;
+            }
+        }
+        return null;
+    }
+
+    fn searchBarBackgroundSurface(self: *const Host, child: HWND) ?*Surface {
+        for (self.app.windows.items) |surface| {
+            if (surface.host != self) continue;
+            if (surface.search_bar_bg_hwnd != null and child == surface.search_bar_bg_hwnd.?) {
+                return surface;
+            }
+        }
+        return null;
+    }
+
+    fn isSearchBarButton(self: *const Host, child: HWND) bool {
+        const surface = self.searchControlSurface(child) orelse return false;
+        return (surface.search_bar_prev_hwnd != null and child == surface.search_bar_prev_hwnd.?) or
+            (surface.search_bar_next_hwnd != null and child == surface.search_bar_next_hwnd.?) or
+            (surface.search_bar_regex_hwnd != null and child == surface.search_bar_regex_hwnd.?) or
+            (surface.search_bar_case_hwnd != null and child == surface.search_bar_case_hwnd.?) or
+            (surface.search_bar_word_hwnd != null and child == surface.search_bar_word_hwnd.?) or
+            (surface.search_bar_close_hwnd != null and child == surface.search_bar_close_hwnd.?);
+    }
+
+    fn isSearchBarResultsLabel(self: *const Host, child: HWND) bool {
+        const surface = self.searchControlSurface(child) orelse return false;
+        return surface.search_bar_results_hwnd != null and child == surface.search_bar_results_hwnd.?;
+    }
+
+    fn searchBarButtonRole(self: *const Host, child: HWND) ?SearchBarButtonRole {
+        const surface = self.searchControlSurface(child) orelse return null;
+        if (surface.search_bar_prev_hwnd != null and child == surface.search_bar_prev_hwnd.?) return .prev;
+        if (surface.search_bar_next_hwnd != null and child == surface.search_bar_next_hwnd.?) return .next;
+        if (surface.search_bar_regex_hwnd != null and child == surface.search_bar_regex_hwnd.?) return .regex;
+        if (surface.search_bar_case_hwnd != null and child == surface.search_bar_case_hwnd.?) return .case_sensitive;
+        if (surface.search_bar_word_hwnd != null and child == surface.search_bar_word_hwnd.?) return .whole_word;
+        if (surface.search_bar_close_hwnd != null and child == surface.search_bar_close_hwnd.?) return .close;
+        return null;
+    }
+
+    fn searchBarButtonIcon(self: *const Host, child: HWND) ?win32_icons.Kind {
+        return switch (self.searchBarButtonRole(child) orelse return null) {
+            .prev => .arrow_up,
+            .next => .arrow_down,
+            .regex => .regex,
+            .case_sensitive => .case_sens,
+            .whole_word => .whole_word,
+            .close => .close,
+        };
+    }
+
+    fn searchBarButtonColors(
+        self: *const Host,
+        role: SearchBarButtonRole,
+        active: bool,
+        hovered: bool,
+        pressed: bool,
+        disabled: bool,
+    ) ButtonColors {
+        const theme = &self.app.resolved_theme;
+        if (disabled) return buttonColorsFromTheme(theme, active, true, hovered, pressed, true, false);
+
+        const accent = overlayAccentColor(.search, theme.is_dark);
+        const toolbar = searchBarToolbarVisual(theme);
+        var colors: ButtonColors = .{
+            .bg = searchBarButtonParentBg(theme, role),
+            .border = searchBarButtonParentBg(theme, role),
+            .fg = theme.text_secondary,
+        };
+        switch (role) {
+            .prev, .next => {},
+            .regex, .case_sensitive, .whole_word => {
+                if (active) {
+                    colors.bg = if (pressed)
+                        blendColorRGB(accent, toolbar.bg, if (theme.is_dark) 0.42 else 0.28)
+                    else if (hovered)
+                        blendColorRGB(accent, toolbar.bg, if (theme.is_dark) 0.36 else 0.22)
+                    else
+                        blendColorRGB(accent, toolbar.bg, if (theme.is_dark) 0.30 else 0.18);
+                    colors.border = colors.bg;
+                    colors.fg = theme.text_primary;
+                } else {
+                    colors.bg = if (pressed)
+                        adjustColor(toolbar.bg, -10, -8, -8)
+                    else if (hovered)
+                        adjustColor(toolbar.bg, 6, 8, 8)
+                    else
+                        toolbar.bg;
+                    colors.border = colors.bg;
+                    colors.fg = if (hovered) theme.text_primary else theme.text_secondary;
+                }
+            },
+            .close => {
+                colors.bg = if (pressed)
+                    blendColorRGB(theme.error_fg, theme.overlay_bg, if (theme.is_dark) 0.18 else 0.12)
+                else if (hovered)
+                    blendColorRGB(theme.error_fg, theme.overlay_bg, if (theme.is_dark) 0.12 else 0.08)
+                else
+                    theme.overlay_bg;
+                colors.border = colors.bg;
+                colors.fg = if (hovered or pressed) theme.error_fg else theme.text_secondary;
+            },
+        }
+        if (role == .prev or role == .next) {
+            colors.bg = if (pressed)
+                adjustColor(toolbar.bg, -10, -8, -8)
+            else if (hovered)
+                adjustColor(toolbar.bg, 6, 8, 8)
+            else
+                toolbar.bg;
+            colors.border = colors.bg;
+            colors.fg = if (hovered or pressed) theme.text_primary else theme.text_secondary;
+        }
+        return colors;
+    }
+
+    fn drawSearchBarBackground(self: *Host, draw: *const DRAWITEMSTRUCT) bool {
+        if (draw.CtlType != ODT_STATIC) return false;
+        const surface = self.searchBarBackgroundSurface(draw.hwndItem) orelse return false;
+
+        const theme = &self.app.resolved_theme;
+        const frame_rect = draw.rcItem;
+        fillSolidRect(draw.hDC, frame_rect, theme.chrome_bg);
+        drawRoundedRect(
+            draw.hDC,
+            frame_rect,
+            searchBarFrameBg(theme),
+            searchBarFrameBorder(theme),
+            self.scaled(8),
+        );
+        fillSolidRect(draw.hDC, .{
+            .left = frame_rect.left + self.scaled(8),
+            .top = frame_rect.bottom - 1,
+            .right = frame_rect.right - self.scaled(8),
+            .bottom = frame_rect.bottom,
+        }, searchBarBottomLine(theme));
+
+        const origin_x = surface.search_bar_frame_rect.left;
+        const origin_y = surface.search_bar_frame_rect.top;
+        if (searchBarGroupRect(&[_]ChildPlacement{
+            surface.search_bar_results_placement,
+            surface.search_bar_prev_placement,
+            surface.search_bar_next_placement,
+            surface.search_bar_regex_placement,
+            surface.search_bar_case_placement,
+            surface.search_bar_word_placement,
+        }, self.scaled(4), self.scaled(2))) |host_toolbar_rect| {
+            const toolbar_rect = rectOffset(host_toolbar_rect, -origin_x, -origin_y);
+            const toolbar = searchBarToolbarVisual(theme);
+            drawRoundedRect(
+                draw.hDC,
+                toolbar_rect,
+                toolbar.bg,
+                toolbar.border,
+                self.scaled(7),
+            );
+
+            const sep_top = toolbar_rect.top + self.scaled(6);
+            const sep_bottom = toolbar_rect.bottom - self.scaled(6);
+            if (sep_bottom > sep_top) {
+                if (searchBarSeparatorX(
+                    surface.search_bar_results_placement,
+                    surface.search_bar_prev_placement,
+                )) |host_sep_x| {
+                    const sep_x = host_sep_x - origin_x;
+                    fillSolidRect(draw.hDC, .{
+                        .left = sep_x,
+                        .top = sep_top,
+                        .right = sep_x + 1,
+                        .bottom = sep_bottom,
+                    }, toolbar.separator);
+                }
+                if (searchBarSeparatorX(
+                    surface.search_bar_prev_placement,
+                    surface.search_bar_next_placement,
+                )) |host_sep_x| {
+                    const sep_x = host_sep_x - origin_x;
+                    fillSolidRect(draw.hDC, .{
+                        .left = sep_x,
+                        .top = sep_top,
+                        .right = sep_x + 1,
+                        .bottom = sep_bottom,
+                    }, toolbar.separator);
+                }
+                if (searchBarSeparatorX(
+                    surface.search_bar_next_placement,
+                    surface.search_bar_regex_placement,
+                )) |host_sep_x| {
+                    const sep_x = host_sep_x - origin_x;
+                    fillSolidRect(draw.hDC, .{
+                        .left = sep_x,
+                        .top = sep_top,
+                        .right = sep_x + 1,
+                        .bottom = sep_bottom,
+                    }, toolbar.separator);
+                }
+            }
+        }
+
+        if (surface.search_bar_edit_placement.rect_known) {
+            const edit_rect = rectOffset(surface.search_bar_edit_placement.rect, -origin_x, -origin_y);
+            const edit_focused = if (surface.search_bar_edit_hwnd) |edit_hwnd|
+                GetFocus() == edit_hwnd
+            else
+                false;
+            const edit_frame_rect = RECT{
+                .left = edit_rect.left - self.scaled(1),
+                .top = edit_rect.top - self.scaled(1),
+                .right = edit_rect.right + self.scaled(1),
+                .bottom = edit_rect.bottom + self.scaled(1),
+            };
+            drawRoundedRect(
+                draw.hDC,
+                edit_frame_rect,
+                theme.edit_frame_bg,
+                theme.edit_frame_bg,
+                self.scaled(6),
+            );
+            if (edit_focused) {
+                fillSolidRect(draw.hDC, .{
+                    .left = edit_frame_rect.left + self.scaled(8),
+                    .top = edit_frame_rect.bottom - self.scaled(2),
+                    .right = edit_frame_rect.right - self.scaled(8),
+                    .bottom = edit_frame_rect.bottom,
+                }, overlayAccentColor(.search, theme.is_dark));
+            }
+        }
+
+        return true;
+    }
+
+    fn drawSearchBarButton(
+        self: *Host,
+        draw: *const DRAWITEMSTRUCT,
+        role: SearchBarButtonRole,
+        icon: win32_icons.Kind,
+        disabled: bool,
+        pressed: bool,
+        focused: bool,
+        hovered: bool,
+        active: bool,
+    ) void {
+        const theme = &self.app.resolved_theme;
+        const colors = self.searchBarButtonColors(role, active, hovered, pressed, disabled);
+        const show_label = searchBarButtonShowsLabel(role, draw.rcItem.right - draw.rcItem.left);
+        const bg_rect = rectInset(draw.rcItem, self.scaled(2), self.scaled(2));
+        const parent_bg = searchBarButtonParentBg(theme, role);
+
+        fillSolidRect(draw.hDC, draw.rcItem, parent_bg);
+        drawRoundedRect(draw.hDC, bg_rect, colors.bg, colors.border, self.scaled(4));
+
+        if (focused and !disabled) {
+            drawRoundedRect(
+                draw.hDC,
+                rectInset(bg_rect, self.scaled(2), self.scaled(2)),
+                colors.bg,
+                overlayAccentColor(.search, theme.is_dark),
+                self.scaled(3),
+            );
+        }
+
+        const content_rect = rectInset(bg_rect, self.scaled(7), self.scaled(5));
+        _ = SetBkMode(draw.hDC, TRANSPARENT);
+        _ = SetTextColor(draw.hDC, colors.fg);
+
+        if (show_label) {
+            var text_buf: [160]u16 = undefined;
+            const text_len = GetWindowTextW(draw.hwndItem, &text_buf, text_buf.len);
+            const icon_box_w = @min(content_rect.bottom - content_rect.top, self.scaled(18));
+            const icon_rect = RECT{
+                .left = content_rect.left,
+                .top = content_rect.top,
+                .right = content_rect.left + icon_box_w,
+                .bottom = content_rect.bottom,
+            };
+            win32_icons.drawIcon(icon, draw.hDC.?, .{
+                .left = icon_rect.left,
+                .top = icon_rect.top,
+                .right = icon_rect.right,
+                .bottom = icon_rect.bottom,
+            }, colors.fg, isHighContrastActive());
+
+            var label_rect = content_rect;
+            label_rect.left = icon_rect.right + self.scaled(5);
+            _ = DrawTextW(
+                draw.hDC,
+                @ptrCast(&text_buf),
+                text_len,
+                &label_rect,
+                DT_LEFT | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
+            );
+            return;
+        }
+
+        win32_icons.drawIcon(icon, draw.hDC.?, .{
+            .left = content_rect.left,
+            .top = content_rect.top,
+            .right = content_rect.right,
+            .bottom = content_rect.bottom,
+        }, colors.fg, isHighContrastActive());
+
+        if (active and (role == .regex or role == .case_sensitive or role == .whole_word)) {
+            fillSolidRect(draw.hDC, .{
+                .left = bg_rect.left + self.scaled(6),
+                .top = bg_rect.bottom - self.scaled(3),
+                .right = bg_rect.right - self.scaled(6),
+                .bottom = bg_rect.bottom - self.scaled(1),
+            }, overlayAccentColor(.search, theme.is_dark));
+        }
+    }
+
+    fn isOverlayStyledButton(self: *const Host, child: HWND) bool {
+        return self.isOverlayButton(child) or self.isSearchBarButton(child);
+    }
+
     fn isActiveChromeButton(self: *Host, child: HWND) bool {
-        return self.isActiveTabButton(child);
+        if (self.isActiveTabButton(child)) return true;
+        const surface = self.searchControlSurface(child) orelse return false;
+        if (surface.search_bar_regex_hwnd != null and child == surface.search_bar_regex_hwnd.?) return surface.search_bar.toggles.regex;
+        if (surface.search_bar_case_hwnd != null and child == surface.search_bar_case_hwnd.?) return surface.search_bar.toggles.case_sensitive;
+        if (surface.search_bar_word_hwnd != null and child == surface.search_bar_word_hwnd.?) return surface.search_bar.toggles.whole_word;
+        return false;
     }
 
     fn drawButton(self: *Host, draw: *const DRAWITEMSTRUCT) void {
@@ -6953,14 +7821,29 @@ const Host = struct {
         const pressed = (draw.itemState & ODS_SELECTED) != 0;
         const focused = (draw.itemState & ODS_FOCUS) != 0 or GetFocus() == draw.hwndItem;
         const active = self.isActiveChromeButton(draw.hwndItem);
-        const overlay = self.isOverlayButton(draw.hwndItem);
+        const overlay = self.isOverlayStyledButton(draw.hwndItem);
         const hovered = self.isHoveredButton(draw.hwndItem);
         const accept = draw.hwndItem == self.overlay_accept_hwnd;
         const profile_kind = self.buttonProfileKind(draw.hwndItem);
         const pinned_slot_ordinal = self.buttonPinnedSlotOrdinal(draw.hwndItem);
         const launcher_target = self.buttonLauncherTarget(draw.hwndItem);
         const tab_button = self.isTabButton(draw.hwndItem);
+        const search_role = self.searchBarButtonRole(draw.hwndItem);
+        const icon = self.searchBarButtonIcon(draw.hwndItem);
         const theme = &self.app.resolved_theme;
+        if (search_role) |role| {
+            self.drawSearchBarButton(
+                draw,
+                role,
+                icon.?,
+                disabled,
+                pressed,
+                focused,
+                hovered,
+                active,
+            );
+            return;
+        }
         var colors = buttonColorsFromTheme(
             theme,
             active,
@@ -7092,13 +7975,28 @@ const Host = struct {
         }
         text_rect.right -= buttonLabelRightInset(pinned_slot_ordinal, launcher_target);
         text_rect.right -= close_zone_width; // leave room for per-tab close X
-        _ = DrawTextW(
-            draw.hDC,
-            @ptrCast(&text_buf),
-            text_len,
-            &text_rect,
-            DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
-        );
+        if (icon) |kind| {
+            win32_icons.drawIcon(
+                kind,
+                draw.hDC.?,
+                .{
+                    .left = text_rect.left,
+                    .top = text_rect.top,
+                    .right = text_rect.right,
+                    .bottom = text_rect.bottom,
+                },
+                fg,
+                isHighContrastActive(),
+            );
+        } else {
+            _ = DrawTextW(
+                draw.hDC,
+                @ptrCast(&text_buf),
+                text_len,
+                &text_rect,
+                DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
+            );
+        }
 
         // Per-tab close X glyph. Active tabs keep the X fully opaque
         // (it's a permanent affordance the user can always click).
@@ -7240,8 +8138,12 @@ const Host = struct {
         // stable for this synchronous call's lifetime).
         _ = try self.setOverlayEditText(candidate);
         _ = SendMessageW(edit_hwnd, EM_SETSEL, 0, -1);
-        try appendOwnedString(alloc, &self.overlay_completion_seed, seed_owned);
-        try appendOwnedString(alloc, &self.overlay_completion_value, candidate);
+        if (!ownedStringEquals(self.overlay_completion_seed, seed_owned)) {
+            try appendOwnedString(alloc, &self.overlay_completion_seed, seed_owned);
+        }
+        if (!ownedStringEquals(self.overlay_completion_value, candidate)) {
+            try appendOwnedString(alloc, &self.overlay_completion_value, candidate);
+        }
         _ = try self.syncCommandPaletteBanner();
         return true;
     }
@@ -7517,7 +8419,24 @@ const Host = struct {
     }
 
     fn close(self: *Host) void {
-        if (self.hwnd) |hwnd| _ = DestroyWindow(hwnd);
+        const alloc = self.app.core_app.alloc;
+        const fallback_hwnd = self.hwnd;
+        var surfaces: std.ArrayListUnmanaged(*Surface) = .empty;
+        defer surfaces.deinit(alloc);
+
+        for (self.tabs.items) |*tab| {
+            var it = tab.tree.iterator();
+            while (it.next()) |entry| surfaces.append(alloc, entry.view) catch {
+                if (fallback_hwnd) |hwnd| _ = DestroyWindow(hwnd);
+                return;
+            };
+        }
+
+        if (surfaces.items.len == 0) {
+            if (fallback_hwnd) |hwnd| _ = DestroyWindow(hwnd);
+            return;
+        }
+        for (surfaces.items) |surface| surface.close(false);
     }
 
     fn statusText(self: *Host, alloc: Allocator) !?[]u8 {
@@ -7658,7 +8577,7 @@ const Host = struct {
 
     fn refreshChrome(self: *Host) !void {
         var invalidate = self.chrome_repaint_dirty;
-        try self.syncWindowTitle();
+        _ = try self.syncWindowTitle();
         invalidate = (try self.syncTabButtons()) or invalidate;
         try self.syncChromeButtons();
         if (self.overlay_mode != .none) {
@@ -7666,66 +8585,124 @@ const Host = struct {
             invalidate = (try self.syncOverlayHint()) or invalidate;
             _ = try self.syncOverlayButtons();
         }
-        if (invalidate) self.invalidateChrome();
+        if (invalidate) {
+            if (chromeTextNeedsFullInvalidation(self.statusBarHeight())) {
+                self.invalidateChromeText();
+            } else {
+                self.invalidateTopChromeText();
+            }
+        }
     }
 
     fn repaintChrome(self: *Host) void {
-        self.chrome_repaint_dirty = true;
-        const hwnd = self.hwnd orelse return;
+        var mask: ChromeRepaintMask = .{};
+        mask.markChrome();
+        self.queueChromeRepaint(mask);
+    }
+
+    fn repaintFullHost(self: *Host) void {
+        self.queueChromeRepaint(.{
+            .top = true,
+            .content = true,
+            .status = true,
+        });
+    }
+
+    fn invalidateChromeMask(self: *Host, hwnd: HWND, mask: ChromeRepaintMask) void {
+        if (mask.isEmpty()) return;
         var client_rect: RECT = undefined;
         if (GetClientRect(hwnd, &client_rect) == 0) return;
         const content_rect = self.contentRect() catch return;
 
-        const top_rect = RECT{
-            .left = client_rect.left,
-            .top = client_rect.top,
-            .right = client_rect.right,
-            .bottom = @max(client_rect.top, content_rect.top),
-        };
-        if (top_rect.bottom > top_rect.top) {
-            _ = InvalidateRect(hwnd, &top_rect, 0);
+        if (mask.top) {
+            const top_rect = RECT{
+                .left = client_rect.left,
+                .top = client_rect.top,
+                .right = client_rect.right,
+                .bottom = @max(client_rect.top, content_rect.top),
+            };
+            if (top_rect.bottom > top_rect.top) {
+                _ = InvalidateRect(hwnd, &top_rect, 0);
+            }
         }
 
-        const bottom_rect = RECT{
-            .left = client_rect.left,
-            .top = @min(client_rect.bottom, content_rect.bottom),
-            .right = client_rect.right,
-            .bottom = client_rect.bottom,
-        };
-        if (bottom_rect.bottom > bottom_rect.top) {
-            _ = InvalidateRect(hwnd, &bottom_rect, 0);
+        if (mask.content) {
+            if (content_rect.bottom > content_rect.top) {
+                _ = InvalidateRect(hwnd, &content_rect, 0);
+            }
+        } else if (mask.search_frames) {
+            if (self.activeTab()) |tab| {
+                var it = tab.tree.iterator();
+                while (it.next()) |entry| {
+                    if (!entry.view.search_bar_frame_visible) continue;
+                    _ = InvalidateRect(hwnd, &entry.view.search_bar_frame_rect, 0);
+                }
+            }
         }
+
+        if (mask.status) {
+            const bottom_rect = RECT{
+                .left = client_rect.left,
+                .top = @min(client_rect.bottom, content_rect.bottom),
+                .right = client_rect.right,
+                .bottom = client_rect.bottom,
+            };
+            if (bottom_rect.bottom > bottom_rect.top) {
+                _ = InvalidateRect(hwnd, &bottom_rect, 0);
+            }
+        }
+    }
+
+    fn queueChromeRepaint(self: *Host, mask: ChromeRepaintMask) void {
+        self.chrome_repaint_dirty = true;
+        const hwnd = self.hwnd orelse return;
+        const added = mergeChromeRepaintMask(&self.chrome_paint_mask, mask);
+        if (added.isEmpty()) return;
+        self.chrome_paint_pending = true;
+        self.invalidateChromeMask(hwnd, added);
+    }
+
+    fn repaintTopChrome(self: *Host) void {
+        self.queueChromeRepaint(.{ .top = true });
+    }
+
+    fn repaintContentChrome(self: *Host) void {
+        self.queueChromeRepaint(.{ .content = true });
     }
 
     fn repaintStatusBar(self: *Host) void {
         const status_h = self.statusBarHeight();
         if (status_h <= 0) return;
-
-        const hwnd = self.hwnd orelse return;
-        var client_rect: RECT = undefined;
-        if (GetClientRect(hwnd, &client_rect) == 0) return;
-
-        const tab_h = self.tabBarHeight();
-        const inspector_offset: i32 = if (self.inspectorPanelVisible()) self.scaled(host_inspector_panel_height) else 0;
-        const status_top = @max(tab_h + inspector_offset, client_rect.bottom - @max(1, status_h));
-        const status_rect = RECT{
-            .left = client_rect.left,
-            .top = status_top,
-            .right = client_rect.right,
-            .bottom = client_rect.bottom,
-        };
-        if (status_rect.bottom > status_rect.top) {
-            _ = InvalidateRect(hwnd, &status_rect, 0);
-        }
+        self.queueChromeRepaint(.{ .status = true });
     }
 
     fn invalidateStatusBarText(self: *Host) void {
-        self.chrome_text_dirty = true;
+        if (self.statusBarHeight() <= 0) return;
+        self.chrome_text_dirty.status = true;
         self.repaintStatusBar();
     }
 
+    fn invalidateBannerText(self: *Host) void {
+        self.chrome_text_dirty.banner = true;
+        self.repaintTopChrome();
+    }
+
+    fn invalidateOverlayText(self: *Host) void {
+        self.chrome_text_dirty.overlay = true;
+        self.repaintTopChrome();
+    }
+
+    fn invalidateChromeText(self: *Host) void {
+        self.chrome_text_dirty.markAll();
+        self.invalidateChrome();
+    }
+
+    fn invalidateTopChromeText(self: *Host) void {
+        self.chrome_text_dirty.markTop();
+        self.repaintTopChrome();
+    }
+
     fn invalidateChrome(self: *Host) void {
-        self.chrome_text_dirty = true;
         self.repaintChrome();
     }
 
@@ -7757,40 +8734,116 @@ const Host = struct {
     /// queue `WM_PAINT` on child HWNDs. Owner-draw tab controls always repaint
     /// immediately; WGL child surfaces repaint immediately outside live resize
     /// and defer to an explicit post-resize flush while the user is dragging.
-    fn invalidateHostedChildPaint(self: *Host) void {
-        const defer_surface_repaints = self.shouldDeferSurfaceRepaints();
-        if (self.activeTab()) |tab| {
-            var it = tab.tree.iterator();
-            while (it.next()) |entry| {
-                if (!entry.view.window_visible) continue;
-                if (defer_surface_repaints) {
-                    entry.view.markLiveResizeRepaintDeferred();
-                    continue;
-                }
-                entry.view.repaintHostedChild() catch |err| {
-                    log.err("win32 hosted child repaint request failed err={}", .{err});
-                };
-            }
-        }
-        if (self.new_tab_hwnd) |h| {
-            _ = InvalidateRect(h, null, 0);
-            _ = UpdateWindow(h);
-        }
-        if (self.overflow_hwnd) |h| {
-            _ = InvalidateRect(h, null, 0);
-            _ = UpdateWindow(h);
+    fn invalidateChromeChildPaint(self: *Host) void {
+        const controls = [_]?HWND{
+            self.new_tab_hwnd,
+            self.overflow_hwnd,
+            self.overlay_label_hwnd,
+            self.overlay_edit_hwnd,
+            self.overlay_hint_hwnd,
+            self.overlay_accept_hwnd,
+            self.overlay_cancel_hwnd,
+            self.palette_list_hwnd,
+        };
+        for (controls) |maybe_hwnd| {
+            if (maybe_hwnd) |h| _ = InvalidateRect(h, null, 0);
         }
         for (self.tabs.items) |*t| {
             if (t.button_hwnd) |h| {
                 _ = InvalidateRect(h, null, 0);
-                _ = UpdateWindow(h);
+            }
+        }
+    }
+
+    fn updateChromeChildPaintNow(self: *Host) void {
+        const controls = [_]?HWND{
+            self.new_tab_hwnd,
+            self.overflow_hwnd,
+            self.overlay_label_hwnd,
+            self.overlay_edit_hwnd,
+            self.overlay_hint_hwnd,
+            self.overlay_accept_hwnd,
+            self.overlay_cancel_hwnd,
+            self.palette_list_hwnd,
+        };
+        for (controls) |maybe_hwnd| {
+            if (maybe_hwnd) |h| {
+                if (IsWindowVisible(h) != 0) _ = UpdateWindow(h);
+            }
+        }
+        for (self.tabs.items) |*t| {
+            if (t.button_hwnd) |h| {
+                if (IsWindowVisible(h) != 0) _ = UpdateWindow(h);
+            }
+        }
+    }
+
+    fn redrawHostWindowNow(self: *Host) void {
+        const hwnd = self.hwnd orelse return;
+        const flags = hostCompositionRedrawFlags();
+        if (RedrawWindow(hwnd, null, null, flags) == 0) {
+            _ = UpdateWindow(hwnd);
+        }
+    }
+
+    fn forceHostCompositionPaint(self: *Host) void {
+        self.repaintFullHost();
+        self.invalidateChromeChildPaint();
+        self.redrawHostWindowNow();
+        self.updateChromeChildPaintNow();
+    }
+
+    fn forceOverlayTransitionPaint(self: *Host) void {
+        self.forceHostCompositionPaint();
+    }
+
+    fn forceVisibleSurfaceRepaintsNow(self: *Host) void {
+        if (self.activeTab()) |tab| {
+            var it = tab.tree.iterator();
+            while (it.next()) |entry| {
+                if (!entry.view.window_visible) continue;
+                entry.view.syncCoreSizeFromClientRect();
+                entry.view.invalidateSearchBarChildPaint();
+                switch (resizeSettleSurfaceAction(entry.view.shouldDrawRendererPaintContent())) {
+                    .present_renderer => entry.view.queuePaintRequest(true) catch |err| {
+                        entry.view.cancelRendererRepaintRequest();
+                        log.err("win32 resize-settle renderer paint request failed err={}", .{err});
+                    },
+                    .wake_renderer => entry.view.requestRendererFrameNow(),
+                }
+            }
+        }
+    }
+
+    fn invalidateVisibleSurfaceChildPaint(
+        self: *Host,
+        repaint_hosted_child: bool,
+        repaint_search_controls: bool,
+    ) void {
+        const defer_surface_repaints = repaint_hosted_child and self.shouldDeferSurfaceRepaints();
+        if (self.activeTab()) |tab| {
+            var it = tab.tree.iterator();
+            while (it.next()) |entry| {
+                if (!entry.view.window_visible) continue;
+
+                if (repaint_hosted_child) {
+                    if (defer_surface_repaints) {
+                        entry.view.markLiveResizeRepaintDeferred();
+                    } else {
+                        entry.view.repaintHostedChild() catch |err| {
+                            log.err("win32 hosted child repaint request failed err={}", .{err});
+                        };
+                    }
+                }
+
+                if (repaint_search_controls) entry.view.invalidateSearchBarChildPaint();
             }
         }
     }
 
     fn freeCachedChromeStrings(self: *Host) void {
         const alloc = self.app.core_app.alloc;
-        self.chrome_text_dirty = true;
+        self.chrome_text_dirty.markAll();
         if (self.cached_status_w) |w| alloc.free(w);
         if (self.cached_detail_w) |w| alloc.free(w);
         if (self.cached_banner_w) |w| alloc.free(w);
@@ -7815,9 +8868,9 @@ const Host = struct {
         self.cached_launcher_selected_chip_w = null;
     }
 
-    fn syncWindowTitle(self: *Host) !void {
-        const hwnd = self.hwnd orelse return;
-        const surface = self.activeSurface() orelse return;
+    fn syncWindowTitle(self: *Host) !bool {
+        const hwnd = self.hwnd orelse return false;
+        const surface = self.activeSurface() orelse return false;
         const alloc = self.app.core_app.alloc;
         const host_base_title = try buildHostAwareBaseTitle(
             alloc,
@@ -7825,11 +8878,12 @@ const Host = struct {
             self.app.hostTabStatus(surface),
         );
         defer alloc.free(host_base_title);
-        if (ownedStringEquals(self.cached_window_title, host_base_title)) return;
+        if (!windowTitleSyncChanged(self.cached_window_title, host_base_title)) return false;
         try appendOwnedString(alloc, &self.cached_window_title, host_base_title);
         const title_w = try std.unicode.utf8ToUtf16LeAllocZ(alloc, host_base_title);
         defer alloc.free(title_w);
         _ = SetWindowTextW(hwnd, title_w.ptr);
+        return true;
     }
 
     fn syncTabButtons(self: *Host) !bool {
@@ -7998,36 +9052,63 @@ const Host = struct {
             const accept_hwnd = self.overlay_accept_hwnd orelse return false;
             const cancel_hwnd = self.overlay_cancel_hwnd orelse return false;
             const overlay_y = self.tabBarHeight();
-            const edit_width = @max(self.scaled(120), width - self.scaled(host_overlay_label_width) - self.scaled(host_overlay_accept_width) - self.scaled(host_overlay_cancel_width) - (self.scaled(host_overlay_padding) * 4));
+            const padding = self.scaled(host_overlay_padding);
+            const label_w = self.scaled(host_overlay_label_width);
+            const accept_visible = overlayAcceptButtonVisible(self.overlay_mode);
+            const accept_w = if (accept_visible) self.scaled(host_overlay_accept_width) else 0;
+            const cancel_w = self.scaled(host_overlay_cancel_width);
+            const edit_frame = overlayEditFrameRect(
+                width,
+                overlay_y,
+                padding,
+                label_w,
+                cancel_w,
+                if (accept_visible) accept_w + padding else 0,
+                self.scaled(host_overlay_row_height),
+            );
+            const edit_rect = overlayEditChildRectFromFrame(edit_frame, self.scaled(8), self.scaled(6));
             changed.* = applyChildRect(
                 edit_hwnd,
                 &self.overlay_edit_placement,
-                childRect(
-                    self.scaled(host_overlay_padding) + self.scaled(host_overlay_label_width) + self.scaled(8),
-                    overlay_y + self.scaled(8),
-                    edit_width - self.scaled(16),
-                    self.scaled(host_overlay_row_height) - self.scaled(4),
-                ),
+                edit_rect,
             ) or changed.*;
-            changed.* = applyChildRect(
-                accept_hwnd,
-                &self.overlay_accept_placement,
-                childRect(
-                    width - self.scaled(host_overlay_cancel_width) - self.scaled(host_overlay_accept_width) - (self.scaled(host_overlay_padding) * 2),
-                    overlay_y + self.scaled(4),
-                    self.scaled(host_overlay_accept_width),
-                    self.scaled(host_overlay_row_height),
-                ),
-            ) or changed.*;
+            if (accept_visible) {
+                changed.* = applyChildRect(
+                    accept_hwnd,
+                    &self.overlay_accept_placement,
+                    childRect(
+                        width - cancel_w - accept_w - (padding * 2),
+                        overlay_y + self.scaled(4),
+                        accept_w,
+                        self.scaled(host_overlay_row_height),
+                    ),
+                ) or changed.*;
+                changed.* = applyChildVisibility(
+                    accept_hwnd,
+                    &self.overlay_accept_placement,
+                    true,
+                ) or changed.*;
+            } else {
+                changed.* = applyChildVisibility(
+                    accept_hwnd,
+                    &self.overlay_accept_placement,
+                    false,
+                ) or changed.*;
+            }
             changed.* = applyChildRect(
                 cancel_hwnd,
                 &self.overlay_cancel_placement,
                 childRect(
-                    width - self.scaled(host_overlay_cancel_width) - self.scaled(host_overlay_padding),
+                    width - cancel_w - padding,
                     overlay_y + self.scaled(4),
-                    self.scaled(host_overlay_cancel_width),
+                    cancel_w,
                     self.scaled(host_overlay_row_height),
                 ),
+            ) or changed.*;
+            changed.* = applyChildVisibility(
+                cancel_hwnd,
+                &self.overlay_cancel_placement,
+                true,
             ) or changed.*;
 
             if (self.overlay_mode == .command_palette) {
@@ -8035,10 +9116,10 @@ const Host = struct {
                     // Anchor the list directly under the EDIT, left-
                     // aligned with it and right-aligned with the buttons
                     // so it reads as part of the same visual card.
-                    const list_x = self.scaled(host_overlay_padding) + self.scaled(host_overlay_label_width) + self.scaled(8);
+                    const list_x = padding + label_w + self.scaled(8);
                     const list_width = @max(
                         self.scaled(120),
-                        width - list_x - self.scaled(host_overlay_padding),
+                        width - list_x - padding,
                     );
                     const list_y = overlay_y + self.scaled(host_overlay_row_height) + self.scaled(12);
                     const visible_rows: i32 = @intCast(@min(
@@ -8084,14 +9165,15 @@ const Host = struct {
         if (GetClientRect(hwnd, &rect) == 0) {
             return windows.unexpectedError(windows.kernel32.GetLastError());
         }
-        var layout_changed = false;
-        if (!self.layoutChromeForRect(rect, &layout_changed)) return;
+        var chrome_layout_changed = false;
+        if (!self.layoutChromeForRect(rect, &chrome_layout_changed)) return;
 
         const content_rect = try self.contentRect();
         const content_y = content_rect.top;
         const content_width = @max(1, content_rect.right - content_rect.left);
         const content_height = @max(1, content_rect.bottom - content_rect.top);
         const active_tab = self.activeTab() orelse return;
+        var content_layout_changed = false;
 
         // Hide non-active child GL surfaces before showing the active tab.
         // Briefly overlapping multiple WGL child windows under one host can
@@ -8102,17 +9184,44 @@ const Host = struct {
             var it = active_tab.tree.iterator();
             while (it.next()) |entry| {
                 const visible = entry.handle == zoomed;
-                layout_changed = layout_changed or entry.view.window_visible != visible;
+                const visibility_changed = entry.view.window_visible != visible;
+                content_layout_changed = content_layout_changed or visibility_changed;
                 entry.view.setVisible(visible);
                 if (visible) {
+                    const frame_h: i32 = if (entry.view.search_bar.visible)
+                        @min(self.scaled(host_search_bar_height), @max(0, content_height - 1))
+                    else
+                        0;
+                    if (frame_h > 0) {
+                        content_layout_changed = (try entry.view.layoutSearchBarControls(
+                            childRect(content_rect.left, content_y, content_width, frame_h),
+                            true,
+                        )) or content_layout_changed;
+                    } else {
+                        content_layout_changed = entry.view.hideSearchBarControls() or content_layout_changed;
+                    }
+                    const pane_rect = childRect(
+                        content_rect.left,
+                        content_y + frame_h,
+                        content_width,
+                        @max(1, content_height - frame_h),
+                    );
+                    var pane_rect_changed = false;
                     if (entry.view.hwnd) |surface_hwnd| {
-                        layout_changed = applyChildRect(
+                        pane_rect_changed = applyChildRect(
                             surface_hwnd,
                             &entry.view.placement,
-                            childRect(content_rect.left, content_y, content_width, content_height),
-                        ) or layout_changed;
+                            pane_rect,
+                        );
+                        content_layout_changed = pane_rect_changed or content_layout_changed;
                     }
-                    entry.view.syncCoreSizeFromClientRect();
+                    const runtime_sync = surfaceLayoutRuntimeSync(visibility_changed, pane_rect_changed);
+                    if (runtime_sync.scrollbar_refresh) {
+                        try entry.view.refreshScrollbarWindow();
+                    }
+                    if (runtime_sync.core_size_sync) {
+                        entry.view.syncCoreSizeFromClientRect();
+                    }
                     // Update content_scale if DPI changed since surface was last visible
                     if (self.pending_dpi_update and entry.view.core_initialized) {
                         const scale_val: f32 = @as(f32, @floatFromInt(self.current_dpi)) / 96.0;
@@ -8122,6 +9231,11 @@ const Host = struct {
                             entry.view.core_surface.contentScaleCallback(new_scale) catch {};
                         }
                     }
+                } else {
+                    content_layout_changed = entry.view.hideSearchBarControls() or content_layout_changed;
+                    if (visibility_changed) {
+                        try entry.view.refreshScrollbarWindow();
+                    }
                 }
             }
         } else {
@@ -8129,7 +9243,8 @@ const Host = struct {
             defer spatial.deinit(self.app.core_app.alloc);
             var it = active_tab.tree.iterator();
             while (it.next()) |entry| {
-                layout_changed = layout_changed or !entry.view.window_visible;
+                const visibility_changed = !entry.view.window_visible;
+                content_layout_changed = content_layout_changed or visibility_changed;
                 entry.view.setVisible(true);
                 if (entry.view.hwnd) |surface_hwnd| {
                     const slot = spatial.slots[entry.handle.idx()];
@@ -8157,13 +9272,33 @@ const Host = struct {
                         w = @max(1, w);
                         h = @max(1, h);
                     }
-                    layout_changed = applyChildRect(
+                    const frame_h: i32 = if (entry.view.search_bar.visible)
+                        @min(self.scaled(host_search_bar_height), @max(0, h - 1))
+                    else
+                        0;
+                    if (frame_h > 0) {
+                        content_layout_changed = (try entry.view.layoutSearchBarControls(
+                            childRect(x, y, w, frame_h),
+                            true,
+                        )) or content_layout_changed;
+                    } else {
+                        content_layout_changed = entry.view.hideSearchBarControls() or content_layout_changed;
+                    }
+                    const pane_rect = childRect(x, y + frame_h, w, @max(1, h - frame_h));
+                    const pane_rect_changed = applyChildRect(
                         surface_hwnd,
                         &entry.view.placement,
-                        childRect(x, y, w, h),
-                    ) or layout_changed;
+                        pane_rect,
+                    );
+                    content_layout_changed = pane_rect_changed or content_layout_changed;
+                    const runtime_sync = surfaceLayoutRuntimeSync(visibility_changed, pane_rect_changed);
+                    if (runtime_sync.scrollbar_refresh) {
+                        try entry.view.refreshScrollbarWindow();
+                    }
+                    if (runtime_sync.core_size_sync) {
+                        entry.view.syncCoreSizeFromClientRect();
+                    }
                 }
-                entry.view.syncCoreSizeFromClientRect();
                 // Update content_scale if DPI changed since surface was last visible
                 if (self.pending_dpi_update and entry.view.core_initialized) {
                     const scale_val: f32 = @as(f32, @floatFromInt(self.current_dpi)) / 96.0;
@@ -8177,10 +9312,17 @@ const Host = struct {
         }
         self.pending_dpi_update = false;
 
-        if (layout_changed) {
+        if (chrome_layout_changed or content_layout_changed) {
             // Batch-invalidate after actual positioning/visibility changes.
-            _ = InvalidateRect(hwnd, null, 0);
-            self.invalidateHostedChildPaint();
+            self.repaintFullHost();
+            const child_paint = layoutChildPaintPlan(chrome_layout_changed, content_layout_changed);
+            if (child_paint.chrome) self.invalidateChromeChildPaint();
+            if (child_paint.content or child_paint.native_content_controls) {
+                self.invalidateVisibleSurfaceChildPaint(
+                    child_paint.content,
+                    child_paint.native_content_controls,
+                );
+            }
         }
     }
 
@@ -8325,10 +9467,32 @@ const Host = struct {
         const overlay_offset: i32 = if (self.overlay_mode != .none) self.scaled(host_overlay_height) else 0;
         const inspector_panel_visible = self.inspectorPanelVisible();
         const inspector_offset: i32 = if (inspector_panel_visible) self.scaled(host_inspector_panel_height) else 0;
+        const status_h = self.statusBarHeight();
+        const content_rect = RECT{
+            .left = 0,
+            .top = tab_h + overlay_offset + inspector_offset,
+            .right = client_rect.right,
+            .bottom = @max(tab_h + 1, client_rect.bottom - status_h),
+        };
+        const top_rect = RECT{
+            .left = client_rect.left,
+            .top = client_rect.top,
+            .right = client_rect.right,
+            .bottom = @max(client_rect.top, content_rect.top),
+        };
+        const status_rect = RECT{
+            .left = client_rect.left,
+            .top = @min(client_rect.bottom, content_rect.bottom),
+            .right = client_rect.right,
+            .bottom = client_rect.bottom,
+        };
+        const paint_top = paintRectVisible(hdc, ps.rcPaint, top_rect);
+        const paint_content = paintRectVisible(hdc, ps.rcPaint, content_rect);
+        const paint_status = paintRectVisible(hdc, ps.rcPaint, status_rect);
         const banner_y: i32 = tab_h + overlay_offset + inspector_offset + self.scaled(2);
 
         // Tab bar (only when visible)
-        if (tab_h > 0) {
+        if (paint_top and tab_h > 0) {
             const tab_rect = RECT{
                 .left = 0,
                 .top = 0,
@@ -8426,7 +9590,7 @@ const Host = struct {
             );
         } // end tab bar painting
 
-        if (self.overlay_mode != .none) {
+        if (paint_top and self.overlay_mode != .none) {
             const overlay_rect = RECT{
                 .left = 0,
                 .top = tab_h,
@@ -8474,7 +9638,7 @@ const Host = struct {
 
             const surface = self.activeSurface();
             const overlay_paint_dirty = overlayPaintCacheDirty(
-                self.chrome_text_dirty,
+                self.chrome_text_dirty.overlay,
                 self.overlay_mode,
                 self.cached_overlay_paint_label_w,
                 self.cached_overlay_paint_feedback_w,
@@ -8557,6 +9721,7 @@ const Host = struct {
                     if (self.cached_overlay_paint_badge_w) |old| alloc.free(old);
                     self.cached_overlay_paint_badge_w = null;
                 }
+                self.chrome_text_dirty.overlay = false;
             }
             _ = SetBkMode(hdc, TRANSPARENT);
             var overlay_label_x: i32 = self.scaled(host_overlay_padding) + self.scaled(10);
@@ -8593,27 +9758,25 @@ const Host = struct {
                 _ = TextOutW(hdc, overlay_label_x, overlay_rect.top + self.scaled(7), overlay_label_w.ptr, @intCast(overlay_label_w.len - 1));
             }
 
-            const edit_frame_left = self.scaled(host_overlay_padding) + self.scaled(host_overlay_label_width);
-            const edit_frame_right = client_rect.right - self.scaled(host_overlay_cancel_width) - self.scaled(host_overlay_accept_width) - (self.scaled(host_overlay_padding) * 2);
-            const edit_frame = RECT{
-                .left = edit_frame_left,
-                .top = overlay_rect.top + self.scaled(4),
-                .right = @max(edit_frame_left + self.scaled(24), edit_frame_right - self.scaled(6)),
-                .bottom = overlay_rect.top + self.scaled(4) + self.scaled(host_overlay_row_height),
-            };
+            const overlay_padding = self.scaled(host_overlay_padding);
+            const overlay_accept_w = if (overlayAcceptButtonVisible(self.overlay_mode))
+                self.scaled(host_overlay_accept_width) + overlay_padding
+            else
+                0;
+            const edit_frame = overlayEditFrameRect(
+                client_rect.right,
+                tab_h,
+                overlay_padding,
+                self.scaled(host_overlay_label_width),
+                self.scaled(host_overlay_cancel_width),
+                overlay_accept_w,
+                self.scaled(host_overlay_row_height),
+            );
             const overlay_edit_focused = if (self.overlay_edit_hwnd) |edit_hwnd|
                 GetFocus() == edit_hwnd
             else
                 false;
             drawRoundedRect(hdc, edit_frame, theme.edit_frame_bg, overlayEditBorderColor(self.overlay_mode, overlay_edit_focused, theme.is_dark), self.scaled(4));
-            if (overlay_edit_focused) {
-                fillSolidRect(hdc, .{
-                    .left = edit_frame.left + self.scaled(6),
-                    .top = edit_frame.top + self.scaled(4),
-                    .right = edit_frame.right - self.scaled(6),
-                    .bottom = edit_frame.top + self.scaled(6),
-                }, overlayAccentColor(self.overlay_mode, theme.is_dark));
-            }
 
             _ = SetTextColor(hdc, if (self.overlay_mode == .profile and self.banner_text == null)
                 if (self.selectedProfile()) |profile|
@@ -8630,7 +9793,134 @@ const Host = struct {
             }
         }
 
-        if (inspector_panel_visible) {
+        if (paint_content) {
+            // Content-lane paints can arrive after search-frame or pane
+            // geometry shrinks/moves. Clear the exposed parent-painted
+            // lane first so stale owner-drawn frame/group chrome from the
+            // previous layout does not linger until a later full repaint.
+            //
+            // This still respects the host clip region from BeginPaint, so
+            // child GL surfaces are not brute-force repainted here.
+            fillSolidRect(hdc, content_rect, theme.chrome_bg);
+
+            if (self.activeTab()) |tab| {
+                var it = tab.tree.iterator();
+                while (it.next()) |entry| {
+                    if (!entry.view.search_bar_frame_visible) continue;
+                    const frame_rect = entry.view.search_bar_frame_rect;
+                    if (frame_rect.right <= frame_rect.left or frame_rect.bottom <= frame_rect.top) continue;
+
+                    drawRoundedRect(
+                        hdc,
+                        frame_rect,
+                        if (theme.is_dark)
+                            adjustColor(theme.overlay_bg, 3, 3, 5)
+                        else
+                            adjustColor(theme.overlay_bg, -2, -2, -1),
+                        if (theme.is_dark)
+                            adjustColor(theme.overlay_border, 10, 10, 12)
+                        else
+                            adjustColor(theme.overlay_border, -14, -14, -14),
+                        self.scaled(8),
+                    );
+                    fillSolidRect(hdc, .{
+                        .left = frame_rect.left + self.scaled(8),
+                        .top = frame_rect.bottom,
+                        .right = frame_rect.right - self.scaled(8),
+                        .bottom = frame_rect.bottom + 1,
+                    }, if (theme.is_dark)
+                        adjustColor(theme.overlay_border, -10, -10, -8)
+                    else
+                        adjustColor(theme.overlay_border, 10, 10, 10));
+
+                    if (searchBarGroupRect(&[_]ChildPlacement{
+                        entry.view.search_bar_results_placement,
+                        entry.view.search_bar_prev_placement,
+                        entry.view.search_bar_next_placement,
+                        entry.view.search_bar_regex_placement,
+                        entry.view.search_bar_case_placement,
+                        entry.view.search_bar_word_placement,
+                    }, self.scaled(4), self.scaled(2))) |toolbar_rect| {
+                        const toolbar = searchBarToolbarVisual(theme);
+                        drawRoundedRect(
+                            hdc,
+                            toolbar_rect,
+                            toolbar.bg,
+                            toolbar.border,
+                            self.scaled(7),
+                        );
+
+                        const sep_top = toolbar_rect.top + self.scaled(6);
+                        const sep_bottom = toolbar_rect.bottom - self.scaled(6);
+                        if (sep_bottom > sep_top) {
+                            if (searchBarSeparatorX(
+                                entry.view.search_bar_results_placement,
+                                entry.view.search_bar_prev_placement,
+                            )) |sep_x| {
+                                fillSolidRect(hdc, .{
+                                    .left = sep_x,
+                                    .top = sep_top,
+                                    .right = sep_x + 1,
+                                    .bottom = sep_bottom,
+                                }, toolbar.separator);
+                            }
+                            if (searchBarSeparatorX(
+                                entry.view.search_bar_prev_placement,
+                                entry.view.search_bar_next_placement,
+                            )) |sep_x| {
+                                fillSolidRect(hdc, .{
+                                    .left = sep_x,
+                                    .top = sep_top,
+                                    .right = sep_x + 1,
+                                    .bottom = sep_bottom,
+                                }, toolbar.separator);
+                            }
+                            if (searchBarSeparatorX(
+                                entry.view.search_bar_next_placement,
+                                entry.view.search_bar_regex_placement,
+                            )) |sep_x| {
+                                fillSolidRect(hdc, .{
+                                    .left = sep_x,
+                                    .top = sep_top,
+                                    .right = sep_x + 1,
+                                    .bottom = sep_bottom,
+                                }, toolbar.separator);
+                            }
+                        }
+                    }
+                    if (entry.view.search_bar_edit_placement.rect_known) {
+                        const edit_rect = entry.view.search_bar_edit_placement.rect;
+                        const edit_focused = if (entry.view.search_bar_edit_hwnd) |edit_hwnd|
+                            GetFocus() == edit_hwnd
+                        else
+                            false;
+                        const edit_frame_rect = RECT{
+                            .left = edit_rect.left - self.scaled(1),
+                            .top = edit_rect.top - self.scaled(1),
+                            .right = edit_rect.right + self.scaled(1),
+                            .bottom = edit_rect.bottom + self.scaled(1),
+                        };
+                        drawRoundedRect(
+                            hdc,
+                            edit_frame_rect,
+                            theme.edit_frame_bg,
+                            theme.edit_frame_bg,
+                            self.scaled(6),
+                        );
+                        if (edit_focused) {
+                            fillSolidRect(hdc, .{
+                                .left = edit_frame_rect.left + self.scaled(8),
+                                .top = edit_frame_rect.bottom - self.scaled(2),
+                                .right = edit_frame_rect.right - self.scaled(8),
+                                .bottom = edit_frame_rect.bottom,
+                            }, overlayAccentColor(.search, theme.is_dark));
+                        }
+                    }
+                }
+            }
+        }
+
+        if (paint_top and inspector_panel_visible) {
             const panel_rect = RECT{
                 .left = 0,
                 .top = tab_h + overlay_offset,
@@ -8650,7 +9940,7 @@ const Host = struct {
             );
 
             if (self.activeSurface()) |surface| {
-                if (self.chrome_text_dirty) {
+                if (self.chrome_text_dirty.inspector) {
                     const host_status = self.app.hostTabStatus(surface);
                     const pane_count = if (self.activeTab()) |tab| tab.leafCount() else 1;
                     const zoomed = if (self.activeTab()) |tab| tab.tree.zoomed != null else false;
@@ -8668,6 +9958,7 @@ const Host = struct {
                         defer alloc.free(utf8);
                         break :blk std.unicode.utf8ToUtf16LeAllocZ(alloc, utf8) catch null;
                     };
+                    self.chrome_text_dirty.inspector = false;
                 }
 
                 _ = SetBkMode(hdc, TRANSPARENT);
@@ -8683,55 +9974,56 @@ const Host = struct {
         }
 
         // Paint pane divider gaps between split panes
-        if (self.activeTab()) |active_tab| {
-            if (active_tab.leafCount() > 1) {
-                const c_rect = self.contentRect() catch RECT{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
-                const c_width = @max(1, c_rect.right - c_rect.left);
-                const c_height = @max(1, c_rect.bottom - c_rect.top);
-                // Fill entire content area with divider color first (gap pixels)
-                fillSolidRect(hdc, c_rect, theme.pane_divider);
-                // Draw accent border around focused pane
-                const focused_surface = self.activeSurface();
-                if (focused_surface) |surface| {
-                    if (surface.hwnd) |surface_hwnd| {
-                        var sr: RECT = undefined;
-                        if (GetWindowRect(surface_hwnd, &sr) != 0) {
-                            var tl = POINT{ .x = sr.left, .y = sr.top };
-                            var br = POINT{ .x = sr.right, .y = sr.bottom };
-                            _ = ScreenToClient(hwnd, &tl);
-                            _ = ScreenToClient(hwnd, &br);
-                            // Only draw focus border if pane is within content area
-                            if (tl.x >= c_rect.left and br.x <= c_rect.right and
-                                tl.y >= c_rect.top and br.y <= c_rect.bottom)
-                            {
-                                const bw: i32 = 1; // border width for focus accent
-                                // Top
-                                if (tl.y > c_rect.top) fillSolidRect(hdc, .{ .left = tl.x - bw, .top = tl.y - bw, .right = br.x + bw, .bottom = tl.y }, theme.pane_divider_focused);
-                                // Bottom
-                                if (br.y < c_rect.bottom) fillSolidRect(hdc, .{ .left = tl.x - bw, .top = br.y, .right = br.x + bw, .bottom = br.y + bw }, theme.pane_divider_focused);
-                                // Left
-                                if (tl.x > c_rect.left) fillSolidRect(hdc, .{ .left = tl.x - bw, .top = tl.y, .right = tl.x, .bottom = br.y }, theme.pane_divider_focused);
-                                // Right
-                                if (br.x < c_rect.right) fillSolidRect(hdc, .{ .left = br.x, .top = tl.y, .right = br.x + bw, .bottom = br.y }, theme.pane_divider_focused);
+        if (paint_content) {
+            if (self.activeTab()) |active_tab| {
+                if (active_tab.leafCount() > 1) {
+                    const c_rect = content_rect;
+                    const c_width = @max(1, c_rect.right - c_rect.left);
+                    const c_height = @max(1, c_rect.bottom - c_rect.top);
+                    // Fill entire content area with divider color first (gap pixels)
+                    fillSolidRect(hdc, c_rect, theme.pane_divider);
+                    // Draw accent border around focused pane
+                    const focused_surface = self.activeSurface();
+                    if (focused_surface) |surface| {
+                        if (surface.hwnd) |surface_hwnd| {
+                            var sr: RECT = undefined;
+                            if (GetWindowRect(surface_hwnd, &sr) != 0) {
+                                var tl = POINT{ .x = sr.left, .y = sr.top };
+                                var br = POINT{ .x = sr.right, .y = sr.bottom };
+                                _ = ScreenToClient(hwnd, &tl);
+                                _ = ScreenToClient(hwnd, &br);
+                                // Only draw focus border if pane is within content area
+                                if (tl.x >= c_rect.left and br.x <= c_rect.right and
+                                    tl.y >= c_rect.top and br.y <= c_rect.bottom)
+                                {
+                                    const bw: i32 = 1; // border width for focus accent
+                                    // Top
+                                    if (tl.y > c_rect.top) fillSolidRect(hdc, .{ .left = tl.x - bw, .top = tl.y - bw, .right = br.x + bw, .bottom = tl.y }, theme.pane_divider_focused);
+                                    // Bottom
+                                    if (br.y < c_rect.bottom) fillSolidRect(hdc, .{ .left = tl.x - bw, .top = br.y, .right = br.x + bw, .bottom = br.y + bw }, theme.pane_divider_focused);
+                                    // Left
+                                    if (tl.x > c_rect.left) fillSolidRect(hdc, .{ .left = tl.x - bw, .top = tl.y, .right = tl.x, .bottom = br.y }, theme.pane_divider_focused);
+                                    // Right
+                                    if (br.x < c_rect.right) fillSolidRect(hdc, .{ .left = br.x, .top = tl.y, .right = br.x + bw, .bottom = br.y }, theme.pane_divider_focused);
+                                }
+                                _ = c_width;
+                                _ = c_height;
                             }
-                            _ = c_width;
-                            _ = c_height;
                         }
                     }
                 }
             }
         }
 
-        const status_h = self.statusBarHeight();
         const status_top = @max(tab_h + overlay_offset, client_rect.bottom - @max(1, status_h));
-        if (status_h > 0) {
-            const status_rect = RECT{
+        if (paint_status and status_h > 0) {
+            const status_bg_rect = RECT{
                 .left = 0,
                 .top = status_top,
                 .right = client_rect.right,
                 .bottom = client_rect.bottom,
             };
-            fillSolidRect(hdc, status_rect, theme.status_bg);
+            fillSolidRect(hdc, status_bg_rect, theme.status_bg);
             fillSolidRect(
                 hdc,
                 .{
@@ -8746,39 +10038,29 @@ const Host = struct {
         _ = SetBkMode(hdc, TRANSPARENT);
         _ = SetTextColor(hdc, theme.text_primary);
 
-        const banner_value: ?[]const u8 = blk: {
-            if (self.overlay_mode != .none) break :blk null;
-            if (self.banner_text) |value| break :blk value;
-            if (inspector_panel_visible) break :blk null;
-            if (self.activeSurface()) |surface| {
-                if (!surface.inspector_visible) break :blk null;
-                const host_status = self.app.hostTabStatus(surface);
-                const pane_count = if (self.activeTab()) |tab| tab.leafCount() else 1;
-                break :blk buildInspectorBannerText(
-                    alloc,
-                    host_status,
-                    pane_count,
-                    if (self.activeTab()) |tab| tab.tree.zoomed != null else false,
-                ) catch null;
-            }
-            break :blk null;
+        const explicit_banner_text: ?[]const u8 = if (self.overlay_mode == .none)
+            self.banner_text
+        else
+            null;
+        const paint_inspector_banner = blk: {
+            if (!paint_top) break :blk false;
+            if (self.overlay_mode != .none) break :blk false;
+            if (self.banner_text != null) break :blk false;
+            if (inspector_panel_visible) break :blk false;
+            break :blk self.activeTabHasInspector();
         };
-        const banner_kind: HostBannerKind = if (self.banner_text != null)
+        const banner_kind: HostBannerKind = if (explicit_banner_text != null)
             self.banner_kind
-        else if (banner_value != null)
+        else if (paint_inspector_banner)
             .info
         else
             .none;
-        if (self.banner_text == null) {
-            if (banner_value) |value| {
-                defer alloc.free(value);
-            }
-        }
-        const paint_update_notice = self.overlay_mode == .none and
+        const paint_update_notice = paint_top and
+            self.overlay_mode == .none and
             !inspector_panel_visible and
             self.banner_text == null and
             self.app.update_notice != null;
-        if (self.chrome_text_dirty) {
+        if (paint_top and self.chrome_text_dirty.banner) {
             if (self.cached_banner_w) |old| alloc.free(old);
             self.cached_banner_w = null;
 
@@ -8788,14 +10070,30 @@ const Host = struct {
                         self.cached_banner_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, message) catch return;
                     }
                 }
-            } else if (banner_value) |value| {
+            } else if (explicit_banner_text) |value| {
                 const full = buildHostBannerText(alloc, banner_kind, value) catch return;
                 defer alloc.free(full);
                 self.cached_banner_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, full) catch return;
+            } else if (paint_inspector_banner) {
+                if (self.activeSurface()) |surface| {
+                    const host_status = self.app.hostTabStatus(surface);
+                    const pane_count = if (self.activeTab()) |tab| tab.leafCount() else 1;
+                    const value = buildInspectorBannerText(
+                        alloc,
+                        host_status,
+                        pane_count,
+                        if (self.activeTab()) |tab| tab.tree.zoomed != null else false,
+                    ) catch return;
+                    defer alloc.free(value);
+                    const full = buildHostBannerText(alloc, banner_kind, value) catch return;
+                    defer alloc.free(full);
+                    self.cached_banner_w = std.unicode.utf8ToUtf16LeAllocZ(alloc, full) catch return;
+                }
             }
+            self.chrome_text_dirty.banner = false;
         }
-        self.clearUpdateActionRects();
-        if (self.overlay_mode == .none and !inspector_panel_visible and self.banner_text == null) {
+        if (paint_top) self.clearUpdateActionRects();
+        if (paint_top and self.overlay_mode == .none and !inspector_panel_visible and self.banner_text == null) {
             if (self.app.update_notice) |notice| {
                 const open_label = std.unicode.utf8ToUtf16LeStringLiteral("Open Release");
                 const dismiss_label = std.unicode.utf8ToUtf16LeStringLiteral("Dismiss");
@@ -8880,24 +10178,22 @@ const Host = struct {
                     &dismiss_text_rect,
                     DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
                 );
-            } else if (banner_value) |value| {
+            } else if (paint_inspector_banner) {
                 _ = SetTextColor(hdc, switch (banner_kind) {
                     .none => theme.text_primary,
                     .info => theme.info_fg,
                     .err => theme.error_fg,
                 });
-                _ = value;
                 if (self.cached_banner_w) |banner_w| {
                     _ = TextOutW(hdc, self.scaled(16), banner_y, banner_w.ptr, @intCast(banner_w.len - 1));
                 }
             }
-        } else if (banner_value) |value| {
+        } else if (explicit_banner_text != null) {
             _ = SetTextColor(hdc, switch (banner_kind) {
                 .none => theme.text_primary,
                 .info => theme.info_fg,
                 .err => theme.error_fg,
             });
-            _ = value;
             if (self.cached_banner_w) |banner_w| {
                 _ = TextOutW(hdc, self.scaled(16), banner_y, banner_w.ptr, @intCast(banner_w.len - 1));
             }
@@ -8917,38 +10213,40 @@ const Host = struct {
             if (lane_right <= self.scaled(24)) break :blk null;
             break :blk lane_right;
         };
-        if (launcher_lane_right) |lane_right| {
-            const lane_rect = RECT{
-                .left = self.scaled(10),
-                .top = status_y - self.scaled(5),
-                .right = lane_right,
-                .bottom = status_y + self.scaled(16),
-            };
-            drawRoundedRect(
-                hdc,
-                lane_rect,
-                if (theme.is_dark)
-                    adjustColor(theme.status_bg, 8, 8, 10)
-                else
-                    adjustColor(theme.status_bg, -6, -6, -6),
-                if (theme.is_dark)
-                    adjustColor(theme.chrome_border, 12, 12, 14)
-                else
-                    adjustColor(theme.chrome_border, -18, -18, -18),
-                self.scaled(6),
-            );
-            if (self.selectedProfile()) |profile| {
-                fillSolidRect(hdc, .{
-                    .left = lane_rect.left + self.scaled(6),
-                    .top = lane_rect.top + self.scaled(5),
-                    .right = lane_rect.left + self.scaled(9),
-                    .bottom = lane_rect.bottom - self.scaled(5),
-                }, profileKindHintColor(profile.kind, theme.is_dark));
+        if (paint_status) {
+            if (launcher_lane_right) |lane_right| {
+                const lane_rect = RECT{
+                    .left = self.scaled(10),
+                    .top = status_y - self.scaled(5),
+                    .right = lane_right,
+                    .bottom = status_y + self.scaled(16),
+                };
+                drawRoundedRect(
+                    hdc,
+                    lane_rect,
+                    if (theme.is_dark)
+                        adjustColor(theme.status_bg, 8, 8, 10)
+                    else
+                        adjustColor(theme.status_bg, -6, -6, -6),
+                    if (theme.is_dark)
+                        adjustColor(theme.chrome_border, 12, 12, 14)
+                    else
+                        adjustColor(theme.chrome_border, -18, -18, -18),
+                    self.scaled(6),
+                );
+                if (self.selectedProfile()) |profile| {
+                    fillSolidRect(hdc, .{
+                        .left = lane_rect.left + self.scaled(6),
+                        .top = lane_rect.top + self.scaled(5),
+                        .right = lane_rect.left + self.scaled(9),
+                        .bottom = lane_rect.bottom - self.scaled(5),
+                    }, profileKindHintColor(profile.kind, theme.is_dark));
+                }
             }
         }
-        if (status_h > 0 and self.overlay_mode == .none) {
+        if (paint_status and status_h > 0 and self.overlay_mode == .none) {
             const selected_profile_index = self.selectedProfileIndex();
-            if (self.chrome_text_dirty) {
+            if (self.chrome_text_dirty.status) {
                 if (self.cached_launcher_selected_chip_w) |old| alloc.free(old);
                 self.cached_launcher_selected_chip_w = null;
                 for (&self.cached_launcher_quick_slot_chip_w) |*slot| {
@@ -9129,7 +10427,7 @@ const Host = struct {
                 .bottom = status_y + self.scaled(12),
             }, theme.chrome_border);
         }
-        if (self.chrome_text_dirty) {
+        if (paint_status and self.chrome_text_dirty.status) {
             if (self.cached_status_w) |old| alloc.free(old);
             self.cached_status_w = blk: {
                 const utf8 = self.statusText(alloc) catch break :blk null;
@@ -9146,15 +10444,19 @@ const Host = struct {
                 break :blk std.unicode.utf8ToUtf16LeAllocZ(alloc, owned) catch null;
             };
 
-            self.chrome_text_dirty = false;
+            self.chrome_text_dirty.status = false;
         }
 
-        if (self.cached_status_w) |status_w| {
-            _ = TextOutW(hdc, status_x, status_y, status_w.ptr, @intCast(status_w.len - 1));
+        if (paint_status) {
+            if (self.cached_status_w) |status_w| {
+                _ = TextOutW(hdc, status_x, status_y, status_w.ptr, @intCast(status_w.len - 1));
+            }
         }
-        if (self.cached_detail_w) |detail_w| {
-            _ = SetTextColor(hdc, theme.text_secondary);
-            _ = TextOutW(hdc, status_x, status_y + self.scaled(18), detail_w.ptr, @intCast(detail_w.len - 1));
+        if (paint_status) {
+            if (self.cached_detail_w) |detail_w| {
+                _ = SetTextColor(hdc, theme.text_secondary);
+                _ = TextOutW(hdc, status_x, status_y + self.scaled(18), detail_w.ptr, @intCast(detail_w.len - 1));
+            }
         }
         self.chrome_repaint_dirty = false;
     }
@@ -9189,6 +10491,7 @@ const SurfaceInitOptions = struct {
     host_id: ?u32 = null,
     tab_id: ?u32 = null,
     clone_state_from: ?*const Surface = null,
+    split_direction: SplitTreeSurface.Split.Direction = .right,
     /// Passive first-show: the newly-created host HWND is shown via
     /// `SW_SHOWNOACTIVATE` instead of `SW_SHOW`, so it becomes
     /// visible without stealing focus from the caller's current
@@ -9345,6 +10648,14 @@ fn appendOwnedString(
     target: *?[:0]const u8,
     value: ?[]const u8,
 ) !void {
+    if (value) |next_value| {
+        if (target.*) |existing| {
+            if (std.mem.eql(u8, existing, next_value)) return;
+        }
+    } else if (target.* == null) {
+        return;
+    }
+
     // Allocate first, then free the old slot. Reversing the order
     // means that (a) an OOM leaves `*target` holding a still-valid
     // previous allocation instead of a dangling freed pointer, and
@@ -9360,6 +10671,20 @@ fn ownedStringEquals(current: ?[:0]const u8, value: []const u8) bool {
         std.mem.eql(u8, existing, value)
     else
         false;
+}
+
+fn ownedBytesEquals(current: ?[]const u8, value: []const u8) bool {
+    return if (current) |existing|
+        std.mem.eql(u8, existing, value)
+    else
+        false;
+}
+
+fn optionalOwnedStringEquals(current: ?[:0]const u8, value: ?[]const u8) bool {
+    return if (value) |existing|
+        ownedStringEquals(current, existing)
+    else
+        current == null;
 }
 
 fn syncWindowTextUtf8Cached(
@@ -9416,6 +10741,34 @@ fn childRect(x: i32, y: i32, width: i32, height: i32) RECT {
     };
 }
 
+fn overlayEditFrameRect(
+    width: i32,
+    overlay_y: i32,
+    padding: i32,
+    label_w: i32,
+    cancel_w: i32,
+    accept_reservation_w: i32,
+    row_h: i32,
+) RECT {
+    const left = padding + label_w;
+    const right = width - cancel_w - accept_reservation_w - (padding * 2) - 6;
+    return .{
+        .left = left,
+        .top = overlay_y + 4,
+        .right = @max(left + 24, right),
+        .bottom = overlay_y + 4 + row_h,
+    };
+}
+
+fn overlayEditChildRectFromFrame(frame: RECT, inset_x: i32, inset_y: i32) RECT {
+    return .{
+        .left = frame.left + inset_x,
+        .top = frame.top + inset_y,
+        .right = @max(frame.left + inset_x + 1, frame.right - inset_x),
+        .bottom = @max(frame.top + inset_y + 1, frame.bottom - inset_y),
+    };
+}
+
 fn syncChildPlacementTarget(placement: *ChildPlacement, hwnd: HWND) void {
     if (placement.hwnd == null or placement.hwnd.? != hwnd) {
         placement.* = .{ .hwnd = hwnd };
@@ -9445,6 +10798,125 @@ fn applyChildVisibility(hwnd: HWND, placement: *ChildPlacement, visible: bool) b
     placement.visible = visible;
     placement.visible_known = true;
     return true;
+}
+
+const SurfaceLayoutRuntimeSync = struct {
+    scrollbar_refresh: bool,
+    core_size_sync: bool,
+};
+
+const ScrollbarPaintKey = struct {
+    rect: RECT,
+    total: usize,
+    len: usize,
+    offset: usize,
+    dpi: u32,
+    hovered: bool,
+    dragging: bool,
+    marker_revision: u64,
+};
+
+fn surfaceLayoutRuntimeSync(visibility_changed: bool, pane_rect_changed: bool) SurfaceLayoutRuntimeSync {
+    return .{
+        .scrollbar_refresh = visibility_changed or pane_rect_changed,
+        .core_size_sync = pane_rect_changed,
+    };
+}
+
+const SurfaceRepaintRequestMode = enum {
+    queue,
+    update_now,
+    defer_until_flush,
+};
+
+const ResizeSettleSurfaceAction = enum {
+    wake_renderer,
+    present_renderer,
+};
+
+fn surfaceRepaintRequestMode(host: ?*const Host) SurfaceRepaintRequestMode {
+    const h = host orelse return .queue;
+    if (h.is_live_resize.load(.acquire)) return .defer_until_flush;
+    if (h.resize_settle_timer_active) return .update_now;
+    return .queue;
+}
+
+fn surfaceSizeChangeRepaintMode(host: ?*const Host) SurfaceRepaintRequestMode {
+    return surfaceRepaintRequestMode(host);
+}
+
+fn resizeSettleSurfaceAction(renderer_repaint_requested: bool) ResizeSettleSurfaceAction {
+    return if (renderer_repaint_requested) .present_renderer else .wake_renderer;
+}
+
+fn surfacePixelSizeChanged(previous: apprt.SurfaceSize, next: apprt.SurfaceSize) bool {
+    return previous.width != next.width or previous.height != next.height;
+}
+
+fn surfaceActivationNeedsHostSync(
+    was_windows_hidden: bool,
+    host_window_visible: bool,
+    target_tab_index: usize,
+    active_tab_index: usize,
+    target_window_visible: bool,
+) bool {
+    return was_windows_hidden or
+        !host_window_visible or
+        target_tab_index != active_tab_index or
+        !target_window_visible;
+}
+
+fn surfaceFocusedActivationNeedsHostSync(
+    was_windows_hidden: bool,
+    host_window_visible: bool,
+    target_tab_index: usize,
+    active_tab_index: usize,
+    target_window_visible: bool,
+    target_window_focused: bool,
+) bool {
+    return surfaceActivationNeedsHostSync(
+        was_windows_hidden,
+        host_window_visible,
+        target_tab_index,
+        active_tab_index,
+        target_window_visible,
+    ) or !target_window_focused;
+}
+
+fn surfaceFocusStateChanged(
+    active_tab_index: usize,
+    focused_handle: SplitTreeSurface.Node.Handle,
+    target_tab_index: usize,
+    target_handle: SplitTreeSurface.Node.Handle,
+) bool {
+    return active_tab_index != target_tab_index or focused_handle != target_handle;
+}
+
+fn hostChromeNeedsFocusRepaint(pane_count: usize) bool {
+    return pane_count > 1;
+}
+
+fn scrollbarNeedsHeartbeatForState(
+    policy: ScrollbarPolicy,
+    window_visible: bool,
+    scrollable: bool,
+    visibility: win32_scrollbar_geometry.Visibility,
+) bool {
+    if (policy != .dynamic) return false;
+    if (!window_visible or !scrollable) return false;
+    return visibility != .hidden;
+}
+
+fn scrollbarPaintKeyChanged(previous: ?ScrollbarPaintKey, next: ScrollbarPaintKey) bool {
+    const value = previous orelse return true;
+    return !rectEquals(value.rect, next.rect) or
+        value.total != next.total or
+        value.len != next.len or
+        value.offset != next.offset or
+        value.dpi != next.dpi or
+        value.hovered != next.hovered or
+        value.dragging != next.dragging or
+        value.marker_revision != next.marker_revision;
 }
 
 fn highContrastThemeFromSysColors() ThemeColors {
@@ -9548,6 +11020,26 @@ fn isSystemDarkMode() bool {
     if (reg_type != REG_DWORD or data_size != @sizeOf(u32)) return true;
 
     return data == 0; // 0 = dark mode, 1 = light mode
+}
+
+fn readDynamicScrollbars(default_value: bool) bool {
+    const subkey = std.unicode.utf8ToUtf16LeStringLiteral("Control Panel\\Accessibility");
+    const value_name = std.unicode.utf8ToUtf16LeStringLiteral("DynamicScrollbars");
+    var hkey: usize = 0;
+    if (RegOpenKeyExW(HKEY_CURRENT_USER, subkey, 0, KEY_READ, &hkey) != ERROR_SUCCESS) {
+        return default_value;
+    }
+    defer _ = RegCloseKey(hkey);
+
+    var data: u32 = if (default_value) 1 else 0;
+    var data_size: DWORD = @sizeOf(u32);
+    var reg_type: DWORD = 0;
+    if (RegQueryValueExW(hkey, value_name, null, &reg_type, @ptrCast(&data), &data_size) != ERROR_SUCCESS) {
+        return default_value;
+    }
+    if (reg_type != REG_DWORD or data_size != @sizeOf(u32)) return default_value;
+
+    return data != 0;
 }
 
 /// Read the current Windows system accent colour from
@@ -10409,6 +11901,23 @@ test "win32 appendOwnedString replaces existing value and frees old allocation" 
     try testing.expect(target == null);
 }
 
+test "win32 appendOwnedString skips exact same-value reallocation" {
+    const testing = std.testing;
+    var target: ?[:0]const u8 = null;
+    defer if (target) |value| testing.allocator.free(value);
+
+    try appendOwnedString(testing.allocator, &target, "alpha");
+    const before = target.?.ptr;
+    try appendOwnedString(testing.allocator, &target, "alpha");
+    try testing.expect(target != null);
+    try testing.expect(target.?.ptr == before);
+
+    try appendOwnedString(testing.allocator, &target, null);
+    try testing.expect(target == null);
+    try appendOwnedString(testing.allocator, &target, null);
+    try testing.expect(target == null);
+}
+
 test "win32 appendOwnedString leaves target untouched on OOM" {
     // Guard against the pre-refactor UAF where the old pointer was
     // freed BEFORE allocating the new one: an OOM mid-call would
@@ -10430,6 +11939,120 @@ test "win32 appendOwnedString leaves target untouched on OOM" {
     try testing.expect(target != null);
     try testing.expect(target.?.ptr == before);
     try testing.expectEqualStrings("warm-up", target.?);
+}
+
+test "win32 ChromeTextDirty splits top and status cache invalidation" {
+    const testing = std.testing;
+
+    var dirty: ChromeTextDirty = .{
+        .overlay = false,
+        .inspector = false,
+        .banner = false,
+        .status = false,
+    };
+    dirty.markTop();
+    try testing.expect(dirty.overlay);
+    try testing.expect(dirty.inspector);
+    try testing.expect(dirty.banner);
+    try testing.expect(!dirty.status);
+
+    dirty = .{
+        .overlay = false,
+        .inspector = false,
+        .banner = false,
+        .status = false,
+    };
+    dirty.status = true;
+    try testing.expect(!dirty.overlay);
+    try testing.expect(!dirty.inspector);
+    try testing.expect(!dirty.banner);
+    try testing.expect(dirty.status);
+
+    dirty = .{
+        .overlay = false,
+        .inspector = false,
+        .banner = false,
+        .status = false,
+    };
+    dirty.markAll();
+    try testing.expect(dirty.overlay);
+    try testing.expect(dirty.inspector);
+    try testing.expect(dirty.banner);
+    try testing.expect(dirty.status);
+}
+
+test "win32 mergeChromeRepaintMask only returns newly requested regions" {
+    const testing = std.testing;
+
+    var current: ChromeRepaintMask = .{};
+    var added = mergeChromeRepaintMask(&current, .{ .top = true });
+    try testing.expect(std.meta.eql(current, ChromeRepaintMask{ .top = true }));
+    try testing.expect(std.meta.eql(added, ChromeRepaintMask{ .top = true }));
+
+    added = mergeChromeRepaintMask(&current, .{ .top = true });
+    try testing.expect(added.isEmpty());
+    try testing.expect(std.meta.eql(current, ChromeRepaintMask{ .top = true }));
+
+    added = mergeChromeRepaintMask(&current, .{ .status = true, .search_frames = true });
+    try testing.expect(std.meta.eql(current, ChromeRepaintMask{
+        .top = true,
+        .status = true,
+        .search_frames = true,
+    }));
+    try testing.expect(std.meta.eql(added, ChromeRepaintMask{
+        .status = true,
+        .search_frames = true,
+    }));
+
+    added = mergeChromeRepaintMask(&current, .{ .content = true, .search_frames = true });
+    try testing.expect(std.meta.eql(current, ChromeRepaintMask{
+        .top = true,
+        .content = true,
+        .status = true,
+        .search_frames = true,
+    }));
+    try testing.expect(std.meta.eql(added, ChromeRepaintMask{ .content = true }));
+}
+
+test "win32 layoutChildPaintPlan keeps chrome and content invalidation separate" {
+    const testing = std.testing;
+
+    try testing.expectEqualDeep(
+        LayoutChildPaintPlan{ .chrome = true, .content = false, .native_content_controls = false },
+        layoutChildPaintPlan(true, false),
+    );
+    try testing.expectEqualDeep(
+        LayoutChildPaintPlan{ .chrome = false, .content = true, .native_content_controls = true },
+        layoutChildPaintPlan(false, true),
+    );
+    try testing.expectEqualDeep(
+        LayoutChildPaintPlan{ .chrome = true, .content = true, .native_content_controls = true },
+        layoutChildPaintPlan(true, true),
+    );
+}
+
+fn rectIntersects(a: RECT, b: RECT) bool {
+    return a.left < b.right and
+        a.right > b.left and
+        a.top < b.bottom and
+        a.bottom > b.top;
+}
+
+test "win32 rectIntersects only trips on positive overlap" {
+    const testing = std.testing;
+
+    try testing.expect(rectIntersects(
+        .{ .left = 0, .top = 0, .right = 10, .bottom = 10 },
+        .{ .left = 5, .top = 5, .right = 15, .bottom = 15 },
+    ));
+    try testing.expect(!rectIntersects(
+        .{ .left = 0, .top = 0, .right = 10, .bottom = 10 },
+        .{ .left = 10, .top = 0, .right = 20, .bottom = 10 },
+    ));
+    try testing.expect(!rectIntersects(
+        .{ .left = 0, .top = 0, .right = 10, .bottom = 10 },
+        .{ .left = 0, .top = 10, .right = 10, .bottom = 20 },
+    ));
 }
 
 test "win32 palette EN_CHANGE re-entry guard: suppress_edit_events gates sync cascade" {
@@ -10486,6 +12109,47 @@ fn paletteListProc(
     }
 }
 
+fn scrollbarProc(
+    hwnd: HWND,
+    msg: UINT,
+    wParam: WPARAM,
+    lParam: LPARAM,
+) callconv(.winapi) LRESULT {
+    const surface = getSurface(hwnd);
+    switch (msg) {
+        WM_ERASEBKGND => return 1,
+        WM_PAINT => {
+            if (surface) |value| value.paintScrollbar();
+            return 0;
+        },
+        WM_MOUSEMOVE => {
+            if (surface) |value| value.handleScrollbarMouseMove(hwnd, lParam);
+            return 0;
+        },
+        WM_MOUSELEAVE => {
+            if (surface) |value| value.handleScrollbarMouseLeave();
+            return 0;
+        },
+        WM_LBUTTONDOWN => {
+            if (surface) |value| value.handleScrollbarLeftButtonDown(hwnd, lParam);
+            return 0;
+        },
+        WM_LBUTTONUP => {
+            if (surface) |value| value.handleScrollbarLeftButtonUp(lParam);
+            return 0;
+        },
+        WM_CAPTURECHANGED => {
+            if (surface) |value| value.handleScrollbarCaptureChanged();
+            return 0;
+        },
+        WM_SETCURSOR => {
+            _ = SetCursor(LoadCursorW(null, IDC_ARROW));
+            return 1;
+        },
+        else => return DefWindowProcW(hwnd, msg, wParam, lParam),
+    }
+}
+
 fn drawRoundedRect(hdc: HDC, rect: RECT, bg: u32, border: u32, radius: i32) void {
     const stock_brush = GetStockObject(DC_BRUSH) orelse return;
     const stock_pen = GetStockObject(DC_PEN) orelse return;
@@ -10498,6 +12162,12 @@ fn drawRoundedRect(hdc: HDC, rect: RECT, bg: u32, border: u32, radius: i32) void
     _ = SelectObject(hdc, old_pen);
     _ = SelectObject(hdc, old_brush);
     // Stock objects — never delete
+}
+
+fn paintRectVisible(hdc: HDC, paint_rect: RECT, rect: RECT) bool {
+    if (rect.right <= rect.left or rect.bottom <= rect.top) return false;
+    if (!rectIntersects(paint_rect, rect)) return false;
+    return RectVisible(hdc, &rect) != 0;
 }
 
 fn tabButtonKeyAction(vk: WPARAM, ctrl_pressed: bool) ?TabButtonKeyAction {
@@ -10527,8 +12197,186 @@ fn searchButtonKeyAction(vk: WPARAM, shift_pressed: bool) ?SearchButtonKeyAction
     };
 }
 
+fn dockedSearchCoreDirectionFromKeyAction(action: SearchButtonKeyAction) ?input.Binding.Action.NavigateSearch {
+    return switch (action) {
+        .previous => .previous,
+        .next => .next,
+        .dismiss => null,
+    };
+}
+
+fn dockedSearchButtonDirection(command_id: usize) ?input.Binding.Action.NavigateSearch {
+    // Core scrollback search indexes matches newest-first
+    // (`.previous` => newer/down, `.next` => older/up). The docked
+    // search bar is laid out as visible up/down navigation, so the
+    // button IDs map to the opposite core enum.
+    return switch (command_id) {
+        SEARCH_PREV_ID => .next,
+        SEARCH_NEXT_ID => .previous,
+        else => null,
+    };
+}
+
+fn dockedSearchEnterDirection(shift_pressed: bool) input.Binding.Action.NavigateSearch {
+    return dockedSearchArrowDirection(if (shift_pressed) VK_UP else VK_DOWN).?;
+}
+
+fn dockedSearchArrowDirection(vk: WPARAM) ?input.Binding.Action.NavigateSearch {
+    return switch (vk) {
+        VK_UP => dockedSearchButtonDirection(SEARCH_PREV_ID),
+        VK_DOWN => dockedSearchButtonDirection(SEARCH_NEXT_ID),
+        else => null,
+    };
+}
+
 fn searchDirectionFromWheelDelta(delta: i16) input.Binding.Action.NavigateSearch {
-    return if (delta > 0) .previous else .next;
+    return if (delta > 0)
+        .next
+    else
+        .previous;
+}
+
+fn searchSelectedRawFromCoreDisplay(selected: ?usize) ?usize {
+    const value = selected orelse return null;
+    if (value == 0) return null;
+    return value - 1;
+}
+
+fn searchSelectedDisplayFromRaw(raw: ?usize, total: ?usize) ?usize {
+    const idx = raw orelse return null;
+    const count = total orelse return null;
+    if (count == 0 or idx >= count) return null;
+    return idx + 1;
+}
+
+fn advanceSearchSelectedRaw(
+    raw: ?usize,
+    total: ?usize,
+    dir: input.Binding.Action.NavigateSearch,
+    wrap: bool,
+) ?usize {
+    const idx = raw orelse return null;
+    const count = total orelse return null;
+    if (count == 0 or idx >= count) return null;
+    const last = count - 1;
+    return switch (dir) {
+        .next => if (idx >= last) if (wrap) 0 else idx else idx + 1,
+        .previous => if (idx == 0) if (wrap) last else 0 else idx - 1,
+    };
+}
+
+fn searchBarSearchedStateForTotal(total: ?usize) bool {
+    return total != null;
+}
+
+fn searchBarSearchedStateForSelected(selected: ?usize, total: ?usize) bool {
+    return selected != null or total != null;
+}
+
+fn searchBarDisplayStateChanged(
+    search_bar: *const win32_search_bar.SearchBar,
+    searched: bool,
+    total: ?usize,
+    selected: ?usize,
+) bool {
+    return search_bar.searched != searched or
+        search_bar.total != total or
+        search_bar.selected != selected;
+}
+
+fn profileChromeVisible(overlay_mode: HostOverlayMode, status_bar_height: i32) bool {
+    return overlay_mode == .profile or status_bar_height > 0;
+}
+
+fn profileChromeNeedsFullTextInvalidation(overlay_mode: HostOverlayMode, status_bar_height: i32) bool {
+    return overlay_mode != .profile and status_bar_height > 0;
+}
+
+fn chromeTextNeedsFullInvalidation(status_bar_height: i32) bool {
+    return status_bar_height > 0;
+}
+
+fn inspectorVisibilityChangeNeedsHostRelayout(changed: bool) bool {
+    return changed;
+}
+
+fn inspectorPanelVisibleForState(overlay_mode: HostOverlayMode, active_tab_has_inspector: bool) bool {
+    return overlay_mode == .none and active_tab_has_inspector;
+}
+
+fn mergeChromeRepaintMask(current: *ChromeRepaintMask, next: ChromeRepaintMask) ChromeRepaintMask {
+    const added: ChromeRepaintMask = .{
+        .top = next.top and !current.top,
+        .content = next.content and !current.content,
+        .status = next.status and !current.status,
+        .search_frames = next.search_frames and !current.search_frames,
+    };
+    current.* = .{
+        .top = current.top or next.top,
+        .content = current.content or next.content,
+        .status = current.status or next.status,
+        .search_frames = current.search_frames or next.search_frames,
+    };
+    return added;
+}
+
+const LayoutChildPaintPlan = struct {
+    chrome: bool,
+    content: bool,
+    native_content_controls: bool,
+};
+
+fn layoutChildPaintPlan(chrome_changed: bool, content_changed: bool) LayoutChildPaintPlan {
+    return .{
+        .chrome = chrome_changed,
+        .content = content_changed,
+        .native_content_controls = content_changed,
+    };
+}
+
+fn overlayAcceptButtonVisible(mode: HostOverlayMode) bool {
+    return mode != .command_palette;
+}
+
+fn inspectorChromeVisible(overlay_mode: HostOverlayMode, status_bar_height: i32) bool {
+    return overlay_mode == .none or status_bar_height > 0;
+}
+
+fn inspectorBannerStateChanged(
+    overlay_mode: HostOverlayMode,
+    banner_kind: HostBannerKind,
+    banner_text: ?[:0]const u8,
+    visible: bool,
+) bool {
+    if (overlay_mode != .none) return false;
+    if (visible) return banner_kind != .none or banner_text != null;
+    return banner_kind != .info or !ownedStringEquals(banner_text, host_banner_inspector_inactive);
+}
+
+fn windowTitleSyncChanged(current: ?[:0]const u8, next: []const u8) bool {
+    return !ownedStringEquals(current, next);
+}
+
+const ScrollStatusKey = struct {
+    visible: bool,
+    percent: usize,
+};
+
+fn scrollStatusKey(scrollbar: terminal.Scrollbar) ScrollStatusKey {
+    const visible = scrollbar.total > scrollbar.len and
+        scrollbar.offset + scrollbar.len < scrollbar.total;
+    const percent = if (visible and scrollbar.total > 0)
+        (scrollbar.offset * 100) / scrollbar.total
+    else
+        0;
+    return .{
+        .visible = visible,
+        .percent = percent,
+    };
+}
+
+fn scrollStatusTextChanged(previous: terminal.Scrollbar, next: terminal.Scrollbar) bool {
+    return !std.meta.eql(scrollStatusKey(previous), scrollStatusKey(next));
 }
 
 fn tabsButtonKeyAction(vk: WPARAM) ?TabsButtonKeyAction {
@@ -10668,6 +12516,13 @@ fn resolveProfileSelection(
     return .invalid;
 }
 
+fn profileIndexByKey(profiles: []const windows_shell.Profile, key: []const u8) ?usize {
+    for (profiles, 0..) |profile, index| {
+        if (std.ascii.eqlIgnoreCase(profile.key, key)) return index;
+    }
+    return null;
+}
+
 fn preferredProfileIndex(
     profiles: []const windows_shell.Profile,
     selected_key: ?[]const u8,
@@ -10790,6 +12645,14 @@ fn alphaByteForOpacity(value: f64) u8 {
     return @intFromFloat(@round(normalizedBackgroundOpacity(value) * 255.0));
 }
 
+fn hiddenScrollbarAlphaByte() u8 {
+    // Keep the layered child hit-testable while visually hidden.
+    // Windows won't deliver real hover input to an alpha-0 layered
+    // child, so a true zero here strands the dynamic scrollbar in the
+    // hidden state until some non-mouse activity wakes it up.
+    return 1;
+}
+
 const ResizeSplitFallbackDelta = struct {
     width: i32 = 0,
     height: i32 = 0,
@@ -10810,12 +12673,25 @@ fn resizeSplitFallbackDelta(value: apprt.action.ResizeSplit) ResizeSplitFallback
     };
 }
 
+fn splitDirectionFromAction(value: apprt.action.SplitDirection) SplitTreeSurface.Split.Direction {
+    return switch (value) {
+        .left => .left,
+        .right => .right,
+        .up => .up,
+        .down => .down,
+    };
+}
+
 fn nextInspectorVisible(current: bool, mode: apprt.action.Inspector) bool {
     return switch (mode) {
         .toggle => !current,
         .show => true,
         .hide => false,
     };
+}
+
+fn nextTabInspectorVisible(active_tab_has_inspector: bool, mode: apprt.action.Inspector) bool {
+    return nextInspectorVisible(active_tab_has_inspector, mode);
 }
 
 fn primarySurfaceIndex(entries: []const SurfaceOrderEntry) ?usize {
@@ -10950,6 +12826,231 @@ fn buildSearchOverlayLabel(
     }
     if (total) |count| return try std.fmt.allocPrint(alloc, "Find {d}", .{count});
     return try alloc.dupe(u8, "Find");
+}
+
+fn buildSearchBarResultsText(
+    alloc: Allocator,
+    bar: *const win32_search_bar.SearchBar,
+) ![]u8 {
+    if (bar.query.len == 0) return try alloc.dupe(u8, search_results_idle);
+    if (!bar.searched or bar.total == null) return try alloc.dupe(u8, search_results_pending);
+
+    const total = bar.total.?;
+    if (total == 0) return try alloc.dupe(u8, search_results_none);
+    if (bar.selected) |selected| return try std.fmt.allocPrint(alloc, "{d}/{d}", .{ selected, total });
+    return try std.fmt.allocPrint(alloc, "{d}", .{total});
+}
+
+const SearchBarResultsVisual = struct {
+    bg: u32,
+    border: u32,
+    fg: u32,
+};
+
+const SearchBarToolbarVisual = struct {
+    bg: u32,
+    border: u32,
+    separator: u32,
+};
+
+const SearchBarChromeLayout = struct {
+    pad_x: i32,
+    pad_y: i32,
+    gap: i32,
+    section_gap: i32,
+    close_gap: i32,
+    nav_w: i32,
+    toggle_w: i32,
+    close_w: i32,
+    results_w: i32,
+    min_edit_w: i32,
+    control_h: i32,
+};
+
+const SearchBarButtonRole = enum {
+    prev,
+    next,
+    regex,
+    case_sensitive,
+    whole_word,
+    close,
+};
+
+fn showSearchBarResults(bar: *const win32_search_bar.SearchBar) bool {
+    return bar.query.len > 0;
+}
+
+/// Docked-search geometry only changes when the fixed-width results slot
+/// appears or disappears. Query text updates within the non-empty state
+/// repaint child HWNDs but do not move controls.
+fn searchBarNeedsRelayoutForQueryChange(previous_query_len: usize, next_query_len: usize) bool {
+    return (previous_query_len == 0) != (next_query_len == 0);
+}
+
+/// Clearing the core search is only required when the query becomes empty.
+/// Non-empty edits stay in the pending/debounce state and ignore any stale
+/// core callbacks until the debounced rerun marks the new query as active.
+fn searchBarShouldStopCoreSearchOnEdit(previous_query_len: usize, next_query_len: usize) bool {
+    _ = previous_query_len;
+    return next_query_len == 0;
+}
+
+fn shouldAcceptCoreSearchUpdates(bar: *const win32_search_bar.SearchBar) bool {
+    return bar.query.len == 0 or bar.searched;
+}
+
+fn searchBarChromeLayout(host: *const Host, frame_rect: RECT) SearchBarChromeLayout {
+    _ = frame_rect;
+    return .{
+        .pad_x = host.scaled(8),
+        .pad_y = host.scaled(6),
+        .gap = host.scaled(2),
+        .section_gap = host.scaled(10),
+        .close_gap = host.scaled(10),
+        .nav_w = host.scaled(30),
+        .toggle_w = host.scaled(30),
+        .close_w = host.scaled(30),
+        .results_w = host.scaled(72),
+        .min_edit_w = host.scaled(120),
+        .control_h = host.scaled(28),
+    };
+}
+
+fn searchBarButtonShowsLabel(role: SearchBarButtonRole, button_width: i32) bool {
+    _ = role;
+    _ = button_width;
+    return false;
+}
+
+fn rectInset(rect: RECT, inset_x: i32, inset_y: i32) RECT {
+    return .{
+        .left = rect.left + inset_x,
+        .top = rect.top + inset_y,
+        .right = rect.right - inset_x,
+        .bottom = rect.bottom - inset_y,
+    };
+}
+
+fn rectUnion(a: RECT, b: RECT) RECT {
+    return .{
+        .left = @min(a.left, b.left),
+        .top = @min(a.top, b.top),
+        .right = @max(a.right, b.right),
+        .bottom = @max(a.bottom, b.bottom),
+    };
+}
+
+fn rectOffset(rect: RECT, dx: i32, dy: i32) RECT {
+    return .{
+        .left = rect.left + dx,
+        .top = rect.top + dy,
+        .right = rect.right + dx,
+        .bottom = rect.bottom + dy,
+    };
+}
+
+fn searchBarGroupRect(placements: []const ChildPlacement, expand_x: i32, expand_y: i32) ?RECT {
+    var out: ?RECT = null;
+    for (placements) |placement| {
+        if (!placement.rect_known or !placement.visible) continue;
+        const expanded: RECT = .{
+            .left = placement.rect.left - expand_x,
+            .top = placement.rect.top - expand_y,
+            .right = placement.rect.right + expand_x,
+            .bottom = placement.rect.bottom + expand_y,
+        };
+        out = if (out) |current| rectUnion(current, expanded) else expanded;
+    }
+    return out;
+}
+
+fn searchBarResultsVisual(
+    theme: *const ThemeColors,
+    bar: *const win32_search_bar.SearchBar,
+) SearchBarResultsVisual {
+    const accent = overlayAccentColor(.search, theme.is_dark);
+    if (!bar.searched or bar.total == null) {
+        return .{
+            .bg = if (theme.is_dark)
+                adjustColor(theme.overlay_bg, 8, 10, 10)
+            else
+                adjustColor(theme.overlay_bg, -6, -4, -2),
+            .border = accent,
+            .fg = theme.overlay_label_fg,
+        };
+    }
+
+    if (bar.total.? == 0) {
+        return .{
+            .bg = if (theme.is_dark)
+                rgb(48, 28, 30)
+            else
+                rgb(252, 236, 236),
+            .border = theme.error_fg,
+            .fg = theme.error_fg,
+        };
+    }
+
+    return .{
+        .bg = if (theme.is_dark)
+            adjustColor(theme.edit_frame_bg, 10, 14, 10)
+        else
+            adjustColor(theme.edit_frame_bg, -6, -2, -4),
+        .border = accent,
+        .fg = theme.overlay_label_fg,
+    };
+}
+
+fn searchBarToolbarVisual(theme: *const ThemeColors) SearchBarToolbarVisual {
+    return .{
+        .bg = if (theme.is_dark)
+            adjustColor(theme.edit_frame_bg, 6, 8, 10)
+        else
+            adjustColor(theme.edit_frame_bg, -4, -2, -2),
+        .border = if (theme.is_dark)
+            adjustColor(theme.overlay_border, 18, 18, 20)
+        else
+            adjustColor(theme.overlay_border, -18, -18, -18),
+        .separator = if (theme.is_dark)
+            adjustColor(theme.overlay_border, 30, 30, 34)
+        else
+            adjustColor(theme.overlay_border, -26, -26, -26),
+    };
+}
+
+fn searchBarFrameBg(theme: *const ThemeColors) u32 {
+    return if (theme.is_dark)
+        adjustColor(theme.overlay_bg, 3, 3, 5)
+    else
+        adjustColor(theme.overlay_bg, -2, -2, -1);
+}
+
+fn searchBarFrameBorder(theme: *const ThemeColors) u32 {
+    return if (theme.is_dark)
+        adjustColor(theme.overlay_border, 10, 10, 12)
+    else
+        adjustColor(theme.overlay_border, -14, -14, -14);
+}
+
+fn searchBarBottomLine(theme: *const ThemeColors) u32 {
+    return if (theme.is_dark)
+        adjustColor(theme.overlay_border, -10, -10, -8)
+    else
+        adjustColor(theme.overlay_border, 10, 10, 10);
+}
+
+fn searchBarButtonParentBg(theme: *const ThemeColors, role: SearchBarButtonRole) u32 {
+    return switch (role) {
+        .close => theme.overlay_bg,
+        else => searchBarToolbarVisual(theme).bg,
+    };
+}
+
+fn searchBarSeparatorX(left: ChildPlacement, right: ChildPlacement) ?i32 {
+    if (!left.rect_known or !left.visible or !right.rect_known or !right.visible) return null;
+    const gap = right.rect.left - left.rect.right;
+    if (gap <= 1) return null;
+    return left.rect.right + @divTrunc(gap, 2);
 }
 
 fn buildTabOverviewOverlayLabel(
@@ -11191,13 +13292,13 @@ fn buildHostBannerText(
 }
 
 fn overlayPaintCacheDirty(
-    chrome_text_dirty: bool,
+    overlay_text_dirty: bool,
     overlay_mode: HostOverlayMode,
     cached_label_w: ?[:0]const u16,
     cached_feedback_w: ?[:0]const u16,
     cached_badge_w: ?[:0]const u16,
 ) bool {
-    return chrome_text_dirty or
+    return overlay_text_dirty or
         cached_label_w == null or
         cached_feedback_w == null or
         (overlay_mode == .profile and cached_badge_w == null);
@@ -12137,6 +14238,11 @@ fn readWindowTextUtf8Alloc(alloc: Allocator, hwnd: HWND) ![:0]u8 {
     return try std.unicode.utf16LeToUtf8AllocZ(alloc, buf_w[0..@intCast(copied)]);
 }
 
+fn wmCommandChildHwnd(lParam: LPARAM) ?HWND {
+    if (lParam == 0) return null;
+    return @ptrFromInt(@as(usize, @intCast(lParam)));
+}
+
 fn getHost(hwnd: HWND) ?*Host {
     const raw = GetWindowLongPtrW(hwnd, GWLP_USERDATA);
     if (raw == 0) return null;
@@ -12192,7 +14298,29 @@ fn hostButtonProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                 else => {},
             }
         }
+        if (msg == WM_KEYDOWN and v.isSearchBarButton(hwnd)) {
+            if (v.searchControlSurface(hwnd)) |surface| {
+                if (searchButtonKeyAction(wParam, keyPressed(VK_SHIFT))) |action| {
+                    if (dockedSearchCoreDirectionFromKeyAction(action)) |dir| {
+                        _ = surface.navigateDockedSearch(dir) catch false;
+                        return 0;
+                    }
+                    switch (action) {
+                        .dismiss => {
+                            _ = v.dismissActiveSearch();
+                            return 0;
+                        },
+                        else => {},
+                    }
+                }
+            }
+        }
         switch (msg) {
+            WM_SETFOCUS => {
+                if (v.searchControlSurface(hwnd)) |surface| {
+                    v.app.activateSurfaceNoFocus(surface);
+                }
+            },
             WM_KILLFOCUS => {
                 v.setFocusedQuickSlot(null);
             },
@@ -12224,6 +14352,8 @@ fn hostButtonProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
 
         const prev = if (v.isOverlayButton(hwnd))
             v.overlay_button_prev_proc
+        else if (v.searchControlSurface(hwnd)) |surface|
+            surface.search_bar_button_prev_proc
         else
             v.chrome_button_prev_proc;
         if (prev) |proc| {
@@ -12447,10 +14577,62 @@ fn tabButtonProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv
     return DefWindowProcW(hwnd, msg, wParam, lParam);
 }
 
+fn searchEditProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.winapi) LRESULT {
+    const host = getHost(hwnd);
+    if (host) |v| {
+        if (v.searchControlSurface(hwnd)) |surface| switch (msg) {
+            WM_SETFOCUS => {
+                v.app.activateSurfaceNoFocus(surface);
+                surface.invalidateSearchBarChildPaint();
+            },
+            WM_KILLFOCUS => {
+                surface.invalidateSearchBarChildPaint();
+            },
+            WM_CHAR => {
+                if (wParam == VK_RETURN or wParam == VK_ESCAPE) return 0;
+            },
+            WM_KEYDOWN, WM_SYSKEYDOWN => {
+                if (wParam == VK_RETURN) {
+                    _ = surface.navigateDockedSearch(dockedSearchEnterDirection(keyPressed(VK_SHIFT))) catch false;
+                    return 0;
+                }
+                if (dockedSearchArrowDirection(wParam)) |dir| {
+                    _ = surface.navigateDockedSearch(dir) catch false;
+                    return 0;
+                }
+                if (searchButtonKeyAction(wParam, keyPressed(VK_SHIFT))) |action| {
+                    if (dockedSearchCoreDirectionFromKeyAction(action)) |dir| {
+                        _ = surface.navigateDockedSearch(dir) catch false;
+                        return 0;
+                    }
+                    switch (action) {
+                        .dismiss => {
+                            surface.closeDockedSearchBar(true, true) catch {};
+                            return 0;
+                        },
+                        else => {},
+                    }
+                }
+            },
+            else => {},
+        };
+    }
+
+    if (host) |v| {
+        if (v.searchControlSurface(hwnd)) |surface| {
+            if (surface.search_bar_edit_prev_proc) |proc| {
+                return CallWindowProcW(proc, hwnd, msg, wParam, lParam);
+            }
+        }
+    }
+    return DefWindowProcW(hwnd, msg, wParam, lParam);
+}
+
 fn overlayEditProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.winapi) LRESULT {
     const host = getHost(hwnd);
     if (host) |v| switch (msg) {
         WM_CHAR => {
+            if (wParam == VK_ESCAPE) return 0;
             if (wParam == VK_RETURN) {
                 if (v.overlay_mode != .profile) {
                     _ = v.submitOverlay() catch {};
@@ -12566,11 +14748,24 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                 if (host) |v| v.tickTweens();
                 return 0;
             }
+            if (wParam == SEARCH_TIMER_ID) {
+                if (host) |v| v.tickSearchBars();
+                return 0;
+            }
+            if (wParam == SCROLLBAR_TIMER_ID) {
+                if (host) |v| v.tickScrollbars();
+                return 0;
+            }
+            if (wParam == RESIZE_SETTLE_TIMER_ID) {
+                if (host) |v| v.tickResizeSettleRepaint();
+                return 0;
+            }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
         WM_DRAWITEM => {
             if (host) |v| {
                 const draw: *const DRAWITEMSTRUCT = @ptrFromInt(@as(usize, @bitCast(lParam)));
+                if (v.drawSearchBarBackground(draw)) return 1;
                 v.drawButton(draw);
                 return 1;
             }
@@ -12654,6 +14849,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
         WM_SETTINGCHANGE => {
             if (host) |v| {
                 v.app.refreshSystemWheelSettings();
+                v.app.refreshSystemScrollbarPreference();
                 v.app.reconfigureTheme();
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
@@ -12700,7 +14896,11 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
 
                 // Relayout and repaint
                 v.layout() catch {};
-                v.invalidateChrome();
+                if (chromeTextNeedsFullInvalidation(v.statusBarHeight())) {
+                    v.invalidateChromeText();
+                } else {
+                    v.invalidateTopChromeText();
+                }
             }
             return 0;
         },
@@ -12718,7 +14918,12 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     },
                     WM_CTLCOLORSTATIC => {
                         _ = SetBkMode(hdc, TRANSPARENT);
-                        _ = SetTextColor(hdc, if (v.overlay_hint_hwnd != null and child == v.overlay_hint_hwnd.?)
+                        _ = SetTextColor(hdc, if (v.isSearchBarResultsLabel(child))
+                            if (v.searchControlSurface(child)) |surface|
+                                searchBarResultsVisual(&v.app.resolved_theme, &surface.search_bar).fg
+                            else
+                                v.app.resolved_theme.text_secondary
+                        else if (v.overlay_hint_hwnd != null and child == v.overlay_hint_hwnd.?)
                             v.app.resolved_theme.text_secondary
                         else
                             v.app.resolved_theme.text_primary);
@@ -12726,7 +14931,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     },
                     WM_CTLCOLORBTN => {
                         _ = SetBkMode(hdc, TRANSPARENT);
-                        if (v.isOverlayButton(child)) {
+                        if (v.isOverlayStyledButton(child)) {
                             _ = SetTextColor(hdc, v.app.resolved_theme.button_overlay_fg);
                             return @as(LRESULT, @bitCast(@as(usize, @intFromPtr(v.overlay_brush.?))));
                         }
@@ -12745,6 +14950,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             if (host) |v| {
                 const command_id = lowWord(wParam);
                 const notify_code = highWord(wParam);
+                const child_hwnd = wmCommandChildHwnd(lParam);
                 switch (command_id) {
                     2002 => {
                         if (notify_code == EN_CHANGE) {
@@ -12770,6 +14976,17 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                                 _ = v.syncOverlayButtons() catch false;
                             }
                             return 0;
+                        }
+                    },
+                    SEARCH_EDIT_ID => {
+                        if (notify_code == EN_CHANGE) {
+                            if (v.suppress_edit_events) return 0;
+                            if (child_hwnd) |child| {
+                                if (v.searchControlSurface(child)) |surface| {
+                                    _ = surface.handleSearchBarEditChanged() catch {};
+                                    return 0;
+                                }
+                            }
                         }
                     },
                     2003 => {
@@ -12815,6 +15032,50 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                         refocusActiveSurface(v);
                         return 0;
                     },
+                    SEARCH_PREV_ID => {
+                        if (notify_code == BN_CLICKED) {
+                            if (child_hwnd) |child| {
+                                if (v.searchControlSurface(child)) |surface| {
+                                    if (dockedSearchButtonDirection(command_id)) |dir| {
+                                        _ = surface.navigateDockedSearch(dir) catch {};
+                                    }
+                                    return 0;
+                                }
+                            }
+                        }
+                    },
+                    SEARCH_NEXT_ID => {
+                        if (notify_code == BN_CLICKED) {
+                            if (child_hwnd) |child| {
+                                if (v.searchControlSurface(child)) |surface| {
+                                    if (dockedSearchButtonDirection(command_id)) |dir| {
+                                        _ = surface.navigateDockedSearch(dir) catch {};
+                                    }
+                                    return 0;
+                                }
+                            }
+                        }
+                    },
+                    SEARCH_REGEX_ID, SEARCH_CASE_ID, SEARCH_WORD_ID => {
+                        if (notify_code == BN_CLICKED) {
+                            if (child_hwnd) |child| {
+                                if (v.searchControlSurface(child)) |surface| {
+                                    _ = surface.handleSearchToggleClick(command_id) catch {};
+                                    return 0;
+                                }
+                            }
+                        }
+                    },
+                    SEARCH_CLOSE_ID => {
+                        if (notify_code == BN_CLICKED) {
+                            if (child_hwnd) |child| {
+                                if (v.searchControlSurface(child)) |surface| {
+                                    surface.closeDockedSearchBar(true, true) catch {};
+                                    return 0;
+                                }
+                            }
+                        }
+                    },
                     1901 => {
                         if (v.activeSurface()) |surface| {
                             _ = surface.toggleCommandPalette() catch {};
@@ -12835,12 +15096,8 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     },
                     1902 => {
                         if (v.activeSurface()) |surface| {
-                            if (v.overlay_mode == .search) {
-                                if (surface.host) |host_ref| {
-                                    host_ref.hideOverlay();
-                                    host_ref.layout() catch {};
-                                    refocusActiveSurface(host_ref);
-                                }
+                            if (surface.search_bar.visible) {
+                                surface.closeDockedSearchBar(true, true) catch {};
                             } else {
                                 surface.showSearchOverlay("") catch {};
                             }
@@ -12849,8 +15106,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     },
                     1903 => {
                         if (v.activeSurface()) |surface| {
-                            _ = surface.setInspectorVisible(!surface.inspector_visible) catch {};
-                            v.refreshChrome() catch {};
+                            _ = v.app.toggleInspectorForSurface(surface) catch {};
                         }
                         return 0;
                     },
@@ -12864,12 +15120,13 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     },
                     else => {},
                 }
-                const child_hwnd: HWND = @ptrFromInt(@as(usize, @intCast(lParam)));
                 for (v.tabs.items, 0..) |*tab, i| {
-                    if (tab.button_hwnd == child_hwnd) {
-                        v.active_tab = i;
-                        if (tab.focusedSurface()) |surface| v.app.activateSurface(surface);
-                        return 0;
+                    if (child_hwnd) |child| {
+                        if (tab.button_hwnd == child) {
+                            v.active_tab = i;
+                            if (tab.focusedSurface()) |surface| v.app.activateSurface(surface);
+                            return 0;
+                        }
                     }
                 }
             }
@@ -12913,10 +15170,15 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     v.caption_track_armed = false;
                     if (v.caption_hover != .none) {
                         v.caption_hover = .none;
-                        v.invalidateChrome();
+                        v.repaintTopChrome();
                     }
                 }
                 v.layout() catch {};
+                if (size_kind == SIZE_MAXIMIZED or
+                    (size_kind == SIZE_RESTORED and !v.is_live_resize.load(.acquire)))
+                {
+                    v.startResizeSettleRepaints();
+                }
                 return 0;
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
@@ -12938,8 +15200,10 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                 v.defer_surface_repaints_until_flush = true;
                 v.layout() catch {};
                 v.defer_surface_repaints_until_flush = false;
-                _ = InvalidateRect(hwnd, null, 0);
                 v.flushDeferredVisibleSurfaceRepaints();
+                v.startResizeSettleRepaints();
+                v.forceVisibleSurfaceRepaintsNow();
+                v.forceHostCompositionPaint();
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
@@ -12991,7 +15255,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     return 0;
                 }
                 if (v.quickSlotProfileIndexAtPoint(point)) |profile_index| {
-                    v.setSelectedProfileIndex(profile_index) catch return 0;
+                    _ = v.setSelectedProfileIndex(profile_index) catch return 0;
                     const open_target = switch (msg) {
                         WM_MBUTTONUP => ProfileOpenTarget.split,
                         WM_RBUTTONUP => ProfileOpenTarget.window,
@@ -13006,6 +15270,8 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
 
         WM_PAINT => {
             if (host) |v| {
+                v.chrome_paint_pending = false;
+                v.chrome_paint_mask = .{};
                 v.paintChrome();
                 return 0;
             }
@@ -13172,6 +15438,36 @@ fn findLauncherQuickSlotOrdinal(slot_keys: [3]?[:0]const u8, key: []const u8) ?u
         }
     }
     return null;
+}
+
+fn launcherQuickSlotAssignmentNeedsChange(
+    slot_keys: [3]?[:0]const u8,
+    slot_ordinal: usize,
+    key: []const u8,
+) bool {
+    if (slot_ordinal >= slot_keys.len) return false;
+    return findLauncherQuickSlotOrdinal(slot_keys, key) != slot_ordinal;
+}
+
+fn launcherQuickSlotPinsAlreadyClear(slot_keys: [3]?[:0]const u8) bool {
+    for (slot_keys) |slot_key| {
+        if (slot_key != null) return false;
+    }
+    return true;
+}
+
+fn selectedProfileSelectionNeedsChange(
+    current_index: usize,
+    next_index: usize,
+    focused_quick_slot: ?usize,
+    selected_profile_key: ?[:0]const u8,
+    launcher_profile_key: ?[:0]const u8,
+    next_key: []const u8,
+) bool {
+    return current_index != next_index or
+        focused_quick_slot != null or
+        !ownedStringEquals(selected_profile_key, next_key) or
+        !ownedStringEquals(launcher_profile_key, next_key);
 }
 
 fn startupProfilePickerEnabled(raw: []const u8) bool {
@@ -13643,6 +15939,42 @@ fn mouseModsFromWParam(wParam: WPARAM) input.Mods {
     return mods;
 }
 
+const ScrollbarProxyPoint = struct {
+    local_x: f32,
+    local_y: f32,
+    over_band: bool,
+};
+
+fn scrollbarProxyPointFromSurfaceCoords(
+    pane_rect: RECT,
+    hover_width: i32,
+    surface_x: i32,
+    surface_y: i32,
+) ScrollbarProxyPoint {
+    const pane_width: i32 = @max(@as(i32, 1), pane_rect.right - pane_rect.left);
+    const pane_height: i32 = @max(@as(i32, 1), pane_rect.bottom - pane_rect.top);
+    const band_left: i32 = @max(@as(i32, 0), pane_width - @max(@as(i32, 1), hover_width));
+    return .{
+        .local_x = @floatFromInt(surface_x - band_left),
+        .local_y = @floatFromInt(surface_y),
+        .over_band = surface_x >= band_left and surface_x <= pane_width and
+            surface_y >= 0 and surface_y <= pane_height,
+    };
+}
+
+fn scrollbarProxyPointFromSurfaceCursor(
+    pane_rect: RECT,
+    hover_width: i32,
+    lParam: LPARAM,
+) ScrollbarProxyPoint {
+    return scrollbarProxyPointFromSurfaceCoords(
+        pane_rect,
+        hover_width,
+        signedLowWord(lParamBits(lParam)),
+        signedHighWord(lParamBits(lParam)),
+    );
+}
+
 const KeyText = struct {
     utf8: [8]u8 = [_]u8{0} ** 8,
     len: usize = 0,
@@ -13794,7 +16126,16 @@ fn windowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.w
 
         WM_MOUSEMOVE => {
             if (surface) |v| {
+                if (v.handleScrollbarProxyMouseMove(hwnd, lParam)) return 0;
                 v.handleMouseMove(lParam, mouseModsFromWParam(wParam));
+                return 0;
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+
+        WM_MOUSELEAVE => {
+            if (surface) |v| {
+                v.handleScrollbarMouseLeave();
                 return 0;
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
@@ -13825,7 +16166,16 @@ fn windowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.w
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
 
-        WM_LBUTTONDOWN, WM_LBUTTONUP, WM_RBUTTONDOWN, WM_MBUTTONDOWN, WM_MBUTTONUP => {
+        WM_LBUTTONDOWN, WM_LBUTTONUP => {
+            if (surface) |v| {
+                if (v.handleScrollbarProxyButton(hwnd, msg, lParam)) return 0;
+                v.handleMouseButton(msg, wParam, lParam);
+                return 0;
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+
+        WM_RBUTTONDOWN, WM_MBUTTONDOWN, WM_MBUTTONUP => {
             if (surface) |v| {
                 v.handleMouseButton(msg, wParam, lParam);
                 return 0;
@@ -13881,10 +16231,33 @@ fn windowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.w
 
         WM_SETCURSOR => {
             if (surface) |v| {
-                if (lowWord(@as(usize, @intCast(lParam))) == HTCLIENT and v.applyCursor()) {
-                    return 1;
+                if (lowWord(@as(usize, @intCast(lParam))) == HTCLIENT) {
+                    const now_ms = GetTickCount64();
+                    const was_hovered = v.scrollbar_state.hovered;
+                    const was_visibility = v.scrollbar_state.visibility;
+                    const over_scrollbar = v.updateScrollbarHoverFromScreenCursor(hwnd, now_ms);
+                    if (over_scrollbar or
+                        v.scrollbar_state.hovered != was_hovered or
+                        v.scrollbar_state.visibility != was_visibility)
+                    {
+                        v.syncScrollbarWindowNow(now_ms) catch |err| {
+                            log.warn("win32 scrollbar cursor refresh failed err={}", .{err});
+                        };
+                    }
+                    if (over_scrollbar or v.scrollbar_state.dragging) {
+                        _ = SetCursor(LoadCursorW(null, IDC_ARROW));
+                        return 1;
+                    }
+                    if (v.applyCursor()) {
+                        return 1;
+                    }
                 }
             }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
+
+        WM_CAPTURECHANGED => {
+            if (surface) |v| v.handleScrollbarCaptureChanged();
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
 
@@ -13894,12 +16267,15 @@ fn windowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.w
             defer _ = EndPaint(hwnd, &ps);
 
             if (surface) |v| {
+                const draw_content = v.shouldDrawRendererPaintContent();
                 v.paint_pending = false;
-                v.finishRendererRepaintRequest();
-                if (v.core_initialized) {
+                if (draw_content) {
+                    defer v.finishRendererRepaintRequest();
                     v.redraw() catch |err| {
                         log.err("win32 paint redraw failed err={}", .{err});
                     };
+                } else {
+                    v.requestRendererFrameNow();
                 }
             }
 
@@ -13967,6 +16343,7 @@ pub const Surface = struct {
     cell_size_pixels: apprt.action.CellSize = .{ .width = 0, .height = 0 },
     background_opacity_default: f64 = 1.0,
     background_opacity_force_opaque: bool = false,
+    scrollbar_config: configpkg.Config.Scrollbar = .system,
     size_limit: apprt.action.SizeLimit = .{
         .min_width = 0,
         .min_height = 0,
@@ -13980,15 +16357,28 @@ pub const Surface = struct {
     search_active: bool = false,
     search_needle: ?[:0]const u8 = null,
     search_total: ?usize = null,
+    search_selected_raw: ?usize = null,
     search_selected: ?usize = null,
+    search_match_rows: []const u32 = &.{},
     scrollbar: terminal.Scrollbar = .zero,
+    scrollbar_state: win32_scrollbar_geometry.ScrollbarState = .{},
+    scrollbar_hwnd: ?HWND = null,
+    scrollbar_placement: ChildPlacement = .{},
+    scrollbar_leave_armed: bool = false,
+    scrollbar_leave_hwnd: ?HWND = null,
+    scrollbar_drag_anchor_offset: f32 = 0,
+    scrollbar_alpha_cache: BYTE = 0,
+    scrollbar_markers: []const f32 = &.{},
+    scrollbar_marker_revision: u64 = 0,
+    scrollbar_marker_budget: usize = 0,
+    scrollbar_paint_cache: ?ScrollbarPaintKey = null,
     pwd: ?[:0]const u8 = null,
     progress_status: ?[:0]const u8 = null,
     inspector_visible: bool = false,
-    debug_input_budget: u8 = 32,
     paint_pending: bool = false,
     live_resize_repaint_deferred: bool = false,
     renderer_repaint_requested: std.atomic.Value(bool) = .init(false),
+    renderer_repaint_retry_pending: std.atomic.Value(bool) = .init(false),
     draw_in_progress: bool = false,
     ime_composing: bool = false,
     /// Per-surface bounded undo stack (P6.5). Initialised empty in
@@ -13999,12 +16389,33 @@ pub const Surface = struct {
     /// capture + replay lands with the action-side P6 pass. Caps
     /// (16 entries / 8 MB) are enforced by the stack itself.
     undo_stack: win32_undo.UndoStack = undefined,
-    /// Per-pane docked search bar state (P5.3). Query, toggles,
-    /// debounce, match counts. HWND wire-up (40 px docked WS_CHILD
-    /// with EDIT + toggle + nav buttons) lands with a later P5
-    /// pass; the state lives here so Ctrl+F / search-next / prev
-    /// keybind handlers can route through it when the HWND pops.
+    /// Per-pane docked search bar state. The pure state machine
+    /// lives in `win32_search_bar.zig`; HWNDs below are the live
+    /// child controls docked above the pane content.
     search_bar: win32_search_bar.SearchBar = undefined,
+    search_bar_frame_rect: RECT = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 },
+    search_bar_frame_visible: bool = false,
+    search_bar_bg_hwnd: ?HWND = null,
+    search_bar_bg_placement: ChildPlacement = .{},
+    search_bar_edit_hwnd: ?HWND = null,
+    search_bar_edit_prev_proc: ?*const anyopaque = null,
+    search_bar_edit_placement: ChildPlacement = .{},
+    search_bar_prev_hwnd: ?HWND = null,
+    search_bar_next_hwnd: ?HWND = null,
+    search_bar_regex_hwnd: ?HWND = null,
+    search_bar_case_hwnd: ?HWND = null,
+    search_bar_word_hwnd: ?HWND = null,
+    search_bar_close_hwnd: ?HWND = null,
+    search_bar_button_prev_proc: ?*const anyopaque = null,
+    search_bar_prev_placement: ChildPlacement = .{},
+    search_bar_next_placement: ChildPlacement = .{},
+    search_bar_regex_placement: ChildPlacement = .{},
+    search_bar_case_placement: ChildPlacement = .{},
+    search_bar_word_placement: ChildPlacement = .{},
+    search_bar_close_placement: ChildPlacement = .{},
+    search_bar_results_hwnd: ?HWND = null,
+    search_bar_results_placement: ChildPlacement = .{},
+    search_bar_results_cache: ?[:0]const u8 = null,
     /// OLE drop target registered on the surface HWND. `null` when
     /// the module's `ensureCustomFormats` fails or Ole32 is absent
     /// (extremely unlikely on Win10+). Lifetime: created in
@@ -14043,6 +16454,7 @@ pub const Surface = struct {
             .host_id = host.id,
             .host_active = true,
             .window_visible = false,
+            .scrollbar_config = config.scrollbar,
             .undo_stack = win32_undo.UndoStack.init(app.core_app.alloc),
             .search_bar = win32_search_bar.SearchBar.init(app.core_app.alloc),
             .drop_target = win32_surface_drop_target.DropTarget.init(
@@ -14135,7 +16547,7 @@ pub const Surface = struct {
                     const next_tree = try tab.tree.split(
                         app.core_app.alloc,
                         focus_handle,
-                        .right,
+                        opts.split_direction,
                         0.5,
                         &inserted,
                     );
@@ -14460,15 +16872,38 @@ pub const Surface = struct {
     }
 
     pub fn beginRendererRepaintRequest(self: *Surface) bool {
-        return !self.renderer_repaint_requested.swap(true, .acq_rel);
+        if (!self.renderer_repaint_requested.swap(true, .acq_rel)) return true;
+        self.renderer_repaint_retry_pending.store(true, .release);
+        return false;
     }
 
     pub fn cancelRendererRepaintRequest(self: *Surface) void {
         self.renderer_repaint_requested.store(false, .release);
+        self.renderer_repaint_retry_pending.store(false, .release);
+    }
+
+    fn consumeRendererRepaintRetryPending(self: *Surface) bool {
+        return self.renderer_repaint_retry_pending.swap(false, .acq_rel);
+    }
+
+    fn shouldDrawRendererPaintContent(self: *Surface) bool {
+        return self.renderer_repaint_requested.load(.acquire);
     }
 
     fn finishRendererRepaintRequest(self: *Surface) void {
         self.renderer_repaint_requested.store(false, .release);
+        if (self.consumeRendererRepaintRetryPending()) {
+            self.core_surface.renderer_thread.wakeup.notify() catch |err| {
+                log.warn("win32 renderer repaint retry wake failed err={}", .{err});
+            };
+        }
+    }
+
+    fn requestRendererFrameNow(self: *Surface) void {
+        if (!self.core_initialized) return;
+        self.core_surface.renderer_thread.wakeup.notify() catch |err| {
+            log.warn("win32 renderer frame wake failed err={}", .{err});
+        };
     }
 
     fn markLiveResizeRepaintDeferred(self: *Surface) void {
@@ -14477,7 +16912,10 @@ pub const Surface = struct {
 
     fn queuePaintRequest(self: *Surface, update_now: bool) !void {
         const hwnd = self.hwnd orelse return error.NoWindow;
-        if (self.paint_pending) return;
+        if (self.paint_pending) {
+            if (update_now) _ = UpdateWindow(hwnd);
+            return;
+        }
 
         self.paint_pending = true;
         errdefer self.paint_pending = false;
@@ -14486,6 +16924,15 @@ pub const Surface = struct {
             return windows.unexpectedError(windows.kernel32.GetLastError());
         }
         if (update_now) _ = UpdateWindow(hwnd);
+    }
+
+    fn forcePaintRequestNow(self: *Surface) !void {
+        const hwnd = self.hwnd orelse return error.NoWindow;
+        self.paint_pending = false;
+        const flags: UINT = RDW_INVALIDATE | RDW_INTERNALPAINT | RDW_UPDATENOW;
+        if (RedrawWindow(hwnd, null, null, flags) == 0) {
+            return windows.unexpectedError(windows.kernel32.GetLastError());
+        }
     }
 
     fn flushDeferredLiveResizeRepaint(self: *Surface, repaint_fn: anytype) !bool {
@@ -14513,8 +16960,19 @@ pub const Surface = struct {
         try self.queuePaintRequest(true);
     }
 
-    pub fn requestRepaint(self: *Surface) !void {
+    fn requestRepaintWithMode(self: *Surface, repaint_mode: SurfaceRepaintRequestMode) !void {
         _ = self.hwnd orelse return;
+        if (repaint_mode == .defer_until_flush) {
+            self.markLiveResizeRepaintDeferred();
+            return;
+        }
+        self.queuePaintRequest(repaint_mode == .update_now) catch |err| {
+            self.cancelRendererRepaintRequest();
+            return err;
+        };
+    }
+
+    pub fn requestRepaint(self: *Surface) !void {
         // During an interactive drag-resize the OS drives WM_SIZE →
         // WM_PAINT on every mouse-delta; stacking additional
         // InvalidateRect calls from the renderer thread just piles
@@ -14529,16 +16987,8 @@ pub const Surface = struct {
         // enters a drag. Surfaces outside a Host (quick-terminal
         // pre-host-attach, pre-init paint) fall through without
         // gating.
-        if (self.host) |h| {
-            if (h.is_live_resize.load(.acquire)) {
-                self.markLiveResizeRepaintDeferred();
-                return;
-            }
-        }
-        self.queuePaintRequest(false) catch |err| {
-            self.cancelRendererRepaintRequest();
-            return err;
-        };
+        const repaint_mode = surfaceRepaintRequestMode(self.host);
+        try self.requestRepaintWithMode(repaint_mode);
     }
 
     pub fn redraw(self: *Surface) !void {
@@ -14588,18 +17038,21 @@ pub const Surface = struct {
     }
 
     fn setTitle(self: *Surface, title: []const u8) !void {
+        if (ownedStringEquals(self.title, title)) return;
         const alloc = self.app.core_app.alloc;
         try appendOwnedString(alloc, &self.title, title);
         try self.refreshWindowTitle();
     }
 
     fn setTitleOverride(self: *Surface, title: ?[]const u8) !void {
+        if (optionalOwnedStringEquals(self.title_override, title)) return;
         const alloc = self.app.core_app.alloc;
         try appendOwnedString(alloc, &self.title_override, title);
         try self.refreshWindowTitle();
     }
 
     fn setTabTitleOverride(self: *Surface, title: ?[]const u8) !void {
+        if (optionalOwnedStringEquals(self.tab_title_override, title)) return;
         const alloc = self.app.core_app.alloc;
         try appendOwnedString(alloc, &self.tab_title_override, title);
         try self.refreshWindowTitle();
@@ -14651,16 +17104,1289 @@ pub const Surface = struct {
         return true;
     }
 
+    fn scrollbarPolicy(self: *const Surface) ScrollbarPolicy {
+        return switch (self.scrollbar_config) {
+            .never => .never,
+            .system => if (isHighContrastActive() or !self.app.system_dynamic_scrollbars)
+                .always
+            else
+                .dynamic,
+        };
+    }
+
+    fn scrollbarScrollable(self: *const Surface) bool {
+        return self.scrollbar.total > self.scrollbar.len and self.scrollbar.len > 0;
+    }
+
+    fn scrollbarAnimationsEnabled(self: *const Surface) bool {
+        _ = self;
+        return Host.clientAnimationsEnabled() and !isHighContrastActive();
+    }
+
+    fn scrollbarHoverWidthPx(self: *const Surface) i32 {
+        if (self.host) |host| return @max(1, host.scaled(10));
+        return @max(1, @as(i32, @intFromFloat(@ceil(
+            win32_scrollbar_geometry.track_width_hover_dp * self.content_scale.x,
+        ))));
+    }
+
+    fn scrollbarMarkerBudgetForHeight(height: i32) usize {
+        if (height <= 0) return 0;
+        return @min(128, @max(8, @as(usize, @intCast(@max(1, @divTrunc(height, 4))))));
+    }
+
+    fn scrollbarChildRect(self: *const Surface, pane_rect: RECT) RECT {
+        const width = self.scrollbarHoverWidthPx();
+        return childRect(
+            pane_rect.right - width,
+            pane_rect.top,
+            width,
+            @max(1, pane_rect.bottom - pane_rect.top),
+        );
+    }
+
+    fn scrollbarLocalLayout(self: *const Surface) ?win32_scrollbar_geometry.Layout {
+        if (!self.scrollbar_placement.rect_known) return null;
+        const rect = self.scrollbar_placement.rect;
+        const width = @max(1, rect.right - rect.left);
+        const height = @max(1, rect.bottom - rect.top);
+        const max_top = if (self.scrollbar.total > self.scrollbar.len)
+            self.scrollbar.total - self.scrollbar.len
+        else
+            0;
+        return .{
+            .pane = .{
+                .left = 0,
+                .top = 0,
+                .right = @floatFromInt(width),
+                .bottom = @floatFromInt(height),
+            },
+            .total_rows = self.scrollbar.total,
+            .viewport_rows = self.scrollbar.len,
+            .top_row = @min(self.scrollbar.offset, max_top),
+            .dpi_scale = if (self.host) |host|
+                @as(f32, @floatFromInt(host.current_dpi)) / 96.0
+            else
+                self.content_scale.x,
+            .hovered = self.scrollbar_state.hovered,
+            .dragging = self.scrollbar_state.dragging,
+        };
+    }
+
+    fn scrollbarRectToRect(value: win32_scrollbar_geometry.Rect) RECT {
+        const left: i32 = @intFromFloat(@floor(value.left));
+        const top: i32 = @intFromFloat(@floor(value.top));
+        const right: i32 = @max(left + 1, @as(i32, @intFromFloat(@ceil(value.right))));
+        const bottom: i32 = @max(top + 1, @as(i32, @intFromFloat(@ceil(value.bottom))));
+        return .{
+            .left = left,
+            .top = top,
+            .right = right,
+            .bottom = bottom,
+        };
+    }
+
+    fn scrollbarPaintKey(self: *const Surface, rect: RECT) ScrollbarPaintKey {
+        return .{
+            .rect = rect,
+            .total = self.scrollbar.total,
+            .len = self.scrollbar.len,
+            .offset = self.scrollbar.offset,
+            .dpi = if (self.host) |host| host.current_dpi else 96,
+            .hovered = self.scrollbar_state.hovered,
+            .dragging = self.scrollbar_state.dragging,
+            .marker_revision = self.scrollbar_marker_revision,
+        };
+    }
+
+    fn clearScrollbarMarkers(self: *Surface) void {
+        if (self.scrollbar_markers.len > 0) {
+            self.app.core_app.alloc.free(self.scrollbar_markers);
+            self.scrollbar_markers = &.{};
+            self.scrollbar_marker_revision +%= 1;
+        }
+        self.scrollbar_marker_budget = 0;
+    }
+
+    fn rebuildScrollbarMarkers(self: *Surface, marker_budget: usize) !void {
+        self.clearScrollbarMarkers();
+        if (marker_budget == 0 or self.search_match_rows.len == 0 or self.scrollbar.total == 0) return;
+
+        const alloc = self.app.core_app.alloc;
+        const rows = try alloc.alloc(usize, self.search_match_rows.len);
+        defer alloc.free(rows);
+        for (self.search_match_rows, 0..) |row, i| rows[i] = @intCast(row);
+
+        self.scrollbar_markers = try win32_search_bar.downsampleMarkers(
+            alloc,
+            rows,
+            self.scrollbar.total,
+            marker_budget,
+        );
+        self.scrollbar_marker_budget = marker_budget;
+        self.scrollbar_marker_revision +%= 1;
+    }
+
+    fn ensureScrollbarWindow(self: *Surface) !void {
+        if (self.scrollbar_hwnd != null) return;
+
+        const host = self.host orelse return;
+        const hwnd = host.hwnd orelse return;
+        self.scrollbar_hwnd = CreateWindowExW(
+            WS_EX_LAYERED,
+            scrollbar_class_name,
+            std.unicode.utf8ToUtf16LeStringLiteral(""),
+            WS_CHILD,
+            0,
+            0,
+            self.scrollbarHoverWidthPx(),
+            32,
+            hwnd,
+            null,
+            self.app.hinstance,
+            null,
+        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+
+        const scrollbar_hwnd = self.scrollbar_hwnd.?;
+        _ = SetWindowLongPtrW(
+            scrollbar_hwnd,
+            GWLP_USERDATA,
+            @as(LONG_PTR, @intCast(@intFromPtr(self))),
+        );
+        if (SetLayeredWindowAttributes(
+            scrollbar_hwnd,
+            scrollbar_transparent_key,
+            0,
+            LWA_ALPHA | LWA_COLORKEY,
+        ) == 0) {
+            return windows.unexpectedError(windows.kernel32.GetLastError());
+        }
+    }
+
+    fn destroyScrollbarWindow(self: *Surface) void {
+        if (self.scrollbar_state.dragging) _ = ReleaseCapture();
+        self.clearScrollbarMarkers();
+        if (self.scrollbar_hwnd) |hwnd| _ = DestroyWindow(hwnd);
+        self.scrollbar_hwnd = null;
+        self.scrollbar_placement = .{};
+        self.scrollbar_leave_armed = false;
+        self.scrollbar_leave_hwnd = null;
+        self.scrollbar_drag_anchor_offset = 0;
+        self.scrollbar_alpha_cache = 0;
+        self.scrollbar_paint_cache = null;
+        self.scrollbar_state = .{};
+    }
+
+    fn invalidateScrollbarWindow(self: *Surface) void {
+        if (self.scrollbar_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
+    }
+
+    fn settleReducedScrollbarState(self: *Surface, now_ms: u64) void {
+        if (self.scrollbarAnimationsEnabled()) return;
+        switch (self.scrollbar_state.visibility) {
+            .fading_in, .fading_out => _ = self.scrollbar_state.tick(
+                now_ms + win32_scrollbar_geometry.auto_hide_fade_ms,
+            ),
+            else => {},
+        }
+    }
+
+    fn noteScrollbarActivity(self: *Surface, now_ms: u64) void {
+        if (self.scrollbarPolicy() != .dynamic) return;
+        self.scrollbar_state.onScrollActivity(now_ms);
+        self.settleReducedScrollbarState(now_ms);
+    }
+
+    fn armScrollbarLeaveTracking(self: *Surface, hwnd: HWND) void {
+        if (self.scrollbar_leave_armed and self.scrollbar_leave_hwnd == hwnd) return;
+        var track: TRACKMOUSEEVENT = .{
+            .cbSize = @sizeOf(TRACKMOUSEEVENT),
+            .dwFlags = TME_LEAVE,
+            .hwndTrack = hwnd,
+            .dwHoverTime = 0,
+        };
+        _ = TrackMouseEvent(&track);
+        self.scrollbar_leave_armed = true;
+        self.scrollbar_leave_hwnd = hwnd;
+    }
+
+    fn updateScrollbarFromLocalCursor(
+        self: *Surface,
+        tracking_hwnd: ?HWND,
+        x: f32,
+        y: f32,
+        now_ms: u64,
+    ) bool {
+        const layout = self.scrollbarLocalLayout() orelse return false;
+        const over_track = win32_scrollbar_geometry.pointOverTrack(layout, x, y);
+
+        if (tracking_hwnd) |value| self.armScrollbarLeaveTracking(value);
+        self.setScrollbarHovered(over_track, now_ms);
+
+        if (self.scrollbar_state.dragging) {
+            self.noteScrollbarActivity(now_ms);
+            self.scrollbarScrollToRow(win32_scrollbar_geometry.rowFromCursor(
+                layout,
+                y,
+                self.scrollbar_drag_anchor_offset,
+            )) catch |err| {
+                log.warn("win32 scrollbar drag failed err={}", .{err});
+            };
+        }
+        return over_track;
+    }
+
+    fn handleScrollbarMouseMoveLocal(self: *Surface, tracking_hwnd: HWND, x: f32, y: f32) void {
+        const now_ms = GetTickCount64();
+        _ = self.updateScrollbarFromLocalCursor(tracking_hwnd, x, y, now_ms);
+        self.syncScrollbarWindowNow(now_ms) catch |err| {
+            log.warn("win32 scrollbar move failed err={}", .{err});
+        };
+    }
+
+    fn handleScrollbarLeftButtonDownLocal(self: *Surface, hwnd: HWND, x: f32, y: f32) void {
+        const layout = self.scrollbarLocalLayout() orelse return;
+        const now_ms = GetTickCount64();
+        const thumb = win32_scrollbar_geometry.thumbRect(layout);
+        self.setScrollbarHovered(true, now_ms);
+        self.setScrollbarDragging(true, now_ms);
+        self.noteScrollbarActivity(now_ms);
+        self.scrollbar_drag_anchor_offset = if (win32_scrollbar_geometry.pointOverThumb(layout, x, y))
+            std.math.clamp(y - thumb.top, 0.0, thumb.bottom - thumb.top)
+        else
+            @max(0.0, (thumb.bottom - thumb.top) / 2.0);
+        _ = SetCapture(hwnd);
+        self.scrollbarScrollToRow(win32_scrollbar_geometry.rowFromCursor(
+            layout,
+            y,
+            self.scrollbar_drag_anchor_offset,
+        )) catch |err| {
+            log.warn("win32 scrollbar click failed err={}", .{err});
+        };
+        self.syncScrollbarWindowNow(now_ms) catch |err| {
+            log.warn("win32 scrollbar press failed err={}", .{err});
+        };
+    }
+
+    fn handleScrollbarLeftButtonUpLocal(self: *Surface, x: f32, y: f32) void {
+        const now_ms = GetTickCount64();
+        const layout = self.scrollbarLocalLayout();
+        _ = ReleaseCapture();
+        self.setScrollbarDragging(false, now_ms);
+        if (layout) |value| {
+            self.setScrollbarHovered(
+                win32_scrollbar_geometry.pointOverTrack(value, x, y),
+                now_ms,
+            );
+        } else {
+            self.setScrollbarHovered(false, now_ms);
+        }
+        self.syncScrollbarWindowNow(now_ms) catch |err| {
+            log.warn("win32 scrollbar release failed err={}", .{err});
+        };
+    }
+
+    fn setScrollbarHovered(self: *Surface, hovered: bool, now_ms: u64) void {
+        if (self.scrollbar_state.hovered == hovered) return;
+        self.scrollbar_state.setHovered(hovered, now_ms);
+        self.settleReducedScrollbarState(now_ms);
+    }
+
+    fn setScrollbarDragging(self: *Surface, dragging: bool, now_ms: u64) void {
+        if (self.scrollbar_state.dragging == dragging) return;
+        self.scrollbar_state.setDragging(dragging, now_ms);
+        self.settleReducedScrollbarState(now_ms);
+    }
+
+    fn syncScrollbarWindowNow(self: *Surface, now_ms: u64) !void {
+        const host = self.host orelse return;
+        const was_needing_heartbeat = self.scrollbarNeedsHeartbeat();
+        const policy = self.scrollbarPolicy();
+        const should_exist = self.window_visible and self.scrollbarScrollable() and
+            self.placement.rect_known and self.placement.visible;
+
+        if (!should_exist or policy == .never) {
+            if (self.scrollbar_state.dragging) _ = ReleaseCapture();
+            self.setScrollbarHovered(false, now_ms);
+            self.setScrollbarDragging(false, now_ms);
+            self.scrollbar_state.visibility = .hidden;
+            self.scrollbar_alpha_cache = 0;
+            self.scrollbar_paint_cache = null;
+            if (self.scrollbar_hwnd) |hwnd| {
+                _ = applyChildVisibility(hwnd, &self.scrollbar_placement, false);
+            }
+            if (was_needing_heartbeat != self.scrollbarNeedsHeartbeat()) {
+                host.refreshScrollbarTimerState();
+            }
+            return;
+        }
+
+        try self.ensureScrollbarWindow();
+        const scrollbar_hwnd = self.scrollbar_hwnd.?;
+        const child_rect = self.scrollbarChildRect(self.placement.rect);
+        _ = applyChildRect(scrollbar_hwnd, &self.scrollbar_placement, child_rect);
+        _ = applyChildVisibility(scrollbar_hwnd, &self.scrollbar_placement, true);
+
+        const marker_budget = scrollbarMarkerBudgetForHeight(child_rect.bottom - child_rect.top);
+        if (marker_budget != self.scrollbar_marker_budget) {
+            try self.rebuildScrollbarMarkers(marker_budget);
+        }
+
+        switch (policy) {
+            .always => {
+                self.scrollbar_state.visibility = .visible;
+                self.scrollbar_state.last_activity_ms = now_ms;
+                self.scrollbar_state.fade_started_ms = now_ms;
+            },
+            .dynamic => self.settleReducedScrollbarState(now_ms),
+            .never => unreachable,
+        }
+
+        const alpha: BYTE = switch (policy) {
+            .never => 0,
+            .always => 255,
+            .dynamic => alphaByteForOpacity(if (self.scrollbarAnimationsEnabled())
+                @as(f64, @floatCast(self.scrollbar_state.alpha(now_ms)))
+            else if (self.scrollbar_state.visibility == .hidden)
+                @as(f64, @floatFromInt(hiddenScrollbarAlphaByte())) / 255.0
+            else
+                1),
+        };
+        const paint_key = self.scrollbarPaintKey(child_rect);
+        const paint_changed = scrollbarPaintKeyChanged(self.scrollbar_paint_cache, paint_key);
+        if (alpha != self.scrollbar_alpha_cache) {
+            if (SetLayeredWindowAttributes(
+                scrollbar_hwnd,
+                scrollbar_transparent_key,
+                alpha,
+                LWA_ALPHA | LWA_COLORKEY,
+            ) == 0) {
+                return windows.unexpectedError(windows.kernel32.GetLastError());
+            }
+            self.scrollbar_alpha_cache = alpha;
+        }
+
+        if (paint_changed) {
+            self.scrollbar_paint_cache = paint_key;
+            self.invalidateScrollbarWindow();
+        }
+        if (was_needing_heartbeat != self.scrollbarNeedsHeartbeat()) {
+            host.refreshScrollbarTimerState();
+        }
+    }
+
+    fn refreshScrollbarWindow(self: *Surface) !void {
+        try self.syncScrollbarWindowNow(GetTickCount64());
+    }
+
+    fn scrollbarNeedsHeartbeat(self: *const Surface) bool {
+        return scrollbarNeedsHeartbeatForState(
+            self.scrollbarPolicy(),
+            self.window_visible,
+            self.scrollbarScrollable(),
+            self.scrollbar_state.visibility,
+        );
+    }
+
+    fn tickScrollbar(self: *Surface, now_ms: u64) void {
+        const prev_hovered = self.scrollbar_state.hovered;
+        const prev_dragging = self.scrollbar_state.dragging;
+        const prev_visibility = self.scrollbar_state.visibility;
+        var over_scrollbar = false;
+        if (self.hwnd) |hwnd| {
+            over_scrollbar = self.updateScrollbarHoverFromScreenCursor(hwnd, now_ms);
+        }
+        if (self.scrollbarPolicy() == .dynamic and self.scrollbarScrollable()) {
+            _ = self.scrollbar_state.tick(now_ms);
+            self.settleReducedScrollbarState(now_ms);
+        }
+        if (!over_scrollbar and
+            self.scrollbar_state.hovered == prev_hovered and
+            self.scrollbar_state.dragging == prev_dragging and
+            self.scrollbar_state.visibility == prev_visibility and
+            self.scrollbar_state.visibility == .hidden)
+        {
+            return;
+        }
+        self.syncScrollbarWindowNow(now_ms) catch |err| {
+            log.warn("win32 scrollbar tick failed err={}", .{err});
+        };
+    }
+
+    fn scrollbarScrollToRow(self: *Surface, row: usize) !void {
+        if (!self.core_initialized) return;
+        self.app.activateSurfaceNoFocus(self);
+        _ = try self.core_surface.performBindingAction(.{ .scroll_to_row = row });
+    }
+
+    fn handleScrollbarMouseMove(self: *Surface, hwnd: HWND, lParam: LPARAM) void {
+        const x: f32 = @floatFromInt(signedLowWord(lParamBits(lParam)));
+        const y: f32 = @floatFromInt(signedHighWord(lParamBits(lParam)));
+        self.handleScrollbarMouseMoveLocal(hwnd, x, y);
+    }
+
+    fn handleScrollbarMouseLeave(self: *Surface) void {
+        self.scrollbar_leave_armed = false;
+        self.scrollbar_leave_hwnd = null;
+        if (self.scrollbar_state.dragging) return;
+        const now_ms = GetTickCount64();
+        self.setScrollbarHovered(false, now_ms);
+        self.syncScrollbarWindowNow(now_ms) catch |err| {
+            log.warn("win32 scrollbar leave failed err={}", .{err});
+        };
+    }
+
+    fn handleScrollbarLeftButtonDown(self: *Surface, hwnd: HWND, lParam: LPARAM) void {
+        const x: f32 = @floatFromInt(signedLowWord(lParamBits(lParam)));
+        const y: f32 = @floatFromInt(signedHighWord(lParamBits(lParam)));
+        self.handleScrollbarLeftButtonDownLocal(hwnd, x, y);
+    }
+
+    fn handleScrollbarLeftButtonUp(self: *Surface, lParam: LPARAM) void {
+        const x: f32 = @floatFromInt(signedLowWord(lParamBits(lParam)));
+        const y: f32 = @floatFromInt(signedHighWord(lParamBits(lParam)));
+        self.handleScrollbarLeftButtonUpLocal(x, y);
+    }
+
+    fn scrollbarProxyPointFromScreenCursor(self: *const Surface, hwnd: HWND) ?ScrollbarProxyPoint {
+        if (!self.window_visible or !self.scrollbarScrollable()) return null;
+        if (self.scrollbarPolicy() == .never or !self.placement.rect_known) return null;
+
+        var point: POINT = .{ .x = 0, .y = 0 };
+        if (GetCursorPos(&point) == 0) return null;
+        if (ScreenToClient(hwnd, &point) == 0) return null;
+
+        return scrollbarProxyPointFromSurfaceCoords(
+            self.placement.rect,
+            self.scrollbarHoverWidthPx(),
+            point.x,
+            point.y,
+        );
+    }
+
+    fn updateScrollbarHoverFromScreenCursor(self: *Surface, hwnd: HWND, now_ms: u64) bool {
+        const proxy = self.scrollbarProxyPointFromScreenCursor(hwnd) orelse {
+            if (self.scrollbar_state.hovered and !self.scrollbar_state.dragging) {
+                self.setScrollbarHovered(false, now_ms);
+            }
+            return false;
+        };
+
+        if (proxy.over_band or self.scrollbar_state.dragging) {
+            return self.updateScrollbarFromLocalCursor(
+                null,
+                proxy.local_x,
+                proxy.local_y,
+                now_ms,
+            );
+        }
+
+        if (self.scrollbar_state.hovered) {
+            self.setScrollbarHovered(false, now_ms);
+        }
+        return false;
+    }
+
+    fn handleScrollbarProxyMouseMove(self: *Surface, hwnd: HWND, lParam: LPARAM) bool {
+        if (!self.window_visible or !self.scrollbarScrollable()) return false;
+        if (self.scrollbarPolicy() == .never or !self.placement.rect_known) return false;
+
+        const proxy = scrollbarProxyPointFromSurfaceCursor(
+            self.placement.rect,
+            self.scrollbarHoverWidthPx(),
+            lParam,
+        );
+        if (proxy.over_band or self.scrollbar_state.dragging) {
+            self.handleScrollbarMouseMoveLocal(hwnd, proxy.local_x, proxy.local_y);
+            return true;
+        }
+
+        if (self.scrollbar_state.hovered) {
+            const now_ms = GetTickCount64();
+            self.setScrollbarHovered(false, now_ms);
+            self.syncScrollbarWindowNow(now_ms) catch |err| {
+                log.warn("win32 scrollbar proxy leave failed err={}", .{err});
+            };
+        }
+        return false;
+    }
+
+    fn handleScrollbarProxyButton(self: *Surface, hwnd: HWND, msg: UINT, lParam: LPARAM) bool {
+        if (!self.window_visible or !self.scrollbarScrollable()) return false;
+        if (self.scrollbarPolicy() == .never or !self.placement.rect_known) return false;
+
+        const proxy = scrollbarProxyPointFromSurfaceCursor(
+            self.placement.rect,
+            self.scrollbarHoverWidthPx(),
+            lParam,
+        );
+        return switch (msg) {
+            WM_LBUTTONDOWN => blk: {
+                if (!proxy.over_band) break :blk false;
+                self.handleScrollbarLeftButtonDownLocal(hwnd, proxy.local_x, proxy.local_y);
+                break :blk true;
+            },
+            WM_LBUTTONUP => blk: {
+                if (!self.scrollbar_state.dragging and !proxy.over_band) break :blk false;
+                self.handleScrollbarLeftButtonUpLocal(proxy.local_x, proxy.local_y);
+                break :blk true;
+            },
+            else => false,
+        };
+    }
+
+    fn handleScrollbarCaptureChanged(self: *Surface) void {
+        if (!self.scrollbar_state.dragging) return;
+        const now_ms = GetTickCount64();
+        self.setScrollbarDragging(false, now_ms);
+        self.syncScrollbarWindowNow(now_ms) catch |err| {
+            log.warn("win32 scrollbar capture reset failed err={}", .{err});
+        };
+    }
+
+    fn paintScrollbar(self: *Surface) void {
+        const hwnd = self.scrollbar_hwnd orelse return;
+        var ps: PAINTSTRUCT = undefined;
+        const hdc = BeginPaint(hwnd, &ps) orelse return;
+        defer _ = EndPaint(hwnd, &ps);
+
+        var client_rect: RECT = undefined;
+        if (GetClientRect(hwnd, &client_rect) == 0) return;
+        fillSolidRect(hdc, client_rect, scrollbar_transparent_key);
+        if (!self.scrollbarScrollable()) return;
+
+        const layout = self.scrollbarLocalLayout() orelse return;
+        const theme = &self.app.resolved_theme;
+        const is_hc = isHighContrastActive();
+        const track = scrollbarRectToRect(win32_scrollbar_geometry.trackRect(layout));
+        const thumb = scrollbarRectToRect(win32_scrollbar_geometry.thumbRect(layout));
+        const track_bg = if (is_hc)
+            theme.chrome_border
+        else if (theme.is_dark)
+            blendColorRGB(theme.chrome_bg, theme.chrome_border, 0.65)
+        else
+            blendColorRGB(theme.chrome_bg, theme.chrome_border, 0.35);
+        const track_border = if (is_hc)
+            theme.text_primary
+        else if (theme.is_dark)
+            adjustColor(track_bg, 20, 20, 24)
+        else
+            adjustColor(track_bg, -18, -18, -18);
+        const thumb_bg = if (is_hc)
+            theme.text_primary
+        else if (self.scrollbar_state.dragging)
+            theme.accent_hover
+        else if (self.scrollbar_state.hovered)
+            theme.accent
+        else
+            blendColorRGB(theme.text_secondary, theme.chrome_border, if (theme.is_dark) 0.30 else 0.45);
+        const thumb_border = if (is_hc)
+            theme.chrome_border
+        else if (self.scrollbar_state.dragging or self.scrollbar_state.hovered)
+            theme.accent_hover
+        else if (theme.is_dark)
+            adjustColor(thumb_bg, 16, 16, 18)
+        else
+            adjustColor(thumb_bg, -16, -16, -16);
+        const marker_color = if (is_hc) theme.accent else blendColorRGB(theme.accent, thumb_bg, 0.20);
+        const radius = if (is_hc) 0 else @max(2, @min(track.right - track.left, track.bottom - track.top));
+
+        drawRoundedRect(hdc, track, track_bg, track_border, radius);
+
+        const track_height = @max(1, track.bottom - track.top);
+        const marker_height: i32 = if (is_hc) 3 else 2;
+        const marker_left = track.left + 1;
+        const marker_right = @max(marker_left + 1, track.right - 1);
+        for (self.scrollbar_markers) |value| {
+            const top = track.top + @as(i32, @intFromFloat(@round(
+                value * @as(f32, @floatFromInt(@max(0, track_height - marker_height))),
+            )));
+            fillSolidRect(hdc, .{
+                .left = marker_left,
+                .top = top,
+                .right = marker_right,
+                .bottom = top + marker_height,
+            }, marker_color);
+        }
+
+        drawRoundedRect(hdc, thumb, thumb_bg, thumb_border, radius);
+    }
+
+    fn searchQueryOptions(self: *const Surface) terminal.search.QueryOptions {
+        return .{
+            .regex = self.search_bar.toggles.regex,
+            .case_sensitive = self.search_bar.toggles.case_sensitive,
+            .whole_word = self.search_bar.toggles.whole_word,
+        };
+    }
+
+    fn applySearchBarFont(self: *Surface, font: ?*anyopaque) void {
+        const value = if (font) |f| @intFromPtr(f) else 0;
+        if (self.search_bar_edit_hwnd) |hwnd| _ = SendMessageW(hwnd, WM_SETFONT, value, 1);
+        if (self.search_bar_prev_hwnd) |hwnd| _ = SendMessageW(hwnd, WM_SETFONT, value, 1);
+        if (self.search_bar_next_hwnd) |hwnd| _ = SendMessageW(hwnd, WM_SETFONT, value, 1);
+        if (self.search_bar_regex_hwnd) |hwnd| _ = SendMessageW(hwnd, WM_SETFONT, value, 1);
+        if (self.search_bar_case_hwnd) |hwnd| _ = SendMessageW(hwnd, WM_SETFONT, value, 1);
+        if (self.search_bar_word_hwnd) |hwnd| _ = SendMessageW(hwnd, WM_SETFONT, value, 1);
+        if (self.search_bar_close_hwnd) |hwnd| _ = SendMessageW(hwnd, WM_SETFONT, value, 1);
+        if (self.search_bar_results_hwnd) |hwnd| _ = SendMessageW(hwnd, WM_SETFONT, value, 1);
+    }
+
+    fn invalidateSearchButtons(self: *Surface) void {
+        const handles = [_]?HWND{
+            self.search_bar_prev_hwnd,
+            self.search_bar_next_hwnd,
+            self.search_bar_regex_hwnd,
+            self.search_bar_case_hwnd,
+            self.search_bar_word_hwnd,
+            self.search_bar_close_hwnd,
+        };
+        for (handles) |maybe_hwnd| {
+            if (maybe_hwnd) |hwnd| {
+                _ = InvalidateRect(hwnd, null, 0);
+            }
+        }
+    }
+
+    fn invalidateSearchBarChildPaint(self: *Surface) void {
+        if (!self.search_bar_frame_visible) return;
+        const handles = [_]?HWND{
+            self.search_bar_bg_hwnd,
+            self.search_bar_edit_hwnd,
+            self.search_bar_prev_hwnd,
+            self.search_bar_next_hwnd,
+            self.search_bar_regex_hwnd,
+            self.search_bar_case_hwnd,
+            self.search_bar_word_hwnd,
+            self.search_bar_close_hwnd,
+            self.search_bar_results_hwnd,
+        };
+        for (handles) |maybe_hwnd| {
+            if (maybe_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
+        }
+    }
+
+    fn invalidateSearchBarFrameRect(self: *Surface, rect: RECT) void {
+        if (rect.right <= rect.left or rect.bottom <= rect.top) return;
+        const host = self.host orelse return;
+        const hwnd = host.hwnd orelse return;
+        _ = InvalidateRect(hwnd, &rect, 0);
+    }
+
+    fn invalidateSearchBarFrame(self: *Surface) void {
+        if (!self.search_bar_frame_visible) return;
+        self.invalidateSearchBarFrameRect(self.search_bar_frame_rect);
+    }
+
+    fn updateSearchBarFrameRect(self: *Surface, frame_rect: RECT) void {
+        const was_visible = self.search_bar_frame_visible;
+        const old_rect = self.search_bar_frame_rect;
+        self.search_bar_frame_rect = frame_rect;
+        self.search_bar_frame_visible = true;
+        if (!was_visible or !rectEquals(old_rect, frame_rect)) {
+            if (was_visible) self.invalidateSearchBarFrameRect(old_rect);
+            self.invalidateSearchBarFrameRect(frame_rect);
+        }
+    }
+
+    fn invalidateSearchBarLayoutCache(self: *Surface) void {
+        self.invalidateSearchBarFrame();
+        self.search_bar_bg_placement.rect_known = false;
+        self.search_bar_edit_placement.rect_known = false;
+        self.search_bar_prev_placement.rect_known = false;
+        self.search_bar_next_placement.rect_known = false;
+        self.search_bar_regex_placement.rect_known = false;
+        self.search_bar_case_placement.rect_known = false;
+        self.search_bar_word_placement.rect_known = false;
+        self.search_bar_close_placement.rect_known = false;
+        self.search_bar_results_placement.rect_known = false;
+        self.search_bar_frame_visible = false;
+        self.search_bar_frame_rect = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
+    }
+
+    fn hideSearchBarControls(self: *Surface) bool {
+        var changed = false;
+        if (self.search_bar_frame_visible) {
+            self.invalidateSearchBarFrame();
+            changed = true;
+        }
+        if (self.search_bar_bg_hwnd) |hwnd| {
+            changed = applyChildVisibility(hwnd, &self.search_bar_bg_placement, false) or changed;
+        }
+        if (self.search_bar_edit_hwnd) |hwnd| {
+            changed = applyChildVisibility(hwnd, &self.search_bar_edit_placement, false) or changed;
+        }
+        if (self.search_bar_prev_hwnd) |hwnd| {
+            changed = applyChildVisibility(hwnd, &self.search_bar_prev_placement, false) or changed;
+        }
+        if (self.search_bar_next_hwnd) |hwnd| {
+            changed = applyChildVisibility(hwnd, &self.search_bar_next_placement, false) or changed;
+        }
+        if (self.search_bar_regex_hwnd) |hwnd| {
+            changed = applyChildVisibility(hwnd, &self.search_bar_regex_placement, false) or changed;
+        }
+        if (self.search_bar_case_hwnd) |hwnd| {
+            changed = applyChildVisibility(hwnd, &self.search_bar_case_placement, false) or changed;
+        }
+        if (self.search_bar_word_hwnd) |hwnd| {
+            changed = applyChildVisibility(hwnd, &self.search_bar_word_placement, false) or changed;
+        }
+        if (self.search_bar_close_hwnd) |hwnd| {
+            changed = applyChildVisibility(hwnd, &self.search_bar_close_placement, false) or changed;
+        }
+        if (self.search_bar_results_hwnd) |hwnd| {
+            changed = applyChildVisibility(hwnd, &self.search_bar_results_placement, false) or changed;
+        }
+        self.search_bar_frame_visible = false;
+        self.search_bar_frame_rect = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
+        return changed;
+    }
+
+    fn ensureSearchBarControls(self: *Surface) !void {
+        if (self.search_bar_edit_hwnd != null) return;
+
+        const host = self.host orelse return;
+        const hwnd = host.hwnd orelse return;
+
+        self.search_bar_bg_hwnd = CreateWindowExW(
+            0,
+            prompt_label_class,
+            std.unicode.utf8ToUtf16LeStringLiteral(""),
+            WS_CHILD | WS_CLIPSIBLINGS | SS_OWNERDRAW,
+            0,
+            0,
+            160,
+            host_search_bar_height,
+            hwnd,
+            @ptrFromInt(SEARCH_BG_ID),
+            self.app.hinstance,
+            null,
+        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+
+        self.search_bar_edit_hwnd = CreateWindowExW(
+            0,
+            prompt_edit_class,
+            std.unicode.utf8ToUtf16LeStringLiteral(""),
+            WS_CHILD | WS_TABSTOP | ES_AUTOHSCROLL,
+            0,
+            0,
+            160,
+            host_search_bar_height - 10,
+            hwnd,
+            @ptrFromInt(SEARCH_EDIT_ID),
+            self.app.hinstance,
+            null,
+        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+
+        const edit_hwnd = self.search_bar_edit_hwnd.?;
+        _ = SetWindowLongPtrW(
+            edit_hwnd,
+            GWLP_USERDATA,
+            @as(LONG_PTR, @intCast(@intFromPtr(host))),
+        );
+        const edit_prev = SetWindowLongPtrW(
+            edit_hwnd,
+            GWLP_WNDPROC,
+            @as(LONG_PTR, @intCast(@intFromPtr(&searchEditProc))),
+        );
+        self.search_bar_edit_prev_proc = if (edit_prev == 0)
+            null
+        else
+            @ptrFromInt(@as(usize, @intCast(edit_prev)));
+        const edit_margin = @as(u16, @intCast(@max(host.scaled(10), 6)));
+        const packed_margins: isize = @intCast(@as(usize, edit_margin) | (@as(usize, edit_margin) << 16));
+        _ = SendMessageW(
+            edit_hwnd,
+            EM_SETMARGINS,
+            EC_LEFTMARGIN | EC_RIGHTMARGIN,
+            packed_margins,
+        );
+        _ = SendMessageW(edit_hwnd, EM_SETCUEBANNER, 0, @as(LPARAM, @intCast(@intFromPtr(search_edit_cue.ptr))));
+
+        self.search_bar_prev_hwnd = CreateWindowExW(
+            0,
+            prompt_button_class,
+            search_prev_label,
+            WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
+            0,
+            0,
+            28,
+            host_search_bar_height - 10,
+            hwnd,
+            @ptrFromInt(SEARCH_PREV_ID),
+            self.app.hinstance,
+            null,
+        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+        host.subclassButton(self.search_bar_prev_hwnd.?, &hostButtonProc, &self.search_bar_button_prev_proc);
+
+        self.search_bar_next_hwnd = CreateWindowExW(
+            0,
+            prompt_button_class,
+            search_next_label,
+            WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
+            0,
+            0,
+            28,
+            host_search_bar_height - 10,
+            hwnd,
+            @ptrFromInt(SEARCH_NEXT_ID),
+            self.app.hinstance,
+            null,
+        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+        host.subclassButton(self.search_bar_next_hwnd.?, &hostButtonProc, &self.search_bar_button_prev_proc);
+
+        self.search_bar_regex_hwnd = CreateWindowExW(
+            0,
+            prompt_button_class,
+            search_regex_label,
+            WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
+            0,
+            0,
+            28,
+            host_search_bar_height - 10,
+            hwnd,
+            @ptrFromInt(SEARCH_REGEX_ID),
+            self.app.hinstance,
+            null,
+        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+        host.subclassButton(self.search_bar_regex_hwnd.?, &hostButtonProc, &self.search_bar_button_prev_proc);
+
+        self.search_bar_case_hwnd = CreateWindowExW(
+            0,
+            prompt_button_class,
+            search_case_label,
+            WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
+            0,
+            0,
+            28,
+            host_search_bar_height - 10,
+            hwnd,
+            @ptrFromInt(SEARCH_CASE_ID),
+            self.app.hinstance,
+            null,
+        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+        host.subclassButton(self.search_bar_case_hwnd.?, &hostButtonProc, &self.search_bar_button_prev_proc);
+
+        self.search_bar_word_hwnd = CreateWindowExW(
+            0,
+            prompt_button_class,
+            search_word_label,
+            WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
+            0,
+            0,
+            28,
+            host_search_bar_height - 10,
+            hwnd,
+            @ptrFromInt(SEARCH_WORD_ID),
+            self.app.hinstance,
+            null,
+        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+        host.subclassButton(self.search_bar_word_hwnd.?, &hostButtonProc, &self.search_bar_button_prev_proc);
+
+        self.search_bar_close_hwnd = CreateWindowExW(
+            0,
+            prompt_button_class,
+            search_close_label,
+            WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
+            0,
+            0,
+            28,
+            host_search_bar_height - 10,
+            hwnd,
+            @ptrFromInt(SEARCH_CLOSE_ID),
+            self.app.hinstance,
+            null,
+        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+        host.subclassButton(self.search_bar_close_hwnd.?, &hostButtonProc, &self.search_bar_button_prev_proc);
+
+        self.search_bar_results_hwnd = CreateWindowExW(
+            0,
+            prompt_label_class,
+            std.unicode.utf8ToUtf16LeStringLiteral(""),
+            WS_CHILD | SS_RIGHT | SS_CENTERIMAGE,
+            0,
+            0,
+            96,
+            18,
+            hwnd,
+            @ptrFromInt(SEARCH_RESULTS_ID),
+            self.app.hinstance,
+            null,
+        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+
+        self.applySearchBarFont(host.chrome_font);
+        _ = try self.syncSearchBarResultsText();
+        _ = self.hideSearchBarControls();
+    }
+
+    fn destroySearchBarControls(self: *Surface) void {
+        const alloc = self.app.core_app.alloc;
+        if (self.search_bar_results_cache) |value| {
+            alloc.free(value);
+            self.search_bar_results_cache = null;
+        }
+        if (self.search_bar_results_hwnd) |hwnd| _ = DestroyWindow(hwnd);
+        if (self.search_bar_close_hwnd) |hwnd| _ = DestroyWindow(hwnd);
+        if (self.search_bar_word_hwnd) |hwnd| _ = DestroyWindow(hwnd);
+        if (self.search_bar_case_hwnd) |hwnd| _ = DestroyWindow(hwnd);
+        if (self.search_bar_regex_hwnd) |hwnd| _ = DestroyWindow(hwnd);
+        if (self.search_bar_next_hwnd) |hwnd| _ = DestroyWindow(hwnd);
+        if (self.search_bar_prev_hwnd) |hwnd| _ = DestroyWindow(hwnd);
+        if (self.search_bar_edit_hwnd) |hwnd| _ = DestroyWindow(hwnd);
+        if (self.search_bar_bg_hwnd) |hwnd| _ = DestroyWindow(hwnd);
+
+        self.search_bar_results_hwnd = null;
+        self.search_bar_close_hwnd = null;
+        self.search_bar_word_hwnd = null;
+        self.search_bar_case_hwnd = null;
+        self.search_bar_regex_hwnd = null;
+        self.search_bar_next_hwnd = null;
+        self.search_bar_prev_hwnd = null;
+        self.search_bar_edit_hwnd = null;
+        self.search_bar_bg_hwnd = null;
+        self.search_bar_edit_prev_proc = null;
+        self.search_bar_button_prev_proc = null;
+        self.search_bar_bg_placement = .{};
+        self.search_bar_edit_placement = .{};
+        self.search_bar_prev_placement = .{};
+        self.search_bar_next_placement = .{};
+        self.search_bar_regex_placement = .{};
+        self.search_bar_case_placement = .{};
+        self.search_bar_word_placement = .{};
+        self.search_bar_close_placement = .{};
+        self.search_bar_results_placement = .{};
+        self.search_bar_frame_visible = false;
+        self.search_bar_frame_rect = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
+    }
+
+    fn layoutSearchBarControls(self: *Surface, frame_rect: RECT, visible: bool) !bool {
+        if (!visible or !self.search_bar.visible) return self.hideSearchBarControls();
+
+        try self.ensureSearchBarControls();
+        const host = self.host orelse return false;
+
+        var changed = false;
+        var bg_changed = false;
+        const layout = searchBarChromeLayout(host, frame_rect);
+        const control_top = frame_rect.top + layout.pad_y;
+        const left = frame_rect.left + layout.pad_x;
+        var right = frame_rect.right - layout.pad_x;
+
+        self.updateSearchBarFrameRect(frame_rect);
+        bg_changed = applyChildRect(
+            self.search_bar_bg_hwnd.?,
+            &self.search_bar_bg_placement,
+            frame_rect,
+        );
+        changed = bg_changed or changed;
+
+        changed = applyChildRect(
+            self.search_bar_close_hwnd.?,
+            &self.search_bar_close_placement,
+            childRect(right - layout.close_w, control_top, layout.close_w, layout.control_h),
+        ) or changed;
+        changed = applyChildVisibility(
+            self.search_bar_close_hwnd.?,
+            &self.search_bar_close_placement,
+            true,
+        ) or changed;
+        right -= layout.close_w + layout.close_gap;
+
+        changed = applyChildRect(
+            self.search_bar_word_hwnd.?,
+            &self.search_bar_word_placement,
+            childRect(right - layout.toggle_w, control_top, layout.toggle_w, layout.control_h),
+        ) or changed;
+        changed = applyChildVisibility(
+            self.search_bar_word_hwnd.?,
+            &self.search_bar_word_placement,
+            true,
+        ) or changed;
+        right -= layout.toggle_w + layout.gap;
+
+        changed = applyChildRect(
+            self.search_bar_case_hwnd.?,
+            &self.search_bar_case_placement,
+            childRect(right - layout.toggle_w, control_top, layout.toggle_w, layout.control_h),
+        ) or changed;
+        changed = applyChildVisibility(
+            self.search_bar_case_hwnd.?,
+            &self.search_bar_case_placement,
+            true,
+        ) or changed;
+        right -= layout.toggle_w + layout.gap;
+
+        changed = applyChildRect(
+            self.search_bar_regex_hwnd.?,
+            &self.search_bar_regex_placement,
+            childRect(right - layout.toggle_w, control_top, layout.toggle_w, layout.control_h),
+        ) or changed;
+        changed = applyChildVisibility(
+            self.search_bar_regex_hwnd.?,
+            &self.search_bar_regex_placement,
+            true,
+        ) or changed;
+        right -= layout.toggle_w + layout.section_gap;
+
+        changed = applyChildRect(
+            self.search_bar_next_hwnd.?,
+            &self.search_bar_next_placement,
+            childRect(right - layout.nav_w, control_top, layout.nav_w, layout.control_h),
+        ) or changed;
+        changed = applyChildVisibility(
+            self.search_bar_next_hwnd.?,
+            &self.search_bar_next_placement,
+            true,
+        ) or changed;
+        right -= layout.nav_w + layout.gap;
+
+        changed = applyChildRect(
+            self.search_bar_prev_hwnd.?,
+            &self.search_bar_prev_placement,
+            childRect(right - layout.nav_w, control_top, layout.nav_w, layout.control_h),
+        ) or changed;
+        changed = applyChildVisibility(
+            self.search_bar_prev_hwnd.?,
+            &self.search_bar_prev_placement,
+            true,
+        ) or changed;
+        right -= layout.nav_w + layout.section_gap;
+
+        const show_results = showSearchBarResults(&self.search_bar) and
+            (right - layout.results_w - layout.section_gap - left) >= layout.min_edit_w;
+        if (show_results) {
+            changed = applyChildRect(
+                self.search_bar_results_hwnd.?,
+                &self.search_bar_results_placement,
+                childRect(right - layout.results_w, control_top, layout.results_w, layout.control_h),
+            ) or changed;
+            changed = applyChildVisibility(
+                self.search_bar_results_hwnd.?,
+                &self.search_bar_results_placement,
+                true,
+            ) or changed;
+            right -= layout.results_w + layout.section_gap;
+        } else {
+            changed = applyChildVisibility(
+                self.search_bar_results_hwnd.?,
+                &self.search_bar_results_placement,
+                false,
+            ) or changed;
+        }
+
+        changed = applyChildRect(
+            self.search_bar_edit_hwnd.?,
+            &self.search_bar_edit_placement,
+            childRect(left, control_top, @max(1, right - left), layout.control_h),
+        ) or changed;
+        changed = applyChildVisibility(
+            self.search_bar_edit_hwnd.?,
+            &self.search_bar_edit_placement,
+            true,
+        ) or changed;
+        const bg_visibility_changed = applyChildVisibility(
+            self.search_bar_bg_hwnd.?,
+            &self.search_bar_bg_placement,
+            true,
+        );
+        changed = bg_visibility_changed or changed;
+        if (changed) {
+            if (self.search_bar_bg_hwnd) |bg_hwnd| _ = InvalidateRect(bg_hwnd, null, 0);
+        }
+
+        return changed;
+    }
+
+    fn setSearchBarEditText(self: *Surface, value: []const u8) !bool {
+        const edit_hwnd = self.search_bar_edit_hwnd orelse return false;
+        const host = self.host orelse return false;
+        host.suppress_edit_events = true;
+        defer host.suppress_edit_events = false;
+
+        const value_w = try std.unicode.utf8ToUtf16LeAllocZ(self.app.core_app.alloc, value);
+        defer self.app.core_app.alloc.free(value_w);
+        _ = SetWindowTextW(edit_hwnd, value_w.ptr);
+        return true;
+    }
+
+    fn readSearchBarEditText(self: *Surface) ![:0]u8 {
+        const edit_hwnd = self.search_bar_edit_hwnd orelse return try self.app.core_app.alloc.dupeZ(u8, "");
+        return try readWindowTextUtf8Alloc(self.app.core_app.alloc, edit_hwnd);
+    }
+
+    fn syncSearchBarResultsText(self: *Surface) !bool {
+        const hwnd = self.search_bar_results_hwnd orelse return false;
+        const alloc = self.app.core_app.alloc;
+        const text = try buildSearchBarResultsText(alloc, &self.search_bar);
+        defer alloc.free(text);
+        return try syncWindowTextUtf8Cached(
+            alloc,
+            hwnd,
+            &self.search_bar_results_cache,
+            text,
+        );
+    }
+
+    fn issueSearchNow(self: *Surface, force: bool) !bool {
+        if (self.search_bar.query.len == 0) return false;
+        if (!force and !self.search_bar.forceSearch()) return false;
+        if (force) {
+            self.search_bar.searched = true;
+            self.search_bar.last_edit_ms = 0;
+        }
+        try self.setSearchActive(true, self.search_bar.query);
+        _ = try self.core_surface.setSearchQuery(self.search_bar.query, self.searchQueryOptions());
+        _ = try self.syncSearchBarResultsText();
+        if (self.host) |host| {
+            host.refreshSearchTimerState();
+        }
+        return true;
+    }
+
+    fn runPendingSearchNow(self: *Surface) !bool {
+        return try self.issueSearchNow(false);
+    }
+
+    fn rerunSearchNow(self: *Surface) !bool {
+        return try self.issueSearchNow(true);
+    }
+
+    fn handleSearchBarEditChanged(self: *Surface) !bool {
+        const alloc = self.app.core_app.alloc;
+        const text = try self.readSearchBarEditText();
+        defer alloc.free(text);
+
+        const previous_query_len = self.search_bar.query.len;
+        const needs_layout = searchBarNeedsRelayoutForQueryChange(
+            previous_query_len,
+            text.len,
+        );
+        try self.search_bar.setQuery(text, @intCast(GetTickCount64()));
+        if (searchBarShouldStopCoreSearchOnEdit(previous_query_len, text.len)) {
+            _ = try self.core_surface.setSearchQuery("", self.searchQueryOptions());
+        }
+        try self.setSearchActive(text.len > 0, text);
+        if (self.host) |host| {
+            if (needs_layout) host.layout() catch {};
+            host.refreshSearchTimerState();
+        }
+        return true;
+    }
+
+    fn navigateDockedSearch(self: *Surface, dir: input.Binding.Action.NavigateSearch) !bool {
+        if (self.search_bar.query.len == 0) return false;
+
+        const same_query = if (self.search_needle) |needle|
+            std.mem.eql(u8, needle, self.search_bar.query)
+        else
+            false;
+        if (!self.search_active or !same_query or !self.search_bar.searched) {
+            return try self.rerunSearchNow();
+        }
+
+        _ = try self.core_surface.performBindingAction(.{ .navigate_search = dir });
+        self.search_selected_raw = advanceSearchSelectedRaw(
+            self.search_selected_raw,
+            self.search_total,
+            dir,
+            self.search_bar.toggles.wrap,
+        );
+        try self.setSearchSelectedDisplay(searchSelectedDisplayFromRaw(self.search_selected_raw, self.search_total));
+        return true;
+    }
+
+    fn handleSearchToggleClick(self: *Surface, command_id: usize) !bool {
+        switch (command_id) {
+            SEARCH_REGEX_ID => self.search_bar.toggleRegex(),
+            SEARCH_CASE_ID => self.search_bar.toggleCase(),
+            SEARCH_WORD_ID => self.search_bar.toggleWord(),
+            else => return false,
+        }
+
+        self.invalidateSearchButtons();
+        if (self.search_bar.query.len > 0) {
+            _ = try self.rerunSearchNow();
+        } else {
+            _ = try self.syncSearchBarResultsText();
+        }
+        return true;
+    }
+
+    fn closeDockedSearchBar(self: *Surface, stop_search: bool, refocus_terminal: bool) anyerror!void {
+        if (stop_search) {
+            _ = try self.core_surface.endSearch();
+            if (refocus_terminal) {
+                if (self.hwnd) |hwnd| _ = SetFocus(hwnd);
+            }
+            return;
+        }
+
+        const host = self.host orelse return;
+        self.search_bar.close();
+        self.search_bar.total = null;
+        self.search_bar.selected = null;
+        try self.setSearchActive(false, "");
+        _ = self.hideSearchBarControls();
+        if (host.overlay_mode == .search) host.hideOverlay();
+        host.refreshSearchTimerState();
+        try host.layout();
+        host.forceHostCompositionPaint();
+        if (refocus_terminal) {
+            if (self.hwnd) |hwnd| _ = SetFocus(hwnd);
+        }
+    }
+
     fn showSearchOverlay(self: *Surface, needle: []const u8) !void {
         const host = self.host orelse return;
-        const initial = if (needle.len > 0) needle else if (self.search_needle) |value| value else "";
-        if (host.overlay_mode != .search) host.hideOverlay();
-        try host.showOverlay(.search, initial);
+        if (host.overlay_mode != .none) host.hideOverlay();
+
+        try self.ensureSearchBarControls();
+        self.search_bar.open();
+
+        const initial = if (needle.len > 0)
+            needle
+        else if (self.search_bar.query.len > 0)
+            self.search_bar.query
+        else if (self.search_needle) |value|
+            value
+        else
+            "";
+        const same_query = if (self.search_needle) |value|
+            std.mem.eql(u8, value, initial)
+        else
+            false;
+        const restore_live_results = initial.len > 0 and self.search_active and same_query;
+        if (!std.mem.eql(u8, self.search_bar.query, initial)) {
+            try self.search_bar.setQuery(initial, 0);
+        }
+        if (!restore_live_results) {
+            self.search_bar.total = null;
+            self.search_bar.selected = null;
+        }
+        self.search_bar.searched = initial.len == 0 or restore_live_results;
+        self.search_bar.last_edit_ms = 0;
+
+        _ = try self.setSearchBarEditText(initial);
+        _ = try self.syncSearchBarResultsText();
+        try host.layout();
+        host.refreshSearchTimerState();
+        host.forceHostCompositionPaint();
+
+        if (self.search_bar_edit_hwnd) |edit_hwnd| {
+            _ = SetFocus(edit_hwnd);
+            _ = SendMessageW(edit_hwnd, EM_SETSEL, 0, -1);
+        }
+
+        if (initial.len > 0 and (!self.search_active or !same_query)) {
+            _ = try self.rerunSearchNow();
+        }
     }
 
     fn setInspectorVisible(self: *Surface, visible: bool) !bool {
         if (visible == self.inspector_visible) return false;
         if (!self.core_initialized) return false;
+        const host = self.host;
+        const panel_was_visible = if (host) |h| h.inspectorPanelVisible() else false;
 
         if (visible) {
             try self.core_surface.activateInspector();
@@ -14668,13 +18394,38 @@ pub const Surface = struct {
             self.core_surface.deactivateInspector();
         }
         self.inspector_visible = visible;
-        if (self.host) |host| {
-            if (host.overlay_mode == .none) {
+        if (host) |h| {
+            const panel_now_visible = h.inspectorPanelVisible();
+            var chrome_invalidated = false;
+            if (h.overlay_mode == .none) {
+                chrome_invalidated = inspectorBannerStateChanged(
+                    h.overlay_mode,
+                    h.banner_kind,
+                    h.banner_text,
+                    visible,
+                );
                 if (visible) {
-                    try host.setBanner(.none, null);
+                    try h.setBanner(.none, null);
+                } else if (!panel_now_visible) {
+                    try h.setBanner(.info, host_banner_inspector_inactive);
                 } else {
-                    try host.setBanner(.info, host_banner_inspector_inactive);
+                    try h.setBanner(.none, null);
                 }
+            }
+            const status_h = h.statusBarHeight();
+            if (!chrome_invalidated and inspectorChromeVisible(h.overlay_mode, status_h)) {
+                if (chromeTextNeedsFullInvalidation(status_h)) {
+                    h.invalidateChromeText();
+                } else {
+                    h.invalidateTopChromeText();
+                }
+            }
+            if (inspectorVisibilityChangeNeedsHostRelayout(panel_was_visible != panel_now_visible)) {
+                h.invalidateActiveSearchBarLayoutCaches();
+                try h.layout();
+                h.forceHostCompositionPaint();
+            } else if (chrome_invalidated or inspectorChromeVisible(h.overlay_mode, status_h)) {
+                h.forceHostCompositionPaint();
             }
         }
         try self.requestRepaint();
@@ -14684,10 +18435,13 @@ pub const Surface = struct {
 
     fn refreshWindowTitle(self: *Surface) !void {
         if (self.host) |host| {
-            try host.syncWindowTitle();
-            host.invalidateChrome();
+            if (try host.syncWindowTitle()) host.invalidateTopChromeText();
             return;
         }
+    }
+
+    fn invalidateStatusBarState(self: *Surface) void {
+        if (self.host) |host| host.invalidateStatusBarText();
     }
 
     fn toggleMaximize(self: *Surface) void {
@@ -14698,10 +18452,12 @@ pub const Surface = struct {
 
     fn applyRuntimeConfig(self: *Surface, config: *const configpkg.Config) !void {
         self.background_opacity_default = normalizedBackgroundOpacity(config.@"background-opacity");
+        self.scrollbar_config = config.scrollbar;
         if (self.background_opacity_default >= 0.999) {
             self.background_opacity_force_opaque = false;
         }
         try self.applyBackgroundOpacity();
+        try self.refreshScrollbarWindow();
     }
 
     fn toggleBackgroundOpacity(self: *Surface) !bool {
@@ -15027,7 +18783,9 @@ pub const Surface = struct {
     /// leaving a stale screen size until the next resize event.
     fn syncCoreSizeFromClientRect(self: *Surface) void {
         const hwnd = self.hwnd orelse return;
-        self.size = self.app.clientSize(hwnd) catch return;
+        const next_size = self.app.clientSize(hwnd) catch return;
+        if (!surfacePixelSizeChanged(self.size, next_size)) return;
+        self.size = next_size;
 
         if (!self.core_initialized) return;
         self.core_surface.sizeCallback(self.size) catch |err| {
@@ -15036,25 +18794,31 @@ pub const Surface = struct {
     }
 
     fn windowSizeChanged(self: *Surface) void {
-        const hwnd = self.hwnd orelse return;
         self.syncCoreSizeFromClientRect();
 
         // `MoveWindow(..., bRepaint = false)` resizes the child HWND without
         // guaranteeing a follow-up paint for the newly exposed pixels. Request
         // one from the child itself after `WM_SIZE`, when the default
         // framebuffer and client rect have both advanced to the new size.
-        _ = InvalidateRect(hwnd, null, 0);
+        self.requestRepaintWithMode(surfaceSizeChangeRepaintMode(self.host)) catch |err| {
+            log.err("win32 size-change repaint request failed err={}", .{err});
+        };
     }
 
     fn focusChanged(self: *Surface, focused: bool) void {
         self.window_focused = focused;
+        const focus_state_changed = if (focused) self.app.noteSurfaceFocused(self) else false;
         if (!self.core_initialized) return;
         if (focused) self.app.core_app.focusSurface(self.core());
         self.core_surface.focusCallback(focused) catch |err| {
             log.err("win32 focus callback failed err={}", .{err});
         };
-        // Repaint pane divider focus borders when split pane focus changes
-        if (self.host) |host| host.invalidateChrome();
+        // Host chrome only changes for split-pane focus borders.
+        if (self.host) |host| {
+            const pane_count = if (host.activeTab()) |tab| tab.leafCount() else 0;
+            if (hostChromeNeedsFocusRepaint(pane_count)) host.repaintContentChrome();
+            if (focus_state_changed) host.refreshChrome() catch {};
+        }
     }
 
     fn handleKeyMessage(self: *Surface, msg: UINT, wParam: WPARAM, lParam: LPARAM) void {
@@ -15084,10 +18848,6 @@ pub const Surface = struct {
             if (translated.unshifted_codepoint != 0) {
                 event.unshifted_codepoint = translated.unshifted_codepoint;
             }
-        }
-
-        if (self.debug_input_budget > 0) {
-            self.debug_input_budget -= 1;
         }
 
         _ = self.core_surface.keyCallback(event) catch |err| {
@@ -15297,10 +19057,6 @@ pub const Surface = struct {
             _ = ReleaseCapture();
         }
 
-        if (self.debug_input_budget > 0) {
-            self.debug_input_budget -= 1;
-        }
-
         self.core_surface.cursorPosCallback(self.cursor_pos, mods) catch |err| {
             log.err("win32 cursor pos callback failed before button err={}", .{err});
         };
@@ -15358,6 +19114,13 @@ pub const Surface = struct {
 
     fn handleMouseWheel(self: *Surface, scroll: NormalizedWheelScroll) void {
         if (!self.core_initialized) return;
+        if (self.scrollbarScrollable()) {
+            const now_ms = GetTickCount64();
+            self.noteScrollbarActivity(now_ms);
+            self.syncScrollbarWindowNow(now_ms) catch |err| {
+                log.warn("win32 scrollbar wheel refresh failed err={}", .{err});
+            };
+        }
         self.core_surface.scrollCallback(scroll.xoff, scroll.yoff, scroll.mods) catch |err| {
             log.err("win32 scroll callback failed err={} xoff={} yoff={} mods={}", .{
                 err,
@@ -15394,6 +19157,8 @@ pub const Surface = struct {
         // Drain the undo stack. Entries own scrollback / title bytes
         // allocated via `app.core_app.alloc`; `deinit` frees each.
         self.undo_stack.deinit();
+        self.destroyScrollbarWindow();
+        self.destroySearchBarControls();
         // Drain the search bar's query allocation.
         self.search_bar.deinit();
         // Tear down any confirm overlay whose userdata points at
@@ -15435,6 +19200,10 @@ pub const Surface = struct {
             alloc.free(value);
             self.search_needle = null;
         }
+        if (self.search_match_rows.len > 0) {
+            alloc.free(self.search_match_rows);
+            self.search_match_rows = &.{};
+        }
         if (self.pwd) |value| {
             alloc.free(value);
             self.pwd = null;
@@ -15459,10 +19228,16 @@ pub const Surface = struct {
     }
 
     fn setVisible(self: *Surface, visible: bool) void {
+        const visibility_changed = self.window_visible != visible;
         self.window_visible = visible;
 
         const hwnd = self.hwnd orelse return;
-        _ = applyChildVisibility(hwnd, &self.placement, visible);
+        const child_visibility_changed = applyChildVisibility(hwnd, &self.placement, visible);
+        if (visibility_changed or child_visibility_changed) {
+            self.refreshScrollbarWindow() catch |err| {
+                log.warn("win32 scrollbar visibility refresh failed err={}", .{err});
+            };
+        }
 
         if (!self.core_initialized) return;
         if (!shouldDispatchOcclusion(self.occlusion_visible, visible)) return;
@@ -15473,75 +19248,180 @@ pub const Surface = struct {
     }
 
     fn setReadonly(self: *Surface, enabled: bool) !void {
+        if (self.readonly == enabled) return;
         self.readonly = enabled;
-        try self.refreshWindowTitle();
+        self.invalidateStatusBarState();
     }
 
     fn setPwd(self: *Surface, pwd: []const u8) !void {
+        if (ownedStringEquals(self.pwd, pwd)) return;
         const alloc = self.app.core_app.alloc;
         try appendOwnedString(alloc, &self.pwd, pwd);
-        try self.refreshWindowTitle();
+        self.invalidateStatusBarState();
     }
 
     fn setSecureInput(self: *Surface, value: apprt.action.SecureInput) !void {
-        self.secure_input = switch (value) {
+        const next = switch (value) {
             .on => true,
             .off => false,
             .toggle => !self.secure_input,
         };
-        try self.refreshWindowTitle();
+        if (self.secure_input == next) return;
+        self.secure_input = next;
+        self.invalidateStatusBarState();
     }
 
     fn setKeySequenceActive(self: *Surface, active: bool) !void {
+        if (self.key_sequence_active == active) return;
         self.key_sequence_active = active;
-        try self.refreshWindowTitle();
+        self.invalidateStatusBarState();
     }
 
     fn setKeyTable(self: *Surface, value: apprt.action.KeyTable) !void {
+        const next_name = switch (value) {
+            .activate => |name| name,
+            .deactivate, .deactivate_all => null,
+        };
+        if (optionalOwnedStringEquals(self.key_table_name, next_name)) return;
         const alloc = self.app.core_app.alloc;
         switch (value) {
             .activate => |name| try appendOwnedString(alloc, &self.key_table_name, name),
             .deactivate, .deactivate_all => try appendOwnedString(alloc, &self.key_table_name, null),
         }
-        try self.refreshWindowTitle();
+        self.invalidateStatusBarState();
     }
 
     fn setSearchActive(self: *Surface, active: bool, needle: []const u8) !void {
         const alloc = self.app.core_app.alloc;
         self.search_active = active;
         self.search_total = null;
+        self.search_selected_raw = null;
         self.search_selected = null;
+        self.search_bar.total = null;
+        self.search_bar.selected = null;
+        if (!active) {
+            self.search_bar.searched = self.search_bar.query.len == 0;
+            self.search_bar.last_edit_ms = 0;
+        } else if (needle.len > 0 and !std.mem.eql(u8, self.search_bar.query, needle)) {
+            try self.search_bar.setQuery(needle, 0);
+            self.search_bar.searched = true;
+            self.search_bar.last_edit_ms = 0;
+        }
+        if (self.search_match_rows.len > 0) {
+            alloc.free(self.search_match_rows);
+            self.search_match_rows = &.{};
+        }
+        self.clearScrollbarMarkers();
         if (active and needle.len > 0) {
             try appendOwnedString(alloc, &self.search_needle, needle);
         } else if (!active) {
             try appendOwnedString(alloc, &self.search_needle, null);
         }
-        try self.refreshWindowTitle();
+        _ = try self.syncSearchBarResultsText();
+        try self.refreshScrollbarWindow();
+        self.invalidateStatusBarState();
     }
 
     fn setSearchTotal(self: *Surface, total: ?usize) !void {
+        if (!shouldAcceptCoreSearchUpdates(&self.search_bar)) return;
+        const selected = searchSelectedDisplayFromRaw(self.search_selected_raw, total);
+        const searched = searchBarSearchedStateForTotal(total);
+        if (self.search_total == total and
+            self.search_selected == selected and
+            !searchBarDisplayStateChanged(&self.search_bar, searched, total, selected))
+        {
+            return;
+        }
         self.search_total = total;
-        try self.refreshWindowTitle();
+        self.search_bar.searched = searched;
+        self.search_bar.total = total;
+        self.search_selected = selected;
+        self.search_bar.selected = selected;
+        _ = try self.syncSearchBarResultsText();
+        self.invalidateStatusBarState();
     }
 
     fn setSearchSelected(self: *Surface, selected: ?usize) !void {
+        if (!shouldAcceptCoreSearchUpdates(&self.search_bar)) return;
+        const raw = searchSelectedRawFromCoreDisplay(selected);
+        const display = searchSelectedDisplayFromRaw(raw, self.search_total);
+        const searched = searchBarSearchedStateForSelected(display, self.search_total);
+        if (self.search_selected_raw == raw and
+            self.search_selected == display and
+            !searchBarDisplayStateChanged(&self.search_bar, searched, self.search_total, display))
+        {
+            return;
+        }
+        self.search_selected_raw = raw;
+        self.search_selected = display;
+        self.search_bar.searched = searched;
+        self.search_bar.selected = display;
+        _ = try self.syncSearchBarResultsText();
+        self.invalidateStatusBarState();
+    }
+
+    fn setSearchSelectedDisplay(self: *Surface, selected: ?usize) !void {
+        const searched = searchBarSearchedStateForSelected(selected, self.search_total);
+        if (self.search_selected == selected and
+            !searchBarDisplayStateChanged(&self.search_bar, searched, self.search_total, selected))
+        {
+            return;
+        }
         self.search_selected = selected;
-        try self.refreshWindowTitle();
+        self.search_bar.searched = searched;
+        self.search_bar.selected = selected;
+        _ = try self.syncSearchBarResultsText();
+        self.invalidateStatusBarState();
+    }
+
+    fn setSearchMatchRows(self: *Surface, rows: []const u32) !void {
+        if (!shouldAcceptCoreSearchUpdates(&self.search_bar)) return;
+        if (std.mem.eql(u32, self.search_match_rows, rows)) return;
+
+        const alloc = self.app.core_app.alloc;
+        if (self.search_match_rows.len > 0) alloc.free(self.search_match_rows);
+        self.search_match_rows = if (rows.len == 0)
+            &.{}
+        else
+            try alloc.dupe(u32, rows);
+        self.clearScrollbarMarkers();
+        try self.refreshScrollbarWindow();
     }
 
     fn setScrollbar(self: *Surface, value: terminal.Scrollbar) !void {
         if (self.scrollbar.eql(value)) return;
+        const old = self.scrollbar;
+        const offset_changed = self.scrollbar.offset != value.offset;
+        const status_changed = scrollStatusTextChanged(old, value);
         self.scrollbar = value;
-        // Refresh status bar to show/update scroll position indicator
-        if (self.host) |host| host.invalidateStatusBarText();
+        if (old.total != value.total or old.len != value.len) {
+            self.clearScrollbarMarkers();
+        }
+        if (!self.scrollbarScrollable()) {
+            self.scrollbar_state = .{};
+        } else {
+            const now_ms = GetTickCount64();
+            switch (self.scrollbarPolicy()) {
+                .always => self.scrollbar_state.visibility = .visible,
+                .dynamic => if (offset_changed) self.noteScrollbarActivity(now_ms),
+                .never => {},
+            }
+        }
+        try self.refreshScrollbarWindow();
+        if (status_changed) {
+            // Refresh the bottom status only when the visible scroll
+            // indicator actually changes (show/hide or rounded percent).
+            if (self.host) |host| host.invalidateStatusBarText();
+        }
     }
 
     fn setProgressReport(self: *Surface, value: terminal.osc.Command.ProgressReport) !void {
         const alloc = self.app.core_app.alloc;
         const progress = try formatProgressStatus(alloc, value);
         defer if (progress) |owned| alloc.free(owned);
+        if (optionalOwnedStringEquals(self.progress_status, progress)) return;
         try appendOwnedString(alloc, &self.progress_status, progress);
-        try self.refreshWindowTitle();
+        self.invalidateStatusBarState();
     }
 
     fn applyCursor(self: *Surface) bool {
@@ -16089,15 +19969,41 @@ test "win32 renderer repaint request coalesces until paint completes" {
 
     var surface: Surface = undefined;
     surface.renderer_repaint_requested = .init(false);
+    surface.renderer_repaint_retry_pending = .init(false);
 
     try std.testing.expect(surface.beginRendererRepaintRequest());
     try std.testing.expect(!surface.beginRendererRepaintRequest());
+    try std.testing.expect(surface.consumeRendererRepaintRetryPending());
+    try std.testing.expect(!surface.consumeRendererRepaintRetryPending());
 
     surface.cancelRendererRepaintRequest();
     try std.testing.expect(surface.beginRendererRepaintRequest());
 
     surface.finishRendererRepaintRequest();
     try std.testing.expect(surface.beginRendererRepaintRequest());
+}
+
+test "win32 paint draws terminal content only for renderer-requested frames" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var surface: Surface = undefined;
+    surface.renderer_repaint_requested = .init(false);
+    try std.testing.expect(!surface.shouldDrawRendererPaintContent());
+
+    surface.renderer_repaint_requested = .init(true);
+    try std.testing.expect(surface.shouldDrawRendererPaintContent());
+}
+
+test "win32 host composition redraw avoids terminal child HWNDs" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const flags = hostCompositionRedrawFlags();
+    try std.testing.expect((flags & RDW_INVALIDATE) != 0);
+    try std.testing.expect((flags & RDW_ERASE) != 0);
+    try std.testing.expect((flags & RDW_FRAME) != 0);
+    try std.testing.expect((flags & RDW_UPDATENOW) != 0);
+    try std.testing.expect((flags & RDW_NOCHILDREN) != 0);
+    try std.testing.expect((flags & RDW_ALLCHILDREN) == 0);
 }
 
 test "win32 requestRepaint preserves renderer request during live resize" {
@@ -16117,6 +20023,12 @@ test "win32 requestRepaint preserves renderer request during live resize" {
     try std.testing.expect(surface.renderer_repaint_requested.load(.acquire));
     try std.testing.expect(surface.live_resize_repaint_deferred);
     try std.testing.expect(!surface.paint_pending);
+}
+
+test "win32 hostChromeNeedsFocusRepaint only trips for split panes" {
+    try std.testing.expect(!hostChromeNeedsFocusRepaint(0));
+    try std.testing.expect(!hostChromeNeedsFocusRepaint(1));
+    try std.testing.expect(hostChromeNeedsFocusRepaint(2));
 }
 
 test "win32 flushDeferredVisibleSurfaceRepaints schedules deferred visible surface once" {
@@ -16326,6 +20238,125 @@ test "win32 applyProfileSurfaceConfig replaces shallow-cloned command safely" {
     try std.testing.expectEqualStrings("pwsh.exe", base.command.?.shell);
 }
 
+test "win32 applyProfileCommandConfig preserves inherited working directory" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var base = try configpkg.Config.default(std.testing.allocator);
+    defer base.deinit();
+
+    var clone = base.shallowClone(std.testing.allocator);
+    defer clone.deinit();
+    const clone_alloc = clone._arena.?.allocator();
+    clone.@"working-directory" = .{ .path = try clone_alloc.dupe(u8, "C:\\work") };
+
+    var profile: windows_shell.Profile = .{
+        .kind = .wsl_distro,
+        .key = try std.testing.allocator.dupe(u8, "wsl:Ubuntu"),
+        .label = try std.testing.allocator.dupe(u8, "Ubuntu"),
+        .command = .{ .shell = try std.testing.allocator.dupeZ(u8, "wsl.exe") },
+    };
+    defer profile.deinit(std.testing.allocator);
+
+    try applyProfileCommandConfig(&clone, &profile);
+
+    try std.testing.expect(clone.command != null);
+    try std.testing.expectEqualStrings("wsl.exe", clone.command.?.shell);
+    try std.testing.expectEqualStrings("C:\\work", clone.@"working-directory".?.path);
+}
+
+test "win32 splitWorkingDirectoryCandidate prefers live cwd over cached wrapper cwd" {
+    try std.testing.expectEqualStrings(
+        "/home/athanvi/live",
+        splitWorkingDirectoryCandidate("/home/athanvi/live", "C:\\stale").?,
+    );
+    try std.testing.expectEqualStrings(
+        "C:\\cached",
+        splitWorkingDirectoryCandidate(null, "C:\\cached").?,
+    );
+    try std.testing.expectEqual(@as(?[]const u8, null), splitWorkingDirectoryCandidate("", null));
+}
+
+test "win32 applySplitWorkingDirectoryPath applies source pane cwd" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var base = try configpkg.Config.default(std.testing.allocator);
+    defer base.deinit();
+
+    var clone = base.shallowClone(std.testing.allocator);
+    defer clone.deinit();
+    const clone_alloc = clone._arena.?.allocator();
+    clone.@"working-directory" = .{ .path = try clone_alloc.dupe(u8, "C:\\stale") };
+
+    try std.testing.expect(try applySplitWorkingDirectoryPath(&clone, "/home/athanvi/project"));
+    try std.testing.expectEqualStrings("/home/athanvi/project", clone.@"working-directory".?.path);
+}
+
+test "win32 applySplitWorkingDirectoryPath respects disabled inheritance" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var base = try configpkg.Config.default(std.testing.allocator);
+    defer base.deinit();
+
+    var clone = base.shallowClone(std.testing.allocator);
+    defer clone.deinit();
+    const clone_alloc = clone._arena.?.allocator();
+    clone.@"split-inherit-working-directory" = false;
+    clone.@"working-directory" = .{ .path = try clone_alloc.dupe(u8, "C:\\explicit") };
+
+    try std.testing.expect(!try applySplitWorkingDirectoryPath(&clone, "/home/athanvi/project"));
+    try std.testing.expectEqualStrings("C:\\explicit", clone.@"working-directory".?.path);
+}
+
+test "win32 WSL split cwd treats startup cwd as stale fallback" {
+    const command: configpkg.Command = .{ .direct = &.{"wsl.exe"} };
+
+    try std.testing.expect(try shouldTreatWslSplitPwdAsStartupFallback(
+        std.testing.allocator,
+        command,
+        "/mnt/c/Users/amant/.codex/worktrees/ff46/winghostty",
+        "C:\\Users\\amant\\.codex\\worktrees\\ff46\\winghostty",
+    ));
+    try std.testing.expect(!try shouldTreatWslSplitPwdAsStartupFallback(
+        std.testing.allocator,
+        command,
+        "/home/athanvi",
+        "C:\\Users\\amant\\.codex\\worktrees\\ff46\\winghostty",
+    ));
+}
+
+test "win32 non-WSL split cwd keeps startup cwd candidate" {
+    const command: configpkg.Command = .{ .direct = &.{"cmd.exe"} };
+
+    try std.testing.expect(!try shouldTreatWslSplitPwdAsStartupFallback(
+        std.testing.allocator,
+        command,
+        "C:\\Users\\amant\\.codex\\worktrees\\ff46\\winghostty",
+        "C:\\Users\\amant\\.codex\\worktrees\\ff46\\winghostty",
+    ));
+}
+
+test "win32 profileIndexByKey finds launch profile key" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var profiles = [_]windows_shell.Profile{
+        .{
+            .kind = .cmd,
+            .key = "cmd.exe",
+            .label = "Command Prompt",
+            .command = .{ .shell = "cmd.exe" },
+        },
+        .{
+            .kind = .wsl_distro,
+            .key = "wsl:Ubuntu",
+            .label = "Ubuntu",
+            .command = .{ .shell = "wsl.exe" },
+        },
+    };
+
+    try std.testing.expectEqual(@as(?usize, 1), profileIndexByKey(&profiles, "wsl:Ubuntu"));
+    try std.testing.expectEqual(@as(?usize, null), profileIndexByKey(&profiles, "missing"));
+}
+
 test "win32 buildWindowTitle appends active status segments" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
@@ -16388,6 +20419,7 @@ test "win32 effectiveBackgroundOpacity respects opaque override" {
     try std.testing.expectEqual(@as(f64, 0.4), effectiveBackgroundOpacity(0.4, false));
     try std.testing.expectEqual(@as(f64, 1.0), effectiveBackgroundOpacity(0.4, true));
     try std.testing.expectEqual(@as(u8, 128), alphaByteForOpacity(0.5));
+    try std.testing.expectEqual(@as(u8, 1), hiddenScrollbarAlphaByte());
 }
 
 test "win32 resizeSplitFallbackDelta maps directions to window deltas" {
@@ -16403,6 +20435,15 @@ test "win32 resizeSplitFallbackDelta maps directions to window deltas" {
     );
 }
 
+test "win32 splitDirectionFromAction preserves requested split direction" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(SplitTreeSurface.Split.Direction.left, splitDirectionFromAction(.left));
+    try std.testing.expectEqual(SplitTreeSurface.Split.Direction.right, splitDirectionFromAction(.right));
+    try std.testing.expectEqual(SplitTreeSurface.Split.Direction.up, splitDirectionFromAction(.up));
+    try std.testing.expectEqual(SplitTreeSurface.Split.Direction.down, splitDirectionFromAction(.down));
+}
+
 test "win32 nextInspectorVisible follows requested mode" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
@@ -16410,6 +20451,15 @@ test "win32 nextInspectorVisible follows requested mode" {
     try std.testing.expect(!nextInspectorVisible(true, .toggle));
     try std.testing.expect(nextInspectorVisible(false, .show));
     try std.testing.expect(!nextInspectorVisible(true, .hide));
+}
+
+test "win32 tab inspector toggle hides any active pane inspector" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(nextTabInspectorVisible(false, .toggle));
+    try std.testing.expect(!nextTabInspectorVisible(true, .toggle));
+    try std.testing.expect(nextTabInspectorVisible(true, .show));
+    try std.testing.expect(!nextTabInspectorVisible(false, .hide));
 }
 
 test "win32 primarySurfaceIndex prefers active tab of first host" {
@@ -17249,6 +21299,50 @@ test "win32 findLauncherQuickSlotOrdinal finds runtime-pinned slots" {
     try std.testing.expectEqual(@as(?usize, null), findLauncherQuickSlotOrdinal(.{ "git-bash", "cmd.exe", null }, "pwsh.exe"));
 }
 
+test "win32 launcherQuickSlotAssignmentNeedsChange skips no-op pin replays" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!launcherQuickSlotAssignmentNeedsChange(.{ "git-bash", "cmd.exe", null }, 0, "GIT-BASH"));
+    try std.testing.expect(launcherQuickSlotAssignmentNeedsChange(.{ "git-bash", "cmd.exe", null }, 1, "git-bash"));
+    try std.testing.expect(launcherQuickSlotAssignmentNeedsChange(.{ "git-bash", "cmd.exe", null }, 2, "pwsh.exe"));
+}
+
+test "win32 launcherQuickSlotPinsAlreadyClear detects empty pin state" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(launcherQuickSlotPinsAlreadyClear(.{ null, null, null }));
+    try std.testing.expect(!launcherQuickSlotPinsAlreadyClear(.{ "git-bash", null, null }));
+}
+
+test "win32 selectedProfileSelectionNeedsChange skips identical selection state" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!selectedProfileSelectionNeedsChange(
+        2,
+        2,
+        null,
+        "pwsh.exe",
+        "pwsh.exe",
+        "pwsh.exe",
+    ));
+    try std.testing.expect(selectedProfileSelectionNeedsChange(
+        1,
+        2,
+        null,
+        "cmd.exe",
+        "cmd.exe",
+        "pwsh.exe",
+    ));
+    try std.testing.expect(selectedProfileSelectionNeedsChange(
+        2,
+        2,
+        0,
+        "pwsh.exe",
+        "pwsh.exe",
+        "pwsh.exe",
+    ));
+}
+
 test "win32 buildProfileChromeBadgeText adds profile glyph treatment" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
@@ -17287,6 +21381,280 @@ test "win32 buildSearchOverlayLabel reflects match counts" {
     const idle = try buildSearchOverlayLabel(std.testing.allocator, null, null);
     defer std.testing.allocator.free(idle);
     try std.testing.expectEqualStrings("Find", idle);
+}
+
+test "win32 buildSearchBarResultsText reflects docked search states" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var bar = win32_search_bar.SearchBar.init(std.testing.allocator);
+    defer bar.deinit();
+
+    const idle = try buildSearchBarResultsText(std.testing.allocator, &bar);
+    defer std.testing.allocator.free(idle);
+    try std.testing.expectEqualStrings(search_results_idle, idle);
+
+    try bar.setQuery("foo", 10);
+    const pending = try buildSearchBarResultsText(std.testing.allocator, &bar);
+    defer std.testing.allocator.free(pending);
+    try std.testing.expectEqualStrings(search_results_pending, pending);
+
+    bar.searched = true;
+    bar.total = 0;
+    const none = try buildSearchBarResultsText(std.testing.allocator, &bar);
+    defer std.testing.allocator.free(none);
+    try std.testing.expectEqualStrings(search_results_none, none);
+
+    bar.total = 12;
+    bar.selected = 3;
+    const active = try buildSearchBarResultsText(std.testing.allocator, &bar);
+    defer std.testing.allocator.free(active);
+    try std.testing.expectEqualStrings("3/12", active);
+}
+
+test "win32 showSearchBarResults only shows status chip for non-empty queries" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var bar = win32_search_bar.SearchBar.init(std.testing.allocator);
+    defer bar.deinit();
+
+    try std.testing.expect(!showSearchBarResults(&bar));
+    try bar.setQuery("search-open", 10);
+    try std.testing.expect(showSearchBarResults(&bar));
+}
+
+test "win32 searchBarNeedsRelayoutForQueryChange only trips on empty-state transitions" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!searchBarNeedsRelayoutForQueryChange(0, 0));
+    try std.testing.expect(searchBarNeedsRelayoutForQueryChange(0, 1));
+    try std.testing.expect(!searchBarNeedsRelayoutForQueryChange(4, 9));
+    try std.testing.expect(searchBarNeedsRelayoutForQueryChange(3, 0));
+}
+
+test "win32 searchBarShouldStopCoreSearchOnEdit only stops on empty query" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!searchBarShouldStopCoreSearchOnEdit(0, 1));
+    try std.testing.expect(!searchBarShouldStopCoreSearchOnEdit(5, 2));
+    try std.testing.expect(searchBarShouldStopCoreSearchOnEdit(5, 0));
+}
+
+test "win32 shouldAcceptCoreSearchUpdates rejects pending docked search state" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var bar = win32_search_bar.SearchBar.init(std.testing.allocator);
+    defer bar.deinit();
+
+    try std.testing.expect(shouldAcceptCoreSearchUpdates(&bar));
+
+    try bar.setQuery("search-open", 10);
+    try std.testing.expect(!shouldAcceptCoreSearchUpdates(&bar));
+
+    bar.searched = true;
+    try std.testing.expect(shouldAcceptCoreSearchUpdates(&bar));
+}
+
+test "win32 surfaceLayoutRuntimeSync only trips on visibility or pane rect changes" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const stable = surfaceLayoutRuntimeSync(false, false);
+    try std.testing.expect(!stable.scrollbar_refresh);
+    try std.testing.expect(!stable.core_size_sync);
+
+    const visibility_only = surfaceLayoutRuntimeSync(true, false);
+    try std.testing.expect(visibility_only.scrollbar_refresh);
+    try std.testing.expect(!visibility_only.core_size_sync);
+
+    const rect_only = surfaceLayoutRuntimeSync(false, true);
+    try std.testing.expect(rect_only.scrollbar_refresh);
+    try std.testing.expect(rect_only.core_size_sync);
+}
+
+test "win32 surfaceRepaintRequestMode flushes renderer paints during resize settle" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(SurfaceRepaintRequestMode.queue, surfaceRepaintRequestMode(null));
+
+    var host: Host = undefined;
+    host.is_live_resize = .init(false);
+    host.resize_settle_timer_active = false;
+    try std.testing.expectEqual(SurfaceRepaintRequestMode.queue, surfaceRepaintRequestMode(&host));
+
+    host.resize_settle_timer_active = true;
+    try std.testing.expectEqual(SurfaceRepaintRequestMode.update_now, surfaceRepaintRequestMode(&host));
+
+    host.is_live_resize = .init(true);
+    try std.testing.expectEqual(SurfaceRepaintRequestMode.defer_until_flush, surfaceRepaintRequestMode(&host));
+}
+
+test "win32 resize settle presents pending renderer frames before waking renderer" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(
+        ResizeSettleSurfaceAction.wake_renderer,
+        resizeSettleSurfaceAction(false),
+    );
+    try std.testing.expectEqual(
+        ResizeSettleSurfaceAction.present_renderer,
+        resizeSettleSurfaceAction(true),
+    );
+}
+
+test "win32 surface size-change repaint obeys live-resize throttle" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(
+        SurfaceRepaintRequestMode.queue,
+        surfaceSizeChangeRepaintMode(null),
+    );
+
+    var host: Host = undefined;
+    host.is_live_resize = .init(false);
+    host.resize_settle_timer_active = false;
+    try std.testing.expectEqual(
+        SurfaceRepaintRequestMode.queue,
+        surfaceSizeChangeRepaintMode(&host),
+    );
+
+    host.resize_settle_timer_active = true;
+    try std.testing.expectEqual(
+        SurfaceRepaintRequestMode.update_now,
+        surfaceSizeChangeRepaintMode(&host),
+    );
+
+    host.is_live_resize = .init(true);
+    try std.testing.expectEqual(
+        SurfaceRepaintRequestMode.defer_until_flush,
+        surfaceSizeChangeRepaintMode(&host),
+    );
+}
+
+test "win32 surfacePixelSizeChanged only trips on width or height deltas" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const stable = apprt.SurfaceSize{ .width = 800, .height = 600 };
+    try std.testing.expect(!surfacePixelSizeChanged(stable, .{ .width = 800, .height = 600 }));
+    try std.testing.expect(surfacePixelSizeChanged(stable, .{ .width = 801, .height = 600 }));
+    try std.testing.expect(surfacePixelSizeChanged(stable, .{ .width = 800, .height = 601 }));
+}
+
+test "win32 surfaceActivationNeedsHostSync only trips on activation-visible deltas" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!surfaceActivationNeedsHostSync(false, true, 2, 2, true));
+    try std.testing.expect(surfaceActivationNeedsHostSync(true, true, 2, 2, true));
+    try std.testing.expect(surfaceActivationNeedsHostSync(false, false, 2, 2, true));
+    try std.testing.expect(surfaceActivationNeedsHostSync(false, true, 3, 2, true));
+    try std.testing.expect(surfaceActivationNeedsHostSync(false, true, 2, 2, false));
+}
+
+test "win32 surfaceFocusedActivationNeedsHostSync requires actual surface focus" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!surfaceFocusedActivationNeedsHostSync(false, true, 2, 2, true, true));
+    try std.testing.expect(surfaceFocusedActivationNeedsHostSync(false, true, 2, 2, true, false));
+}
+
+test "win32 profileChromeNeedsFullTextInvalidation only trips for status-only profile chrome" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!profileChromeNeedsFullTextInvalidation(.profile, 0));
+    try std.testing.expect(!profileChromeNeedsFullTextInvalidation(.profile, 24));
+    try std.testing.expect(!profileChromeNeedsFullTextInvalidation(.none, 0));
+    try std.testing.expect(profileChromeNeedsFullTextInvalidation(.none, 24));
+}
+
+test "win32 chromeTextNeedsFullInvalidation only trips when status bar is visible" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!chromeTextNeedsFullInvalidation(0));
+    try std.testing.expect(chromeTextNeedsFullInvalidation(24));
+}
+
+test "win32 optionalOwnedStringEquals handles present and null values" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(optionalOwnedStringEquals(null, null));
+    try std.testing.expect(!optionalOwnedStringEquals(null, "pwsh"));
+    try std.testing.expect(optionalOwnedStringEquals("pwsh", "pwsh"));
+    try std.testing.expect(!optionalOwnedStringEquals("pwsh", "cmd"));
+    try std.testing.expect(!optionalOwnedStringEquals("pwsh", null));
+}
+
+test "win32 ownedBytesEquals handles present and missing values" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!ownedBytesEquals(null, "v1.2.3"));
+    try std.testing.expect(ownedBytesEquals("v1.2.3", "v1.2.3"));
+    try std.testing.expect(!ownedBytesEquals("v1.2.3", "v1.2.4"));
+}
+
+test "win32 scrollbarNeedsHeartbeatForState skips stable hidden dynamic bars" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!scrollbarNeedsHeartbeatForState(.never, true, true, .visible));
+    try std.testing.expect(!scrollbarNeedsHeartbeatForState(.dynamic, false, true, .visible));
+    try std.testing.expect(!scrollbarNeedsHeartbeatForState(.dynamic, true, false, .visible));
+    try std.testing.expect(!scrollbarNeedsHeartbeatForState(.dynamic, true, true, .hidden));
+    try std.testing.expect(scrollbarNeedsHeartbeatForState(.dynamic, true, true, .fading_in));
+    try std.testing.expect(scrollbarNeedsHeartbeatForState(.dynamic, true, true, .visible));
+    try std.testing.expect(scrollbarNeedsHeartbeatForState(.dynamic, true, true, .fading_out));
+}
+
+test "win32 scrollbarPaintKeyChanged only trips on visible scrollbar paint inputs" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const base: ScrollbarPaintKey = .{
+        .rect = .{ .left = 10, .top = 20, .right = 20, .bottom = 220 },
+        .total = 2000,
+        .len = 21,
+        .offset = 1979,
+        .dpi = 144,
+        .hovered = false,
+        .dragging = false,
+        .marker_revision = 3,
+    };
+
+    try std.testing.expect(scrollbarPaintKeyChanged(null, base));
+    try std.testing.expect(!scrollbarPaintKeyChanged(base, base));
+    try std.testing.expect(scrollbarPaintKeyChanged(base, .{ .rect = .{ .left = 11, .top = 20, .right = 21, .bottom = 220 }, .total = 2000, .len = 21, .offset = 1979, .dpi = 144, .hovered = false, .dragging = false, .marker_revision = 3 }));
+    try std.testing.expect(scrollbarPaintKeyChanged(base, .{ .rect = base.rect, .total = 2000, .len = 21, .offset = 1978, .dpi = 144, .hovered = false, .dragging = false, .marker_revision = 3 }));
+    try std.testing.expect(scrollbarPaintKeyChanged(base, .{ .rect = base.rect, .total = 2000, .len = 21, .offset = 1979, .dpi = 144, .hovered = true, .dragging = false, .marker_revision = 3 }));
+    try std.testing.expect(scrollbarPaintKeyChanged(base, .{ .rect = base.rect, .total = 2000, .len = 21, .offset = 1979, .dpi = 144, .hovered = false, .dragging = false, .marker_revision = 4 }));
+}
+
+test "win32 searchBarResultsVisual marks no-match state with error colors" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var bar = win32_search_bar.SearchBar.init(std.testing.allocator);
+    defer bar.deinit();
+
+    try bar.setQuery("zzzzz", 10);
+    bar.searched = true;
+    bar.total = 0;
+
+    const theme = darkTheme();
+    const visual = searchBarResultsVisual(&theme, &bar);
+    try std.testing.expectEqual(theme.error_fg, visual.border);
+    try std.testing.expectEqual(theme.error_fg, visual.fg);
+}
+
+test "win32 searchBarButtonShowsLabel keeps docked search buttons icon-only" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!searchBarButtonShowsLabel(.prev, 80));
+    try std.testing.expect(!searchBarButtonShowsLabel(.close, 80));
+    try std.testing.expect(!searchBarButtonShowsLabel(.regex, 40));
+    try std.testing.expect(!searchBarButtonShowsLabel(.regex, 64));
+    try std.testing.expect(!searchBarButtonShowsLabel(.case_sensitive, 72));
+    try std.testing.expect(!searchBarButtonShowsLabel(.whole_word, 80));
+}
+
+test "win32 wmCommandChildHwnd handles null lParam" {
+    try std.testing.expectEqual(@as(?HWND, null), wmCommandChildHwnd(0));
+
+    const child = wmCommandChildHwnd(0x1234).?;
+    try std.testing.expectEqual(@as(usize, 0x1234), @intFromPtr(child));
 }
 
 test "win32 buildTabOverviewOverlayLabel reflects current host tab" {
@@ -17422,8 +21790,49 @@ test "win32 tabDirectionFromWheelDelta maps wheel direction to tab navigation" {
 test "win32 searchDirectionFromWheelDelta maps wheel direction to search navigation" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
-    try std.testing.expectEqual(input.Binding.Action.NavigateSearch.previous, searchDirectionFromWheelDelta(120));
-    try std.testing.expectEqual(input.Binding.Action.NavigateSearch.next, searchDirectionFromWheelDelta(-120));
+    try std.testing.expectEqual(input.Binding.Action.NavigateSearch.next, searchDirectionFromWheelDelta(120));
+    try std.testing.expectEqual(input.Binding.Action.NavigateSearch.previous, searchDirectionFromWheelDelta(-120));
+}
+
+test "win32 searchBarSearchedState helpers preserve pending searches on null callbacks" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!searchBarSearchedStateForTotal(null));
+    try std.testing.expect(searchBarSearchedStateForTotal(0));
+
+    try std.testing.expect(!searchBarSearchedStateForSelected(null, null));
+    try std.testing.expect(searchBarSearchedStateForSelected(null, 5));
+    try std.testing.expect(searchBarSearchedStateForSelected(2, null));
+}
+
+test "win32 searchBarDisplayStateChanged only trips on visible results changes" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const same = win32_search_bar.SearchBar{
+        .searched = true,
+        .total = 12,
+        .selected = 3,
+        .alloc = std.testing.allocator,
+    };
+    try std.testing.expect(!searchBarDisplayStateChanged(&same, true, 12, 3));
+    try std.testing.expect(searchBarDisplayStateChanged(&same, false, 12, 3));
+    try std.testing.expect(searchBarDisplayStateChanged(&same, true, 11, 3));
+    try std.testing.expect(searchBarDisplayStateChanged(&same, true, 12, 4));
+}
+
+test "win32 scrollStatusTextChanged only trips on indicator visibility or percent deltas" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const hidden_bottom: terminal.Scrollbar = .{ .total = 2000, .len = 21, .offset = 1979 };
+    const hidden_short: terminal.Scrollbar = .{ .total = 21, .len = 21, .offset = 0 };
+    const visible_50: terminal.Scrollbar = .{ .total = 2000, .len = 21, .offset = 1000 };
+    const visible_50_neighbor: terminal.Scrollbar = .{ .total = 2000, .len = 21, .offset = 1001 };
+    const visible_51: terminal.Scrollbar = .{ .total = 2000, .len = 21, .offset = 1020 };
+
+    try std.testing.expect(!scrollStatusTextChanged(hidden_short, hidden_bottom));
+    try std.testing.expect(scrollStatusTextChanged(hidden_bottom, visible_50));
+    try std.testing.expect(!scrollStatusTextChanged(visible_50, visible_50_neighbor));
+    try std.testing.expect(scrollStatusTextChanged(visible_50, visible_51));
 }
 
 test "win32 commandPaletteDirectionFromWheelDelta maps wheel direction to completion direction" {
@@ -17618,6 +22027,165 @@ test "win32 searchButtonKeyAction maps focused search button keys" {
     try std.testing.expect(searchButtonKeyAction(VK_RETURN, false) == null);
 }
 
+test "win32 docked search key actions preserve semantic next and previous navigation" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(
+        input.Binding.Action.NavigateSearch.next,
+        dockedSearchCoreDirectionFromKeyAction(.next).?,
+    );
+    try std.testing.expectEqual(
+        input.Binding.Action.NavigateSearch.previous,
+        dockedSearchCoreDirectionFromKeyAction(.previous).?,
+    );
+    try std.testing.expect(dockedSearchCoreDirectionFromKeyAction(.dismiss) == null);
+}
+
+test "win32 docked search arrow buttons follow visible up and down navigation" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(
+        input.Binding.Action.NavigateSearch.next,
+        dockedSearchButtonDirection(SEARCH_PREV_ID).?,
+    );
+    try std.testing.expectEqual(
+        input.Binding.Action.NavigateSearch.previous,
+        dockedSearchButtonDirection(SEARCH_NEXT_ID).?,
+    );
+    try std.testing.expect(dockedSearchButtonDirection(0) == null);
+}
+
+test "win32 docked search Enter and Shift+Enter follow the arrow-key contract" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(
+        dockedSearchArrowDirection(VK_DOWN).?,
+        dockedSearchEnterDirection(false),
+    );
+    try std.testing.expectEqual(
+        dockedSearchArrowDirection(VK_UP).?,
+        dockedSearchEnterDirection(true),
+    );
+}
+
+test "win32 docked search Up and Down keys follow the visible button contract" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(
+        input.Binding.Action.NavigateSearch.next,
+        dockedSearchArrowDirection(VK_UP).?,
+    );
+    try std.testing.expectEqual(
+        input.Binding.Action.NavigateSearch.previous,
+        dockedSearchArrowDirection(VK_DOWN).?,
+    );
+    try std.testing.expect(dockedSearchArrowDirection(VK_LEFT) == null);
+}
+
+test "win32 docked search selection preserves newest-first visible numbering" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(@as(?usize, 0), searchSelectedRawFromCoreDisplay(1));
+    try std.testing.expectEqual(@as(?usize, 7), searchSelectedRawFromCoreDisplay(8));
+    try std.testing.expectEqual(@as(?usize, 1), searchSelectedDisplayFromRaw(0, 8));
+    try std.testing.expectEqual(@as(?usize, 8), searchSelectedDisplayFromRaw(7, 8));
+}
+
+test "win32 docked search preview advances visible numbering with navigation" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(@as(?usize, 6), advanceSearchSelectedRaw(7, 8, .previous, true));
+    try std.testing.expectEqual(@as(?usize, 0), advanceSearchSelectedRaw(7, 8, .next, true));
+    try std.testing.expectEqual(@as(?usize, 7), searchSelectedDisplayFromRaw(
+        advanceSearchSelectedRaw(7, 8, .previous, true),
+        8,
+    ));
+    try std.testing.expectEqual(@as(?usize, 1), searchSelectedDisplayFromRaw(
+        advanceSearchSelectedRaw(7, 8, .next, true),
+        8,
+    ));
+}
+
+test "win32 docked search sequential visible order increments while moving older and up" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const total: ?usize = 2500;
+    var raw: ?usize = null;
+
+    try std.testing.expectEqual(@as(?usize, null), searchSelectedDisplayFromRaw(raw, total));
+
+    raw = searchSelectedRawFromCoreDisplay(1);
+    try std.testing.expectEqual(@as(?usize, 1), searchSelectedDisplayFromRaw(raw, total));
+
+    raw = advanceSearchSelectedRaw(raw, total, .next, true);
+    try std.testing.expectEqual(@as(?usize, 2), searchSelectedDisplayFromRaw(raw, total));
+
+    raw = advanceSearchSelectedRaw(raw, total, .next, true);
+    try std.testing.expectEqual(@as(?usize, 3), searchSelectedDisplayFromRaw(raw, total));
+
+    raw = advanceSearchSelectedRaw(raw, total, .previous, true);
+    try std.testing.expectEqual(@as(?usize, 2), searchSelectedDisplayFromRaw(raw, total));
+
+    raw = advanceSearchSelectedRaw(raw, total, .previous, true);
+    try std.testing.expectEqual(@as(?usize, 1), searchSelectedDisplayFromRaw(raw, total));
+}
+
+test "win32 searchBarGroupRect ignores hidden placements" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const shown = ChildPlacement{
+        .rect = .{ .left = 20, .top = 10, .right = 40, .bottom = 30 },
+        .rect_known = true,
+        .visible = true,
+        .visible_known = true,
+    };
+    const hidden = ChildPlacement{
+        .rect = .{ .left = 100, .top = 10, .right = 140, .bottom = 30 },
+        .rect_known = true,
+        .visible = false,
+        .visible_known = true,
+    };
+
+    const rect = searchBarGroupRect(&[_]ChildPlacement{ shown, hidden }, 2, 1).?;
+    try std.testing.expectEqualDeep(RECT{
+        .left = 18,
+        .top = 9,
+        .right = 42,
+        .bottom = 31,
+    }, rect);
+}
+
+test "win32 scrollbarProxyPointFromSurfaceCursor tracks the right-edge hover band" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const Test = struct {
+        fn pointLParam(x: i16, y: i16) LPARAM {
+            const bits: usize = @as(usize, @intCast(@as(u16, @bitCast(x)))) |
+                (@as(usize, @intCast(@as(u16, @bitCast(y)))) << 16);
+            return @bitCast(bits);
+        }
+    };
+
+    const pane: RECT = .{ .left = 0, .top = 0, .right = 400, .bottom = 240 };
+    const hover_width: i32 = 12;
+
+    const over = scrollbarProxyPointFromSurfaceCursor(
+        pane,
+        hover_width,
+        Test.pointLParam(395, 32),
+    );
+    try std.testing.expect(over.over_band);
+    try std.testing.expectEqual(@as(f32, 7), over.local_x);
+    try std.testing.expectEqual(@as(f32, 32), over.local_y);
+
+    const outside = scrollbarProxyPointFromSurfaceCursor(
+        pane,
+        hover_width,
+        Test.pointLParam(360, 32),
+    );
+    try std.testing.expect(!outside.over_band);
+}
+
 test "win32 tabsButtonKeyAction maps focused tabs button keys" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
@@ -17684,6 +22252,87 @@ test "win32 overlayPaintCacheDirty ignores repaint-only dirtiness" {
     try std.testing.expect(overlayPaintCacheDirty(true, .search, cached, cached, null));
     try std.testing.expect(overlayPaintCacheDirty(false, .search, null, cached, null));
     try std.testing.expect(overlayPaintCacheDirty(false, .profile, cached, cached, null));
+}
+
+test "win32 profileChromeVisible only trips for profile overlay or visible status bar" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(profileChromeVisible(.profile, 0));
+    try std.testing.expect(profileChromeVisible(.none, 24));
+    try std.testing.expect(!profileChromeVisible(.none, 0));
+    try std.testing.expect(!profileChromeVisible(.search, 0));
+}
+
+test "win32 inspector chrome visibility only trips for banner or visible status bar" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(inspectorChromeVisible(.none, 0));
+    try std.testing.expect(inspectorChromeVisible(.search, 24));
+    try std.testing.expect(!inspectorChromeVisible(.search, 0));
+}
+
+test "win32 inspector visibility changes require host relayout" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(inspectorVisibilityChangeNeedsHostRelayout(true));
+    try std.testing.expect(!inspectorVisibilityChangeNeedsHostRelayout(false));
+}
+
+test "win32 surface focus state updates focused split handle" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const root = SplitTreeSurface.Node.Handle.root;
+    const split_child = root.offset(1);
+    try std.testing.expect(!surfaceFocusStateChanged(0, root, 0, root));
+    try std.testing.expect(surfaceFocusStateChanged(0, root, 0, split_child));
+    try std.testing.expect(surfaceFocusStateChanged(0, root, 1, root));
+}
+
+test "win32 inspector panel visibility is tab scoped" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(inspectorPanelVisibleForState(.none, true));
+    try std.testing.expect(!inspectorPanelVisibleForState(.none, false));
+    try std.testing.expect(!inspectorPanelVisibleForState(.command_palette, true));
+}
+
+test "win32 overlay edit child rect preserves frame border" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const frame = RECT{ .left = 100, .top = 20, .right = 300, .bottom = 58 };
+    const child = overlayEditChildRectFromFrame(frame, 8, 6);
+    try std.testing.expectEqual(@as(i32, 108), child.left);
+    try std.testing.expectEqual(@as(i32, 26), child.top);
+    try std.testing.expectEqual(@as(i32, 292), child.right);
+    try std.testing.expectEqual(@as(i32, 52), child.bottom);
+    try std.testing.expect(child.bottom < frame.bottom);
+}
+
+test "win32 command palette hides duplicate accept button" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!overlayAcceptButtonVisible(.command_palette));
+    try std.testing.expect(overlayAcceptButtonVisible(.profile));
+    try std.testing.expect(overlayAcceptButtonVisible(.search));
+    try std.testing.expect(overlayAcceptButtonVisible(.confirm));
+}
+
+test "win32 inspectorBannerStateChanged only trips on actual banner deltas" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!inspectorBannerStateChanged(.none, .none, null, true));
+    try std.testing.expect(inspectorBannerStateChanged(.none, .none, null, false));
+    try std.testing.expect(!inspectorBannerStateChanged(.none, .info, host_banner_inspector_inactive, false));
+    try std.testing.expect(inspectorBannerStateChanged(.none, .err, "error", false));
+    try std.testing.expect(!inspectorBannerStateChanged(.search, .none, null, true));
+}
+
+test "win32 windowTitleSyncChanged only trips on actual title deltas" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(windowTitleSyncChanged(null, "winghostty"));
+    try std.testing.expect(!windowTitleSyncChanged("winghostty", "winghostty"));
+    try std.testing.expect(windowTitleSyncChanged("winghostty", "winghostty - 2"));
 }
 
 test "win32 buildInspectorPanelTitleText reflects host inspector context" {

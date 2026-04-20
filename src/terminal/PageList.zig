@@ -2097,6 +2097,8 @@ fn resizeWithoutReflow(self: *PageList, opts: Resize) Allocator.Error!void {
                     // rows and we're done. Cursor does NOT change for this
                     // since we're not pulling down scrollback.
                     const delta = rows - self.rows;
+                    self.pauseIntegrityChecks(true);
+                    defer self.pauseIntegrityChecks(false);
                     self.rows = rows;
                     for (0..delta) |_| _ = try self.grow();
                     break :gt;
@@ -2114,6 +2116,8 @@ fn resizeWithoutReflow(self: *PageList, opts: Resize) Allocator.Error!void {
                 //
                 // If we don't have enough scrollback, we add the difference,
                 // to the active area.
+                self.pauseIntegrityChecks(true);
+                defer self.pauseIntegrityChecks(false);
                 var count: usize = 0;
                 var page = self.pages.first;
                 while (page) |p| : (page = p.next) {

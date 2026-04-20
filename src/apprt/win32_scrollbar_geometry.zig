@@ -448,6 +448,14 @@ test "track on right edge" {
     try std.testing.expectEqual(@as(f32, 600.0), t.bottom);
 }
 
+test "track widens while hovered" {
+    var l = testLayout();
+    l.hovered = true;
+    const t = trackRect(l);
+    try std.testing.expectEqual(@as(f32, 800.0 - track_width_hover_dp), t.left);
+    try std.testing.expectEqual(@as(f32, 800.0), t.right);
+}
+
 test "thumb height proportional to viewport/total" {
     const l = testLayout(); // 100/1000 = 10%
     const t = thumbRect(l);
@@ -490,6 +498,17 @@ test "rowFromCursor inverts thumbRect" {
     // Allow rounding to land within 1 row
     try std.testing.expect(rmax >= scrollable - 1);
     try std.testing.expect(rmax <= scrollable);
+}
+
+test "rowFromCursor honors drag anchor offset" {
+    var l = testLayout();
+    l.top_row = 450;
+    const thumb = thumbRect(l);
+    const anchor = thumb.height() / 2.0;
+    const cursor_y = thumb.top + anchor;
+    const row = rowFromCursor(l, cursor_y, anchor);
+    try std.testing.expect(row >= l.top_row - 1);
+    try std.testing.expect(row <= l.top_row + 1);
 }
 
 test "pointOverTrack respects hover width" {

@@ -10,9 +10,10 @@
 //! large histories.  A 40 ms window batches rapid keystrokes into a
 //! single search pass while feeling instantaneous to the user.
 //!
-//! **Wrap-search semantics.**  The `wrap` toggle (default true) mirrors
-//! the existing `wrap-search` config key.  When true, navigateNext at
-//! the last match jumps to match 1; when false it clamps.
+//! **Wrap navigation.**  The helper keeps an internal `wrap` flag so
+//! callers can choose whether next/previous navigation wraps. The
+//! current Win32 UI does not surface a dedicated wrap toggle; it keeps
+//! the default wrapping behaviour unless a caller opts out.
 //!
 //! **Toggle persistence across close.**  Closing the bar (Esc) hides
 //! the visual but preserves query + toggles so that re-opening (Ctrl+F)
@@ -71,6 +72,9 @@ pub const SearchBar = struct {
     // -----------------------------------------------------------------
 
     pub fn setQuery(self: *SearchBar, next: []const u8, now_ms: i64) Allocator.Error!void {
+        const next_owned: ?[]u8 = if (next.len > 0) try self.alloc.dupe(u8, next) else null;
+        errdefer if (next_owned) |value| self.alloc.free(value);
+
         if (self.query.len > 0) self.alloc.free(self.query);
 
         if (next.len == 0) {
@@ -82,7 +86,9 @@ pub const SearchBar = struct {
             return;
         }
 
-        self.query = try self.alloc.dupe(u8, next);
+        self.query = next_owned.?;
+        self.total = null;
+        self.selected = null;
         self.last_edit_ms = now_ms;
         self.searched = false;
     }
@@ -251,6 +257,31 @@ test "query survives close/open" {
     bar.close();
     bar.open();
     try std.testing.expectEqualStrings("foo", bar.query);
+}
+
+test "setQuery accepts aliased source slice" {
+    var bar = SearchBar.init(std.testing.allocator);
+    defer bar.deinit();
+
+    try bar.setQuery("foo", 1000);
+    try bar.setQuery(bar.query, 2000);
+    try std.testing.expectEqualStrings("foo", bar.query);
+    try std.testing.expectEqual(@as(i64, 2000), bar.last_edit_ms);
+}
+
+test "setQuery clears stale results for a new search" {
+    var bar = SearchBar.init(std.testing.allocator);
+    defer bar.deinit();
+
+    try bar.setQuery("foo", 1000);
+    bar.setResults(8);
+    bar.selected = 4;
+
+    try bar.setQuery("bar", 1100);
+    try std.testing.expectEqual(@as(?usize, null), bar.total);
+    try std.testing.expectEqual(@as(?usize, null), bar.selected);
+    try std.testing.expect(!bar.searched);
+    try std.testing.expectEqual(@as(i64, 1100), bar.last_edit_ms);
 }
 
 test "empty query clears results" {
