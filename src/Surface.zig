@@ -1197,7 +1197,10 @@ pub fn handleMessage(self: *Surface, msg: Message) !void {
             );
         },
 
-        .search_clear => try self.syncClearSearchState(),
+        .search_clear => |v| {
+            if (!self.shouldAcceptSearchGeneration(v.generation)) return;
+            try self.syncClearSearchState(v.generation);
+        },
     }
 }
 
@@ -1568,7 +1571,10 @@ fn searchCallback_(
 
         // When we quit, tell our renderer to reset any search state.
         .quit => {
-            _ = self.surfaceMailbox().push(.search_clear, .forever);
+            _ = self.surfaceMailbox().push(
+                .{ .search_clear = .{ .generation = generation } },
+                .forever,
+            );
         },
 
         // Unhandled, so far.
@@ -5851,11 +5857,11 @@ pub fn endSearch(self: *Surface) !bool {
     const performed = self.search != null;
 
     if (self.search) |*s| {
-        _ = self.nextSearchGeneration();
+        const generation = self.nextSearchGeneration();
         s.deinit();
         self.search = null;
         self.search_query_options = .{};
-        try self.syncClearSearchState();
+        try self.syncClearSearchState(generation);
     }
 
     _ = try self.rt_app.performAction(
@@ -5868,14 +5874,26 @@ pub fn endSearch(self: *Surface) !bool {
 }
 
 pub fn invalidateSearchResults(self: *Surface) !bool {
-    if (self.search == null) return false;
-    _ = self.nextSearchGeneration();
-    try self.syncClearSearchState();
+    const s: *Search = if (self.search) |*s| s else return false;
+    const generation = self.nextSearchGeneration();
+    try self.syncClearSearchState(generation);
+
+    var req = try terminal.search.Thread.Message.WriteReq.init(self.alloc, "");
+    errdefer req.deinit();
+    _ = s.state.mailbox.push(
+        .{ .change_query = .{
+            .generation = generation,
+            .options = self.search_query_options,
+            .req = req,
+        } },
+        .forever,
+    );
+    s.state.wakeup.notify() catch {};
     return true;
 }
 
-fn syncClearSearchState(self: *Surface) !void {
-    _ = self.renderer_thread.mailbox.push(.search_clear, .forever);
+fn syncClearSearchState(self: *Surface, generation: u64) !void {
+    _ = self.renderer_thread.mailbox.push(.{ .search_clear = generation }, .forever);
     try self.renderer_thread.wakeup.notify();
 
     _ = try self.rt_app.performAction(
@@ -5941,11 +5959,11 @@ pub fn setSearchQuery(
 
     // Zero-length text means stop searching.
     if (text.len == 0) {
-        _ = self.nextSearchGeneration();
+        const generation = self.nextSearchGeneration();
         s.deinit();
         self.search = null;
         self.search_query_options = .{};
-        try self.syncClearSearchState();
+        try self.syncClearSearchState(generation);
         return true;
     }
 

@@ -364,7 +364,7 @@ pub const ScreenSearch = struct {
                 error.OutOfMemory => return error.OutOfMemory,
                 else => {
                     log.warn("error reinitializing screen search after resize err={}", .{err});
-                    self.state = .complete;
+                    self.failSearch();
                     return;
                 },
             };
@@ -575,8 +575,8 @@ pub const ScreenSearch = struct {
                     error.OutOfMemory => return error.OutOfMemory,
                     else => {
                         log.warn("error initializing history search err={}", .{err});
-                        self.state = .complete;
-                        break :history;
+                        self.failSearch();
+                        return;
                     },
                 };
                 errdefer search.deinit();
@@ -612,8 +612,8 @@ pub const ScreenSearch = struct {
                 error.OutOfMemory => return error.OutOfMemory,
                 else => {
                     log.warn("error initializing active-history reconciliation search err={}", .{err});
-                    self.state = .complete;
-                    break :history;
+                    self.failSearch();
+                    return;
                 },
             };
             defer window.deinit();
@@ -638,7 +638,8 @@ pub const ScreenSearch = struct {
                     error.OutOfMemory => return error.OutOfMemory,
                     else => {
                         log.warn("error refreshing history matches err={}", .{err});
-                        break;
+                        self.failSearch();
+                        return;
                     },
                 } orelse break;
 

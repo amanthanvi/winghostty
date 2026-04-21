@@ -61,8 +61,8 @@ pub const Message = union(enum) {
     /// no match currently.
     search_selected_match: SearchSelectedMatch,
 
-    /// Force-clear all rendered search state, bypassing generation checks.
-    search_clear,
+    /// Force-clear rendered search state for the current search generation.
+    search_clear: u64,
 
     /// Activate or deactivate the inspector.
     inspector: bool,

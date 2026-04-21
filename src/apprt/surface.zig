@@ -26,6 +26,9 @@ pub const Message = union(enum) {
         generation: u64,
         selected: ?usize,
     };
+    pub const SearchClear = struct {
+        generation: u64,
+    };
     pub const SearchMatchRows = struct {
         generation: u64,
         rows: SearchRowsReq,
@@ -138,8 +141,8 @@ pub const Message = union(enum) {
     /// Search match rows for scrollbar markers.
     search_match_rows: SearchMatchRows,
 
-    /// Force-clear search state without generation filtering.
-    search_clear,
+    /// Force-clear search state for the current search generation.
+    search_clear: SearchClear,
 
     pub fn deinit(self: *Message) void {
         switch (self.*) {

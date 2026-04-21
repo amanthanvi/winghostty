@@ -530,8 +530,9 @@ pub const SlidingWindow = struct {
                 self.regex_buf.appendSliceAssumeCapacity(second);
             },
             .reverse => {
-                // Reverse storage is rev(page_n), rev(page_n-1). Reversing the
-                // slices in opposite order reconstructs forward UTF-8 bytes.
+                // `first` and `second` are logical search-order slices after
+                // data_offset. Reverse the whole range across the circular
+                // split: reverse(first ++ second) == reverse(second) ++ reverse(first).
                 self.appendReverseForRegex(second);
                 self.appendReverseForRegex(first);
             },
@@ -686,7 +687,9 @@ pub const SlidingWindow = struct {
         var sensitivity: RegexEdgeSensitivity = .{};
         var escaped = false;
         var in_class = false;
-        for (pattern) |c| {
+        var at_alt_start = true;
+        var group_prefix = false;
+        for (pattern, 0..) |c, i| {
             if (escaped) {
                 escaped = false;
                 if (!in_class) {
@@ -699,6 +702,8 @@ pub const SlidingWindow = struct {
                         },
                         else => {},
                     }
+                    at_alt_start = false;
+                    group_prefix = false;
                 }
                 continue;
             }
@@ -714,14 +719,76 @@ pub const SlidingWindow = struct {
             }
 
             switch (c) {
-                '[' => in_class = true,
-                '^' => sensitivity.before.line_anchor = true,
-                '$' => sensitivity.after.line_anchor = true,
-                else => {},
+                '[' => {
+                    in_class = true;
+                    at_alt_start = false;
+                    group_prefix = false;
+                },
+                '(' => {
+                    at_alt_start = true;
+                    group_prefix = true;
+                },
+                ')' => {
+                    at_alt_start = false;
+                    group_prefix = false;
+                },
+                '|' => {
+                    at_alt_start = true;
+                    group_prefix = false;
+                },
+                '?', ':' => {
+                    if (!(group_prefix and at_alt_start)) {
+                        at_alt_start = false;
+                        group_prefix = false;
+                    }
+                },
+                '^' => {
+                    if (at_alt_start) sensitivity.before.line_anchor = true;
+                    at_alt_start = false;
+                    group_prefix = false;
+                },
+                '$' => {
+                    if (regexDollarIsLineAnchor(pattern, i)) {
+                        sensitivity.after.line_anchor = true;
+                    }
+                    at_alt_start = false;
+                    group_prefix = false;
+                },
+                else => {
+                    at_alt_start = false;
+                    group_prefix = false;
+                },
             }
         }
 
         return sensitivity;
+    }
+
+    fn regexDollarIsLineAnchor(pattern: []const u8, dollar_i: usize) bool {
+        var escaped = false;
+        var in_class = false;
+        var i = dollar_i + 1;
+        while (i < pattern.len) : (i += 1) {
+            const c = pattern[i];
+            if (escaped) {
+                return false;
+            }
+            if (c == '\\') {
+                escaped = true;
+                continue;
+            }
+            if (in_class) {
+                if (c == ']') in_class = false;
+                continue;
+            }
+            return switch (c) {
+                '|' => true,
+                ')' => true,
+                '[' => false,
+                else => false,
+            };
+        }
+        return true;
     }
 
     /// Return a flattened highlight for the given start and length.
@@ -1587,9 +1654,53 @@ test "SlidingWindow regex edge sensitivity detects anchors and character classes
     const class_only = SlidingWindow.regexPatternEdgeSensitivity("[^$^]+");
     try testing.expect(!class_only.any());
 
-    const anchors = SlidingWindow.regexPatternEdgeSensitivity("[^$^]+^foo$");
+    const anchors = SlidingWindow.regexPatternEdgeSensitivity("^foo$");
     try testing.expect(anchors.before.line_anchor);
     try testing.expect(anchors.after.line_anchor);
+}
+
+test "SlidingWindow regex edge sensitivity ignores literal anchor bytes" {
+    const testing = std.testing;
+
+    const literals = SlidingWindow.regexPatternEdgeSensitivity("foo^bar price$usd");
+    try testing.expect(!literals.before.line_anchor);
+    try testing.expect(!literals.after.line_anchor);
+
+    const alternation_start = SlidingWindow.regexPatternEdgeSensitivity("foo|^bar");
+    try testing.expect(alternation_start.before.line_anchor);
+
+    const alternation_end = SlidingWindow.regexPatternEdgeSensitivity("foo$|bar");
+    try testing.expect(alternation_end.after.line_anchor);
+
+    const grouped = SlidingWindow.regexPatternEdgeSensitivity("(?:^bar$)");
+    try testing.expect(grouped.before.line_anchor);
+    try testing.expect(grouped.after.line_anchor);
+}
+
+test "SlidingWindow reverse regex haystack preserves offset across circular split" {
+    if (comptime !build_options.oniguruma) return error.SkipZigTest;
+
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    try oni.testing.ensureInit();
+
+    var w: SlidingWindow = try .initWithOptions(alloc, .reverse, "abc", .{
+        .regex = true,
+    });
+    defer w.deinit();
+
+    try w.data.ensureUnusedCapacity(alloc, 8);
+    w.data.appendSliceAssumeCapacity("123456");
+    w.data.deleteOldest(4);
+    w.data.appendSliceAssumeCapacity("abcdef");
+    w.data_offset = 2;
+
+    const slices = w.data.getPtrSlice(w.data_offset, w.data.len() - w.data_offset);
+    try testing.expect(slices[0].len > 0);
+    try testing.expect(slices[1].len > 0);
+
+    const haystack = try w.buildRegexHaystack(slices[0], slices[1]);
+    try testing.expectEqualStrings("fedcba", haystack);
 }
 
 test "SlidingWindow whole-word regex edge sensitivity preserves embedded anchors" {

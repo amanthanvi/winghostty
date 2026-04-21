@@ -526,7 +526,8 @@ fn drainMailbox(self: *Thread) !void {
                 self.renderer.search_matches_dirty = true;
             },
 
-            .search_clear => {
+            .search_clear => |generation| search: {
+                if (!self.shouldAcceptSearchGeneration(generation)) break :search;
                 if (self.renderer.search_matches) |*m| m.deinit();
                 self.renderer.search_matches = null;
                 if (self.renderer.search_selected_match) |*m| m.arena.deinit();
