@@ -48,7 +48,7 @@ pub const ViewportSearch = struct {
         alloc: Allocator,
         needle_unowned: []const u8,
         query_options: QueryOptions,
-    ) anyerror!ViewportSearch {
+    ) SlidingWindow.InitError!ViewportSearch {
         // We just do a forward search since the viewport is usually
         // pretty small so search results are instant anyways. This avoids
         // a small amount of work to reverse things.
@@ -189,7 +189,7 @@ pub const ViewportSearch = struct {
 
     /// Find the next match for the needle in the active area. This returns
     /// null when there are no more matches.
-    pub fn next(self: *ViewportSearch) anyerror!?FlattenedHighlight {
+    pub fn next(self: *ViewportSearch) SlidingWindow.SearchError!?FlattenedHighlight {
         return self.window.next();
     }
 

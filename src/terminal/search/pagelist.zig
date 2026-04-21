@@ -1,14 +1,10 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const testing = std.testing;
-const terminal = @import("../main.zig");
-const point = terminal.point;
+const point = @import("../point.zig");
 const FlattenedHighlight = @import("../highlight.zig").Flattened;
-const Page = terminal.Page;
-const PageList = terminal.PageList;
+const PageList = @import("../PageList.zig");
 const Pin = PageList.Pin;
-const Selection = terminal.Selection;
-const Screen = terminal.Screen;
 const Terminal = @import("../Terminal.zig");
 const SlidingWindow = @import("sliding_window.zig").SlidingWindow;
 const QueryOptions = @import("query_options.zig").QueryOptions;
@@ -64,7 +60,7 @@ pub const PageListSearch = struct {
         query_options: QueryOptions,
         list: *PageList,
         start: *PageList.List.Node,
-    ) anyerror!PageListSearch {
+    ) SlidingWindow.InitError!PageListSearch {
         // We put a tracked pin into the node that we're starting from.
         // By using a tracked pin, we can keep our pagelist references safe
         // because if the pagelist prunes pages, the tracked pin will
@@ -110,7 +106,7 @@ pub const PageListSearch = struct {
     ///
     /// This does NOT access the PageList, so it can be called without
     /// a lock held.
-    pub fn next(self: *PageListSearch) anyerror!?FlattenedHighlight {
+    pub fn next(self: *PageListSearch) SlidingWindow.SearchError!?FlattenedHighlight {
         return self.window.next();
     }
 

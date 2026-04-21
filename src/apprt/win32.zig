@@ -47,7 +47,6 @@ const win32_focus_ring = @import("win32_focus_ring.zig");
 // Re-export types from theme module
 const ThemeColors = win32_theme.ThemeColors;
 const ButtonColors = win32_theme.ButtonColors;
-const ProfileChromeAccent = win32_theme.ProfileChromeAccent;
 const HostOverlayMode = win32_theme.HostOverlayMode;
 
 // Re-export functions from theme module
@@ -79,11 +78,9 @@ const HCURSOR = ?*anyopaque;
 const HDC = ?*anyopaque;
 const HGLRC = ?*anyopaque;
 const HGDIOBJ = ?*anyopaque;
-const HPEN = ?*anyopaque;
 const HMODULE = ?*anyopaque;
 const HMENU = ?*anyopaque;
 const HICON = ?*anyopaque;
-const HRGN = ?*anyopaque;
 const LPARAM = isize;
 const WPARAM = usize;
 const LRESULT = isize;
@@ -162,10 +159,7 @@ const WM_POINTERWHEEL = 0x024E;
 const WM_NCCREATE = 0x0081;
 const WM_NCCALCSIZE = 0x0083;
 const WM_NCHITTEST = 0x0084;
-const WM_NCPAINT = 0x0085;
-const WM_NCACTIVATE = 0x0086;
 const WM_NCMOUSEMOVE = 0x00A0;
-const WM_NCLBUTTONDOWN = 0x00A1;
 const WM_NCLBUTTONUP = 0x00A2;
 const WM_NCMOUSELEAVE = 0x02A2;
 const WM_SYSCOMMAND = 0x0112;
@@ -204,14 +198,12 @@ const WS_CHILD = 0x40000000;
 const WS_CLIPCHILDREN = 0x02000000;
 const WS_CLIPSIBLINGS = 0x04000000;
 const WS_CAPTION = 0x00C00000;
-const WS_GROUP = 0x00020000;
 const WS_SYSMENU = 0x00080000;
 const WS_THICKFRAME = 0x00040000;
 const WS_MINIMIZEBOX = 0x00020000;
 const WS_MAXIMIZEBOX = 0x00010000;
 const WS_VISIBLE = 0x10000000;
 const WS_TABSTOP = 0x00010000;
-const WS_BORDER = 0x00800000;
 const WS_OVERLAPPEDWINDOW = WS_OVERLAPPED | WS_CAPTION | WS_SYSMENU | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
 const WS_POPUP = 0x80000000;
 const WS_EX_LAYERED = 0x00080000;
@@ -246,15 +238,7 @@ const LWA_COLORKEY = 0x00000001;
 const LWA_ALPHA = 0x00000002;
 const TRANSPARENT = 1;
 const OPAQUE = 2;
-const IDYES = 6;
-const IDOK = 1;
-const IDCANCEL = 2;
-const MB_ICONWARNING = 0x00000030;
 const MB_ICONINFORMATION = 0x00000040;
-const MB_OK = 0x00000000;
-const MB_OKCANCEL = 0x00000001;
-const MB_DEFBUTTON2 = 0x00000100;
-const MB_YESNO = 0x00000004;
 const MK_CONTROL = 0x0008;
 const MK_LBUTTON = 0x0001;
 const MK_MBUTTON = 0x0010;
@@ -267,11 +251,7 @@ const MK_SHIFT = 0x0004;
 const MK_XBUTTON1 = 0x0020;
 const MK_XBUTTON2 = 0x0040;
 const EN_CHANGE = 0x0300;
-const BS_PUSHBUTTON = 0x00000000;
-const BS_DEFPUSHBUTTON = 0x00000001;
-const BS_FLAT = 0x00008000;
 const BS_OWNERDRAW = 0x0000000B;
-const SS_CENTER = 0x00000001;
 const SS_RIGHT = 0x00000002;
 const SS_CENTERIMAGE = 0x00000200;
 const SS_OWNERDRAW = 0x0000000D;
@@ -342,10 +322,6 @@ const DWMWA_TEXT_COLOR: DWORD = 36;
 const DWMWA_SYSTEMBACKDROP_TYPE: DWORD = 38;
 const DWMSBT_NONE: u32 = 1;
 const DWMSBT_MAINWINDOW: u32 = 2;
-/// Acrylic-style transient backdrop for popups / overlays / toasts.
-/// Win11 22H2+ only; on older builds `DwmSetWindowAttribute` returns
-/// `E_INVALIDARG` and we fall back to `DWMSBT_NONE`.
-const DWMSBT_TRANSIENTWINDOW: u32 = 3;
 /// Mica-tabbed backdrop for main windows with visible tab strips.
 /// Win11 22H2+ (build ≥ 22621); older Win11 (≥ 22000) accepts
 /// `DWMSBT_MAINWINDOW` but not this variant.
@@ -356,7 +332,6 @@ const DC_PEN: i32 = 19;
 const PS_SOLID: i32 = 0;
 const host_tab_max_button_width: i32 = default_metrics.tab_max_width;
 const host_tab_close_zone_width: i32 = default_metrics.tab_close_zone; // per-tab close button hit zone width
-const host_pane_divider_width: i32 = default_metrics.pane_divider;
 const SPI_GETHIGHCONTRAST: UINT = 0x0042;
 const SPI_GETNONCLIENTMETRICS: UINT = 0x0029;
 const SPI_GETCLIENTAREAANIMATION: UINT = 0x1042;
@@ -507,9 +482,6 @@ const SPI_GETWHEELSCROLLCHARS = 0x006C;
 const WHEEL_DELTA = 120;
 const WHEEL_PAGESCROLL = 0xFFFF_FFFF;
 const ERROR_FILE_NOT_FOUND = 2;
-const ERROR_BROKEN_PIPE = 109;
-const ERROR_PIPE_BUSY = 231;
-const ERROR_PIPE_CONNECTED = 535;
 const PIPE_READMODE_BYTE = 0x00000000;
 const PIPE_WAIT = 0x00000000;
 const PIPE_ACCESS_DUPLEX = 0x00000003;
@@ -966,7 +938,6 @@ extern "shell32" fn DragQueryFileW(hDrop: *anyopaque, iFile: UINT, lpszFile: ?[*
 extern "shell32" fn DragFinish(hDrop: *anyopaque) callconv(.winapi) void;
 
 const WM_DROPFILES: UINT = 0x0233;
-const WS_EX_ACCEPTFILES: u32 = 0x00000010;
 
 const class_name = std.unicode.utf8ToUtf16LeStringLiteral("winghostty.win32");
 const host_class_name = std.unicode.utf8ToUtf16LeStringLiteral("winghostty.win32.host");
@@ -982,8 +953,6 @@ const quick_terminal_title = std.unicode.utf8ToUtf16LeStringLiteral("winghostty 
 const prompt_label_class = std.unicode.utf8ToUtf16LeStringLiteral("STATIC");
 const prompt_edit_class = std.unicode.utf8ToUtf16LeStringLiteral("EDIT");
 const prompt_button_class = std.unicode.utf8ToUtf16LeStringLiteral("BUTTON");
-const prompt_ok_label_utf8 = "OK";
-const prompt_cancel_label_utf8 = "Cancel";
 const prompt_ok_label = std.unicode.utf8ToUtf16LeStringLiteral("OK");
 const prompt_cancel_label = std.unicode.utf8ToUtf16LeStringLiteral("Cancel");
 const search_prev_label = std.unicode.utf8ToUtf16LeStringLiteral("Prev match");
@@ -999,23 +968,12 @@ const host_overlay_profile_label_utf8 = "Profile:";
 const host_overlay_surface_title_label_utf8 = "Window title:";
 const host_overlay_tab_title_label_utf8 = "Tab title:";
 const host_overlay_command_palette_label = std.unicode.utf8ToUtf16LeStringLiteral("Command:");
-const host_overlay_search_label = std.unicode.utf8ToUtf16LeStringLiteral("Search:");
-const host_overlay_profile_label = std.unicode.utf8ToUtf16LeStringLiteral("Profile:");
-const host_overlay_surface_title_label = std.unicode.utf8ToUtf16LeStringLiteral("Window title:");
-const host_overlay_tab_title_label = std.unicode.utf8ToUtf16LeStringLiteral("Tab title:");
-const host_overlay_tab_overview_label = std.unicode.utf8ToUtf16LeStringLiteral("Tab:");
 const host_tab_new_button_label = std.unicode.utf8ToUtf16LeStringLiteral("+");
 const host_tab_dropdown_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{25BE}"); // dropdown chevron
-const host_banner_inspector_active = "Inspector active. Toggle inspector to return to the terminal view.";
 const host_banner_inspector_inactive = "Inspector hidden. Terminal view is active.";
 const search_results_idle = "Type to search";
 const search_results_pending = "Searching";
 const search_results_none = "No matches";
-const clipboard_read_title = std.unicode.utf8ToUtf16LeStringLiteral("Allow clipboard paste?");
-const clipboard_read_message = std.unicode.utf8ToUtf16LeStringLiteral("winghostty needs confirmation before completing this clipboard paste or read request.");
-const clipboard_write_title = std.unicode.utf8ToUtf16LeStringLiteral("Allow clipboard write?");
-const clipboard_write_message = std.unicode.utf8ToUtf16LeStringLiteral("winghostty needs confirmation before allowing this application to write to the Windows clipboard.");
-const notification_title = std.unicode.utf8ToUtf16LeStringLiteral("winghostty");
 const opengl32_name: [*:0]const u8 = "opengl32.dll";
 const shell_open: LPCWSTR = std.unicode.utf8ToUtf16LeStringLiteral("open");
 
@@ -1685,10 +1643,8 @@ pub const App = struct {
     /// (Snap Layouts; `DWMSBT_TABBEDWINDOW`). Future chrome gates
     /// read this directly; no runtime config flag, per §12 Q1.
     os_build: u32 = 0,
-    /// Derived from `os_build >= 22000`. Top-level switch for the
-    /// integrated-titlebar path (`WM_NCCALCSIZE` / `WM_NCHITTEST`
-    /// state machine). Currently queried by log lines only; the
-    /// actual titlebar rework lands in a later P5 pass.
+    /// Derived from `os_build >= 22000`; gates the integrated-titlebar
+    /// path (`WM_NCCALCSIZE` / `WM_NCHITTEST`).
     use_integrated_titlebar: bool = false,
     // Live-resize state is tracked PER HOST (`Host.is_live_resize`),
     // not per App. Dragging window A must NOT freeze renderer
@@ -1698,19 +1654,11 @@ pub const App = struct {
     /// enough; re-registering on every copy is documented as
     /// cheap by MS but still pointless work.
     cf_html_format: UINT = 0,
-    /// In-app toast stack (P4.4). Owned here so toasts survive
-    /// Host tear-down — a notification fired from a just-closed
-    /// tab still belongs on screen until it expires. HWND wire-up
-    /// (per-toast `WS_POPUP` + `UpdateLayeredWindow` + tween-driven
-    /// y-offset animation) lands in a later P4 pass; for now the
-    /// stack is infrastructure with `push` / `tick` consumed by the
-    /// App message loop.
+    /// In-app toast state, owned at App scope so notifications can
+    /// outlive the Host/tab that created them.
     toast_stack: win32_toast.ToastStack = undefined,
-    /// Hyperlink hover-dwell tracker (P6.6). Reset via `dismiss()`
-    /// whenever focus leaves a surface or a click arrives. The
-    /// tooltip HWND + 100 ms `SetTimer` polling loop land with the
-    /// wire-up pass; the tracker itself is allocation-free so
-    /// shipping it early is cheap.
+    /// Hyperlink hover-dwell tracker. Reset via `dismiss()` whenever
+    /// focus leaves a surface or a click arrives.
     link_hover_tracker: win32_link_preview.HoverTracker = undefined,
     /// Windows Action Center toast notifier. `null` when WinRT init
     /// fails (e.g. corporate lockdown, missing combase.dll), in which
@@ -1734,10 +1682,6 @@ pub const App = struct {
     startup_cwd: ?[]u8 = null,
     /// Parsed `wgh://activate?...` launch argument from a cold-start
     /// toast activation. `null` when no such argv entry is present.
-    /// Consumed once after the first window spawns; the focus-to-
-    /// surface dispatch lands alongside a stable surface-id scheme
-    /// in a future pass. Today it just logs so telemetry confirms
-    /// cold-start activations arrive end-to-end.
     pending_toast_activation: ?win32_toast_activation.ActivationTarget = null,
 
     pub fn init(
@@ -3122,7 +3066,7 @@ pub const App = struct {
         target: apprt.ipc.Target,
         comptime action: apprt.ipc.Action.Key,
         value: apprt.ipc.Action.Value(action),
-    ) anyerror!bool {
+    ) !bool {
         switch (action) {
             .new_window => {
                 const pipe_name = try resolveIpcPipeNameForTarget(alloc, target);
@@ -3477,13 +3421,6 @@ pub const App = struct {
     fn findHostById(self: *App, id: u32) ?*Host {
         for (self.hosts.items) |host| {
             if (host.id == id) return host;
-        }
-        return null;
-    }
-
-    fn findHostByHwnd(self: *App, hwnd: HWND) ?*Host {
-        for (self.hosts.items) |host| {
-            if (host.hwnd == hwnd) return host;
         }
         return null;
     }
@@ -3918,13 +3855,6 @@ pub const App = struct {
         const surface = found.host.tabs.items[desired].focusedSurface() orelse return false;
         self.activateSurface(surface);
         return true;
-    }
-
-    fn surfaceIndex(self: *App, needle: *Surface) ?usize {
-        for (self.windows.items, 0..) |surface, i| {
-            if (surface == needle) return i;
-        }
-        return null;
     }
 
     fn quickTerminalSurface(self: *App) ?*Surface {
@@ -5472,7 +5402,7 @@ const Host = struct {
     /// mid-write. Callers must still drive their own
     /// `syncCommandPaletteBanner` / `syncOverlay*` after the write —
     /// the suppressed EN_CHANGE intentionally skips that default
-    /// path. See task #44 and AGENTS.md:75.
+    /// path. See AGENTS.md:75.
     fn setOverlayEditText(self: *Host, value: []const u8) !bool {
         const edit_hwnd = self.overlay_edit_hwnd orelse return false;
         self.suppress_edit_events = true;
@@ -5499,13 +5429,8 @@ const Host = struct {
         const text = std.mem.trim(u8, text_raw, " \t\r\n");
 
         const snap = self.paletteSnapshot();
-        // Breadcrumb for the palette-crash investigation (task #44).
-        // User-reported: "crashes after a few keystrokes". These
-        // three lines bound the likely crash surface — a malformed
-        // snapshot (dangling cvals after config reload), an unusual
-        // query that trips `zf.rank`, or a bad `palette_list_ranked`
-        // state. When a repro lands, the warn lines before/after
-        // the `rankedForQuery` call pinpoint which side failed.
+        // Bound the ranked-query inputs so debug logs can distinguish
+        // malformed snapshots from ranker failures.
         log.debug(
             "palette rebuild begin text_len={d} cmds={d} cvals={d}",
             .{ text.len, snap.commands.len, snap.cvals.len },
@@ -7477,17 +7402,7 @@ const Host = struct {
     fn searchControlSurface(self: *const Host, child: HWND) ?*Surface {
         for (self.app.windows.items) |surface| {
             if (surface.host != self) continue;
-            if ((surface.search_bar_edit_hwnd != null and child == surface.search_bar_edit_hwnd.?) or
-                (surface.search_bar_prev_hwnd != null and child == surface.search_bar_prev_hwnd.?) or
-                (surface.search_bar_next_hwnd != null and child == surface.search_bar_next_hwnd.?) or
-                (surface.search_bar_regex_hwnd != null and child == surface.search_bar_regex_hwnd.?) or
-                (surface.search_bar_case_hwnd != null and child == surface.search_bar_case_hwnd.?) or
-                (surface.search_bar_word_hwnd != null and child == surface.search_bar_word_hwnd.?) or
-                (surface.search_bar_results_hwnd != null and child == surface.search_bar_results_hwnd.?) or
-                (surface.search_bar_close_hwnd != null and child == surface.search_bar_close_hwnd.?))
-            {
-                return surface;
-            }
+            if (surface.ownsSearchBarControl(child)) return surface;
         }
         return null;
     }
@@ -7504,12 +7419,7 @@ const Host = struct {
 
     fn isSearchBarButton(self: *const Host, child: HWND) bool {
         const surface = self.searchControlSurface(child) orelse return false;
-        return (surface.search_bar_prev_hwnd != null and child == surface.search_bar_prev_hwnd.?) or
-            (surface.search_bar_next_hwnd != null and child == surface.search_bar_next_hwnd.?) or
-            (surface.search_bar_regex_hwnd != null and child == surface.search_bar_regex_hwnd.?) or
-            (surface.search_bar_case_hwnd != null and child == surface.search_bar_case_hwnd.?) or
-            (surface.search_bar_word_hwnd != null and child == surface.search_bar_word_hwnd.?) or
-            (surface.search_bar_close_hwnd != null and child == surface.search_bar_close_hwnd.?);
+        return surface.searchBarButtonRole(child) != null;
     }
 
     fn isSearchBarResultsLabel(self: *const Host, child: HWND) bool {
@@ -7519,13 +7429,7 @@ const Host = struct {
 
     fn searchBarButtonRole(self: *const Host, child: HWND) ?SearchBarButtonRole {
         const surface = self.searchControlSurface(child) orelse return null;
-        if (surface.search_bar_prev_hwnd != null and child == surface.search_bar_prev_hwnd.?) return .prev;
-        if (surface.search_bar_next_hwnd != null and child == surface.search_bar_next_hwnd.?) return .next;
-        if (surface.search_bar_regex_hwnd != null and child == surface.search_bar_regex_hwnd.?) return .regex;
-        if (surface.search_bar_case_hwnd != null and child == surface.search_bar_case_hwnd.?) return .case_sensitive;
-        if (surface.search_bar_word_hwnd != null and child == surface.search_bar_word_hwnd.?) return .whole_word;
-        if (surface.search_bar_close_hwnd != null and child == surface.search_bar_close_hwnd.?) return .close;
-        return null;
+        return surface.searchBarButtonRole(child);
     }
 
     fn searchBarButtonIcon(self: *const Host, child: HWND) ?win32_icons.Kind {
@@ -7806,10 +7710,8 @@ const Host = struct {
     fn isActiveChromeButton(self: *Host, child: HWND) bool {
         if (self.isActiveTabButton(child)) return true;
         const surface = self.searchControlSurface(child) orelse return false;
-        if (surface.search_bar_regex_hwnd != null and child == surface.search_bar_regex_hwnd.?) return surface.search_bar.toggles.regex;
-        if (surface.search_bar_case_hwnd != null and child == surface.search_bar_case_hwnd.?) return surface.search_bar.toggles.case_sensitive;
-        if (surface.search_bar_word_hwnd != null and child == surface.search_bar_word_hwnd.?) return surface.search_bar.toggles.whole_word;
-        return false;
+        const role = surface.searchBarButtonRole(child) orelse return false;
+        return surface.searchBarButtonActive(role);
     }
 
     fn drawButton(self: *Host, draw: *const DRAWITEMSTRUCT) void {
@@ -8100,17 +8002,8 @@ const Host = struct {
         const edit_hwnd = self.overlay_edit_hwnd orelse return false;
         const alloc = self.app.core_app.alloc;
 
-        // CRITICAL UAF FIX (task #44, user-reported "palette crashes
-        // after a few keystrokes"): `text` and the `seed` derived
-        // from it BOTH borrow from `cached_overlay_edit`.
-        // `setOverlayEditText(candidate)` below frees that cache via
-        // `appendOwnedString` inside `syncWindowTextUtf8CachedAfterSet`,
-        // so any read of `text` / `seed` after that point is a
-        // use-after-free. Concrete repro: open palette, type, press
-        // Tab — `appendOwnedString(seed)` reads freed memory.
-        //
-        // Dupe both inputs into owned buffers up front so the rest
-        // of the function is safe across the free boundary.
+        // `setOverlayEditText` replaces `cached_overlay_edit`; own the
+        // query slices before deriving completion state from them.
         const text_raw = try overlayEditText(self);
         const trimmed = std.mem.trim(u8, text_raw, " \t\r\n");
         const text_owned = try alloc.dupe(u8, trimmed);
@@ -8356,12 +8249,8 @@ const Host = struct {
     }
 
     fn statusBarHeight(self: *Host) i32 {
-        // Status bar removed per user feedback: "too busy, give the
-        // user back some terminal space." The status_bar module + its
-        // helpers are kept in the build graph via the
-        // live-infrastructure `_ = …` block for future opt-in, but
-        // the chrome no longer reserves vertical space for it and
-        // `paintChrome` skips the status paint branch.
+        // Status bar is disabled; banners and overlays carry transient
+        // status feedback without reserving terminal rows.
         _ = self;
         return 0;
     }
@@ -11481,56 +11370,35 @@ fn sizeToGeometry(sz: configpkg.Config.QuickTerminalSize.Size) win32_quick_termi
     };
 }
 
-// Keep the surface-drop / tab-drag / search-bar modules reachable
-// from the exe's module graph while their HWND wire-ups are pending.
-// Zig prunes module-level decls if no call site references them, so
-// this comptime block forces each public entry point into the build.
-// Drop entries as real consumers land (RegisterDragDrop per surface,
-// OLE IDropSource / IDataObject / IDropTarget for tab drag, per-pane
-// WS_CHILD EDIT + buttons for search bar).
+// Keep helper modules reachable from the exe's module graph. Zig prunes
+// unreferenced module-level decls, so this block also keeps their tests
+// and public entry points type-checked.
 comptime {
-    // Surface-level drag-drop payload parsing. IDropTarget wire-up
-    // (per-surface `RegisterDragDrop`) is a later P6 pass; this
-    // block keeps the public entry points reachable until then.
+    // Surface-level drag-drop payload parsing helpers.
     _ = win32_surface_drop.parentDir;
     _ = win32_surface_drop.requiresQuoting;
     _ = win32_surface_drop.formatFilePayload;
     _ = win32_surface_drop.formatTextPayload;
     _ = win32_surface_drop.extractShellUrl;
     _ = win32_surface_drop.extractHtmlFragment;
-    // Tab-drag state machine. `Host.drag_state` already references
-    // `DragState`; the helpers below stay here until the mousemove /
-    // drag-hit-test paint paths consume them.
+    // Tab-drag state machine helpers.
     _ = win32_tab_drag.insertionIndexAtX;
     _ = win32_tab_drag.isNoOpDrop;
     _ = win32_tab_drag.encodePayload;
     _ = win32_tab_drag.decodePayload;
     _ = win32_tab_drag.clipboard_format_name;
     // Tab-drag OLE adapter (IDataObject + IDropSource for DoDragDrop).
-    // Consumed by the cross-window tear-off path when mouseup fires
-    // outside the source tab strip — state machine hooks below the
-    // `tabButtonProc` mouse handlers. Kept live here so the module
-    // participates in the build graph and the tests run.
     _ = win32_tab_drag_ole.DataObject;
     _ = win32_tab_drag_ole.DragSource;
     _ = win32_tab_drag_ole.doDragDrop;
-    // Search-bar downsample helper. `Surface.search_bar` already
-    // references `SearchBar`; the match-marker overlay retains this
-    // entry point for the scrollbar P5.2 pass.
-    _ = win32_search_bar.downsampleMarkers;
-    // GDI icons (palette rows, search-bar toggles, caption buttons,
-    // toast severity glyphs). Each consumer calls `drawIcon` at its
-    // WM_PAINT time; the paint-path wire-ups land with the
-    // respective HWND passes.
+    // GDI icon helpers used by palette rows, search toggles, caption
+    // buttons, and toast severity glyphs.
     _ = win32_icons.drawIcon;
     _ = win32_icons.insetRect;
     _ = win32_icons.centerSquare;
     _ = win32_icons.iconContentRect;
     _ = win32_icons.isDrawable;
-    // Paste-protection severity classification. Wire-up into
-    // `Surface.pasteClipboardText` + `IDropTarget::Drop` lands with
-    // the confirm-overlay migration from `MessageBoxW`; until then
-    // the module is exercised via its own tests.
+    // Paste-protection severity classification.
     _ = win32_paste_protection.inspect;
     _ = win32_paste_protection.hasControlChars;
     _ = win32_paste_protection.hasNewline;
@@ -12875,6 +12743,37 @@ const SearchBarButtonRole = enum {
     whole_word,
     close,
 };
+
+const search_bar_button_roles = [_]SearchBarButtonRole{
+    .prev,
+    .next,
+    .regex,
+    .case_sensitive,
+    .whole_word,
+    .close,
+};
+
+fn searchBarButtonCommandId(role: SearchBarButtonRole) usize {
+    return switch (role) {
+        .prev => SEARCH_PREV_ID,
+        .next => SEARCH_NEXT_ID,
+        .regex => SEARCH_REGEX_ID,
+        .case_sensitive => SEARCH_CASE_ID,
+        .whole_word => SEARCH_WORD_ID,
+        .close => SEARCH_CLOSE_ID,
+    };
+}
+
+fn searchBarButtonLabel(role: SearchBarButtonRole) LPCWSTR {
+    return switch (role) {
+        .prev => search_prev_label,
+        .next => search_next_label,
+        .regex => search_regex_label,
+        .case_sensitive => search_case_label,
+        .whole_word => search_word_label,
+        .close => search_close_label,
+    };
+}
 
 fn showSearchBarResults(bar: *const win32_search_bar.SearchBar) bool {
     return bar.query.len > 0;
@@ -14255,6 +14154,10 @@ fn refocusActiveSurface(host: *Host) void {
     }
 }
 
+fn logUiActionError(comptime context: []const u8, err: anyerror) void {
+    log.warn(context ++ " err={}", .{err});
+}
+
 fn hostButtonProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.winapi) LRESULT {
     const host = getHost(hwnd);
     if (host) |v| {
@@ -14302,7 +14205,9 @@ fn hostButtonProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             if (v.searchControlSurface(hwnd)) |surface| {
                 if (searchButtonKeyAction(wParam, keyPressed(VK_SHIFT))) |action| {
                     if (dockedSearchCoreDirectionFromKeyAction(action)) |dir| {
-                        _ = surface.navigateDockedSearch(dir) catch false;
+                        _ = surface.navigateDockedSearch(dir) catch |err| {
+                            logUiActionError("docked search button navigation failed", err);
+                        };
                         return 0;
                     }
                     switch (action) {
@@ -14593,21 +14498,29 @@ fn searchEditProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             },
             WM_KEYDOWN, WM_SYSKEYDOWN => {
                 if (wParam == VK_RETURN) {
-                    _ = surface.navigateDockedSearch(dockedSearchEnterDirection(keyPressed(VK_SHIFT))) catch false;
+                    _ = surface.navigateDockedSearch(dockedSearchEnterDirection(keyPressed(VK_SHIFT))) catch |err| {
+                        logUiActionError("docked search enter navigation failed", err);
+                    };
                     return 0;
                 }
                 if (dockedSearchArrowDirection(wParam)) |dir| {
-                    _ = surface.navigateDockedSearch(dir) catch false;
+                    _ = surface.navigateDockedSearch(dir) catch |err| {
+                        logUiActionError("docked search arrow navigation failed", err);
+                    };
                     return 0;
                 }
                 if (searchButtonKeyAction(wParam, keyPressed(VK_SHIFT))) |action| {
                     if (dockedSearchCoreDirectionFromKeyAction(action)) |dir| {
-                        _ = surface.navigateDockedSearch(dir) catch false;
+                        _ = surface.navigateDockedSearch(dir) catch |err| {
+                            logUiActionError("docked search key navigation failed", err);
+                        };
                         return 0;
                     }
                     switch (action) {
                         .dismiss => {
-                            surface.closeDockedSearchBar(true, true) catch {};
+                            surface.closeDockedSearchBar(true, true) catch |err| {
+                                logUiActionError("docked search key close failed", err);
+                            };
                             return 0;
                         },
                         else => {},
@@ -14983,7 +14896,9 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                             if (v.suppress_edit_events) return 0;
                             if (child_hwnd) |child| {
                                 if (v.searchControlSurface(child)) |surface| {
-                                    _ = surface.handleSearchBarEditChanged() catch {};
+                                    _ = surface.handleSearchBarEditChanged() catch |err| {
+                                        logUiActionError("docked search edit update failed", err);
+                                    };
                                     return 0;
                                 }
                             }
@@ -15037,7 +14952,9 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                             if (child_hwnd) |child| {
                                 if (v.searchControlSurface(child)) |surface| {
                                     if (dockedSearchButtonDirection(command_id)) |dir| {
-                                        _ = surface.navigateDockedSearch(dir) catch {};
+                                        _ = surface.navigateDockedSearch(dir) catch |err| {
+                                            logUiActionError("docked search previous failed", err);
+                                        };
                                     }
                                     return 0;
                                 }
@@ -15049,7 +14966,9 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                             if (child_hwnd) |child| {
                                 if (v.searchControlSurface(child)) |surface| {
                                     if (dockedSearchButtonDirection(command_id)) |dir| {
-                                        _ = surface.navigateDockedSearch(dir) catch {};
+                                        _ = surface.navigateDockedSearch(dir) catch |err| {
+                                            logUiActionError("docked search next failed", err);
+                                        };
                                     }
                                     return 0;
                                 }
@@ -15060,7 +14979,9 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                         if (notify_code == BN_CLICKED) {
                             if (child_hwnd) |child| {
                                 if (v.searchControlSurface(child)) |surface| {
-                                    _ = surface.handleSearchToggleClick(command_id) catch {};
+                                    _ = surface.handleSearchToggleClick(command_id) catch |err| {
+                                        logUiActionError("docked search toggle failed", err);
+                                    };
                                     return 0;
                                 }
                             }
@@ -15070,7 +14991,9 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                         if (notify_code == BN_CLICKED) {
                             if (child_hwnd) |child| {
                                 if (v.searchControlSurface(child)) |surface| {
-                                    surface.closeDockedSearchBar(true, true) catch {};
+                                    surface.closeDockedSearchBar(true, true) catch |err| {
+                                        logUiActionError("docked search close failed", err);
+                                    };
                                     return 0;
                                 }
                             }
@@ -15097,9 +15020,13 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     1902 => {
                         if (v.activeSurface()) |surface| {
                             if (surface.search_bar.visible) {
-                                surface.closeDockedSearchBar(true, true) catch {};
+                                surface.closeDockedSearchBar(true, true) catch |err| {
+                                    logUiActionError("docked search close failed", err);
+                                };
                             } else {
-                                surface.showSearchOverlay("") catch {};
+                                surface.showSearchOverlay("") catch |err| {
+                                    logUiActionError("docked search open failed", err);
+                                };
                             }
                         }
                         return 0;
@@ -16435,22 +16362,54 @@ pub const Surface = struct {
     /// leak. Migration of the last live `MessageBoxW` (AGENTS.md:84).
     pending_clipboard_op: ?PendingClipboardOp = null,
 
-    fn searchBarButtonPrevProc(self: *const Surface, hwnd: HWND) ?*const anyopaque {
-        const role: SearchBarButtonRole = if (self.search_bar_prev_hwnd != null and hwnd == self.search_bar_prev_hwnd.?)
-            .prev
-        else if (self.search_bar_next_hwnd != null and hwnd == self.search_bar_next_hwnd.?)
-            .next
-        else if (self.search_bar_regex_hwnd != null and hwnd == self.search_bar_regex_hwnd.?)
-            .regex
-        else if (self.search_bar_case_hwnd != null and hwnd == self.search_bar_case_hwnd.?)
-            .case_sensitive
-        else if (self.search_bar_word_hwnd != null and hwnd == self.search_bar_word_hwnd.?)
-            .whole_word
-        else if (self.search_bar_close_hwnd != null and hwnd == self.search_bar_close_hwnd.?)
-            .close
-        else
-            return null;
+    fn searchBarButtonHwnd(self: *const Surface, role: SearchBarButtonRole) ?HWND {
+        return switch (role) {
+            .prev => self.search_bar_prev_hwnd,
+            .next => self.search_bar_next_hwnd,
+            .regex => self.search_bar_regex_hwnd,
+            .case_sensitive => self.search_bar_case_hwnd,
+            .whole_word => self.search_bar_word_hwnd,
+            .close => self.search_bar_close_hwnd,
+        };
+    }
 
+    fn searchBarButtonPlacement(self: *Surface, role: SearchBarButtonRole) *ChildPlacement {
+        return switch (role) {
+            .prev => &self.search_bar_prev_placement,
+            .next => &self.search_bar_next_placement,
+            .regex => &self.search_bar_regex_placement,
+            .case_sensitive => &self.search_bar_case_placement,
+            .whole_word => &self.search_bar_word_placement,
+            .close => &self.search_bar_close_placement,
+        };
+    }
+
+    fn searchBarButtonRole(self: *const Surface, hwnd: HWND) ?SearchBarButtonRole {
+        for (search_bar_button_roles) |role| {
+            if (self.searchBarButtonHwnd(role)) |button_hwnd| {
+                if (hwnd == button_hwnd) return role;
+            }
+        }
+        return null;
+    }
+
+    fn searchBarButtonActive(self: *const Surface, role: SearchBarButtonRole) bool {
+        return switch (role) {
+            .regex => self.search_bar.toggles.regex,
+            .case_sensitive => self.search_bar.toggles.case_sensitive,
+            .whole_word => self.search_bar.toggles.whole_word,
+            else => false,
+        };
+    }
+
+    fn ownsSearchBarControl(self: *const Surface, hwnd: HWND) bool {
+        if (self.search_bar_edit_hwnd != null and hwnd == self.search_bar_edit_hwnd.?) return true;
+        if (self.search_bar_results_hwnd != null and hwnd == self.search_bar_results_hwnd.?) return true;
+        return self.searchBarButtonRole(hwnd) != null;
+    }
+
+    fn searchBarButtonPrevProc(self: *const Surface, hwnd: HWND) ?*const anyopaque {
+        const role = self.searchBarButtonRole(hwnd) orelse return null;
         return self.search_bar_button_prev_procs[@intFromEnum(role)];
     }
 
@@ -17101,7 +17060,7 @@ pub const Surface = struct {
         try host.showOverlay(mode, initial);
     }
 
-    fn toggleCommandPalette(self: *Surface) anyerror!bool {
+    fn toggleCommandPalette(self: *Surface) !bool {
         const host = self.host orelse return false;
         if (host.overlay_mode == .command_palette) {
             host.hideOverlay();
@@ -17745,28 +17704,15 @@ pub const Surface = struct {
     fn applySearchBarFont(self: *Surface, font: ?*anyopaque) void {
         const value = if (font) |f| @intFromPtr(f) else 0;
         if (self.search_bar_edit_hwnd) |hwnd| _ = SendMessageW(hwnd, WM_SETFONT, value, 1);
-        if (self.search_bar_prev_hwnd) |hwnd| _ = SendMessageW(hwnd, WM_SETFONT, value, 1);
-        if (self.search_bar_next_hwnd) |hwnd| _ = SendMessageW(hwnd, WM_SETFONT, value, 1);
-        if (self.search_bar_regex_hwnd) |hwnd| _ = SendMessageW(hwnd, WM_SETFONT, value, 1);
-        if (self.search_bar_case_hwnd) |hwnd| _ = SendMessageW(hwnd, WM_SETFONT, value, 1);
-        if (self.search_bar_word_hwnd) |hwnd| _ = SendMessageW(hwnd, WM_SETFONT, value, 1);
-        if (self.search_bar_close_hwnd) |hwnd| _ = SendMessageW(hwnd, WM_SETFONT, value, 1);
+        for (search_bar_button_roles) |role| {
+            if (self.searchBarButtonHwnd(role)) |hwnd| _ = SendMessageW(hwnd, WM_SETFONT, value, 1);
+        }
         if (self.search_bar_results_hwnd) |hwnd| _ = SendMessageW(hwnd, WM_SETFONT, value, 1);
     }
 
     fn invalidateSearchButtons(self: *Surface) void {
-        const handles = [_]?HWND{
-            self.search_bar_prev_hwnd,
-            self.search_bar_next_hwnd,
-            self.search_bar_regex_hwnd,
-            self.search_bar_case_hwnd,
-            self.search_bar_word_hwnd,
-            self.search_bar_close_hwnd,
-        };
-        for (handles) |maybe_hwnd| {
-            if (maybe_hwnd) |hwnd| {
-                _ = InvalidateRect(hwnd, null, 0);
-            }
+        for (search_bar_button_roles) |role| {
+            if (self.searchBarButtonHwnd(role)) |hwnd| _ = InvalidateRect(hwnd, null, 0);
         }
     }
 
@@ -17838,23 +17784,10 @@ pub const Surface = struct {
         if (self.search_bar_edit_hwnd) |hwnd| {
             changed = applyChildVisibility(hwnd, &self.search_bar_edit_placement, false) or changed;
         }
-        if (self.search_bar_prev_hwnd) |hwnd| {
-            changed = applyChildVisibility(hwnd, &self.search_bar_prev_placement, false) or changed;
-        }
-        if (self.search_bar_next_hwnd) |hwnd| {
-            changed = applyChildVisibility(hwnd, &self.search_bar_next_placement, false) or changed;
-        }
-        if (self.search_bar_regex_hwnd) |hwnd| {
-            changed = applyChildVisibility(hwnd, &self.search_bar_regex_placement, false) or changed;
-        }
-        if (self.search_bar_case_hwnd) |hwnd| {
-            changed = applyChildVisibility(hwnd, &self.search_bar_case_placement, false) or changed;
-        }
-        if (self.search_bar_word_hwnd) |hwnd| {
-            changed = applyChildVisibility(hwnd, &self.search_bar_word_placement, false) or changed;
-        }
-        if (self.search_bar_close_hwnd) |hwnd| {
-            changed = applyChildVisibility(hwnd, &self.search_bar_close_placement, false) or changed;
+        for (search_bar_button_roles) |role| {
+            if (self.searchBarButtonHwnd(role)) |hwnd| {
+                changed = applyChildVisibility(hwnd, self.searchBarButtonPlacement(role), false) or changed;
+            }
         }
         if (self.search_bar_results_hwnd) |hwnd| {
             changed = applyChildVisibility(hwnd, &self.search_bar_results_placement, false) or changed;
@@ -17862,6 +17795,29 @@ pub const Surface = struct {
         self.search_bar_frame_visible = false;
         self.search_bar_frame_rect = .{ .left = 0, .top = 0, .right = 0, .bottom = 0 };
         return changed;
+    }
+
+    fn createSearchBarButton(self: *Surface, host: *Host, parent: HWND, role: SearchBarButtonRole) !HWND {
+        const hwnd = CreateWindowExW(
+            0,
+            prompt_button_class,
+            searchBarButtonLabel(role),
+            WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
+            0,
+            0,
+            28,
+            host_search_bar_height - 10,
+            parent,
+            @ptrFromInt(searchBarButtonCommandId(role)),
+            self.app.hinstance,
+            null,
+        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
+        host.subclassButton(
+            hwnd,
+            &hostButtonProc,
+            &self.search_bar_button_prev_procs[@intFromEnum(role)],
+        );
+        return hwnd;
     }
 
     fn ensureSearchBarControls(self: *Surface) !void {
@@ -17925,125 +17881,12 @@ pub const Surface = struct {
         );
         _ = SendMessageW(edit_hwnd, EM_SETCUEBANNER, 0, @as(LPARAM, @intCast(@intFromPtr(search_edit_cue.ptr))));
 
-        self.search_bar_prev_hwnd = CreateWindowExW(
-            0,
-            prompt_button_class,
-            search_prev_label,
-            WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
-            0,
-            0,
-            28,
-            host_search_bar_height - 10,
-            hwnd,
-            @ptrFromInt(SEARCH_PREV_ID),
-            self.app.hinstance,
-            null,
-        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
-        host.subclassButton(
-            self.search_bar_prev_hwnd.?,
-            &hostButtonProc,
-            &self.search_bar_button_prev_procs[@intFromEnum(SearchBarButtonRole.prev)],
-        );
-
-        self.search_bar_next_hwnd = CreateWindowExW(
-            0,
-            prompt_button_class,
-            search_next_label,
-            WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
-            0,
-            0,
-            28,
-            host_search_bar_height - 10,
-            hwnd,
-            @ptrFromInt(SEARCH_NEXT_ID),
-            self.app.hinstance,
-            null,
-        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
-        host.subclassButton(
-            self.search_bar_next_hwnd.?,
-            &hostButtonProc,
-            &self.search_bar_button_prev_procs[@intFromEnum(SearchBarButtonRole.next)],
-        );
-
-        self.search_bar_regex_hwnd = CreateWindowExW(
-            0,
-            prompt_button_class,
-            search_regex_label,
-            WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
-            0,
-            0,
-            28,
-            host_search_bar_height - 10,
-            hwnd,
-            @ptrFromInt(SEARCH_REGEX_ID),
-            self.app.hinstance,
-            null,
-        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
-        host.subclassButton(
-            self.search_bar_regex_hwnd.?,
-            &hostButtonProc,
-            &self.search_bar_button_prev_procs[@intFromEnum(SearchBarButtonRole.regex)],
-        );
-
-        self.search_bar_case_hwnd = CreateWindowExW(
-            0,
-            prompt_button_class,
-            search_case_label,
-            WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
-            0,
-            0,
-            28,
-            host_search_bar_height - 10,
-            hwnd,
-            @ptrFromInt(SEARCH_CASE_ID),
-            self.app.hinstance,
-            null,
-        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
-        host.subclassButton(
-            self.search_bar_case_hwnd.?,
-            &hostButtonProc,
-            &self.search_bar_button_prev_procs[@intFromEnum(SearchBarButtonRole.case_sensitive)],
-        );
-
-        self.search_bar_word_hwnd = CreateWindowExW(
-            0,
-            prompt_button_class,
-            search_word_label,
-            WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
-            0,
-            0,
-            28,
-            host_search_bar_height - 10,
-            hwnd,
-            @ptrFromInt(SEARCH_WORD_ID),
-            self.app.hinstance,
-            null,
-        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
-        host.subclassButton(
-            self.search_bar_word_hwnd.?,
-            &hostButtonProc,
-            &self.search_bar_button_prev_procs[@intFromEnum(SearchBarButtonRole.whole_word)],
-        );
-
-        self.search_bar_close_hwnd = CreateWindowExW(
-            0,
-            prompt_button_class,
-            search_close_label,
-            WS_CHILD | WS_TABSTOP | BS_OWNERDRAW,
-            0,
-            0,
-            28,
-            host_search_bar_height - 10,
-            hwnd,
-            @ptrFromInt(SEARCH_CLOSE_ID),
-            self.app.hinstance,
-            null,
-        ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
-        host.subclassButton(
-            self.search_bar_close_hwnd.?,
-            &hostButtonProc,
-            &self.search_bar_button_prev_procs[@intFromEnum(SearchBarButtonRole.close)],
-        );
+        self.search_bar_prev_hwnd = try self.createSearchBarButton(host, hwnd, .prev);
+        self.search_bar_next_hwnd = try self.createSearchBarButton(host, hwnd, .next);
+        self.search_bar_regex_hwnd = try self.createSearchBarButton(host, hwnd, .regex);
+        self.search_bar_case_hwnd = try self.createSearchBarButton(host, hwnd, .case_sensitive);
+        self.search_bar_word_hwnd = try self.createSearchBarButton(host, hwnd, .whole_word);
+        self.search_bar_close_hwnd = try self.createSearchBarButton(host, hwnd, .close);
 
         self.search_bar_results_hwnd = CreateWindowExW(
             0,
@@ -18313,7 +18156,7 @@ pub const Surface = struct {
         }
         try self.setSearchActive(text.len > 0, text);
         if (self.host) |host| {
-            if (needs_layout) host.layout() catch {};
+            if (needs_layout) try host.layout();
             host.refreshSearchTimerState();
         }
         return true;
@@ -21731,7 +21574,7 @@ test "win32 buildOverlayPaintLabelText reflects live overlay mode" {
     );
     defer std.testing.allocator.free(command);
     // Any fuzzy match yields "Run action" since Enter runs the top
-    // candidate; the old "Command N" was tied to strict prefix match.
+    // candidate.
     try std.testing.expectEqualStrings("Run action", command);
 
     const search = try buildOverlayPaintLabelText(
@@ -22451,8 +22294,7 @@ test "win32 buildOverlayAcceptLabel reflects overlay action state" {
     try std.testing.expectEqualStrings("Run", palette_run);
 
     // Under fuzzy ranking, any non-empty match yields "Run" because
-    // Enter submits the top-ranked candidate. The old "Pick" label
-    // (match count > 0 but no unique prefix) is unreachable now.
+    // Enter submits the top-ranked candidate.
     const palette_matches = try buildOverlayAcceptLabel(std.testing.allocator, .command_palette, "toggle_", null, null, null, snap);
     defer std.testing.allocator.free(palette_matches);
     try std.testing.expectEqualStrings("Run", palette_matches);

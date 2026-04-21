@@ -3,16 +3,13 @@ const assert = @import("../../quirks.zig").inlineAssert;
 const Allocator = std.mem.Allocator;
 const CircBuf = @import("../../datastruct/main.zig").CircBuf;
 const build_options = @import("terminal_options");
-const terminal = @import("../main.zig");
-const point = terminal.point;
-const size = terminal.size;
-const PageList = terminal.PageList;
-const Pin = PageList.Pin;
-const Selection = terminal.Selection;
-const Screen = terminal.Screen;
-const Terminal = terminal.Terminal;
+const point = @import("../point.zig");
+const size = @import("../size.zig");
+const PageList = @import("../PageList.zig");
+const Screen = @import("../Screen.zig");
+const Terminal = @import("../Terminal.zig");
 const PageFormatter = @import("../formatter.zig").PageFormatter;
-const FlattenedHighlight = terminal.highlight.Flattened;
+const FlattenedHighlight = @import("../highlight.zig").Flattened;
 const QueryOptions = @import("query_options.zig").QueryOptions;
 const oni = if (build_options.oniguruma) @import("oniguruma") else struct {};
 
@@ -78,10 +75,7 @@ pub const SlidingWindow = struct {
     ///
     /// This is important because in most cases, a reverse search is going
     /// to be more desirable to search from the end of the active area
-    /// backwards so more recent data is found first. Supporting both is
-    /// trivial though and will let us do more complex optimizations in the
-    /// future (e.g. starting from the viewport and doing a forward/reverse
-    /// concurrently from that point).
+    /// backwards so more recent data is found first.
     direction: Direction,
 
     /// A buffer to store the overlap search data. This is used to search
@@ -100,6 +94,13 @@ pub const SlidingWindow = struct {
     const Direction = enum { forward, reverse };
     const DataBuf = CircBuf(u8, 0);
     const MetaBuf = CircBuf(Meta, undefined);
+    const RegexError = if (build_options.oniguruma) oni.errors.Error else error{};
+
+    pub const InitError = Allocator.Error || RegexError || error{
+        UnsupportedQueryOptions,
+    };
+    pub const SearchError = Allocator.Error || RegexError;
+
     const Meta = struct {
         node: *PageList.List.Node,
         serial: u64,
@@ -137,7 +138,7 @@ pub const SlidingWindow = struct {
         direction: Direction,
         needle_unowned: []const u8,
         query_options: QueryOptions,
-    ) anyerror!SlidingWindow {
+    ) InitError!SlidingWindow {
         if (comptime !build_options.oniguruma) {
             if (!query_options.isDefault()) return error.UnsupportedQueryOptions;
         }
@@ -209,7 +210,7 @@ pub const SlidingWindow = struct {
         alloc: Allocator,
         needle_unowned: []const u8,
         query_options: QueryOptions,
-    ) !RegexState {
+    ) InitError!RegexState {
         const pattern = try buildRegexPattern(alloc, needle_unowned, query_options);
         errdefer alloc.free(pattern);
 
@@ -235,7 +236,7 @@ pub const SlidingWindow = struct {
         alloc: Allocator,
         needle_unowned: []const u8,
         query_options: QueryOptions,
-    ) ![]u8 {
+    ) Allocator.Error![]u8 {
         const base = if (query_options.regex)
             try alloc.dupe(u8, needle_unowned)
         else
@@ -248,7 +249,7 @@ pub const SlidingWindow = struct {
         return wrapped;
     }
 
-    fn escapeRegexLiteral(alloc: Allocator, input: []const u8) ![]u8 {
+    fn escapeRegexLiteral(alloc: Allocator, input: []const u8) Allocator.Error![]u8 {
         var out: std.ArrayListUnmanaged(u8) = .empty;
         defer out.deinit(alloc);
 
@@ -280,7 +281,7 @@ pub const SlidingWindow = struct {
     /// sliding window and are only valid until the next call to `next()`
     /// or `append()`. If the caller wants to retain the flattened highlight
     /// then they should clone it.
-    pub fn next(self: *SlidingWindow) anyerror!?FlattenedHighlight {
+    pub fn next(self: *SlidingWindow) SearchError!?FlattenedHighlight {
         const using_regex_engine = if (comptime build_options.oniguruma)
             self.regex_state != null
         else
@@ -361,7 +362,7 @@ pub const SlidingWindow = struct {
         if (using_regex_engine) {
             // Regexes are arbitrary-width. A no-match window may still become
             // a match after a later page append, so pruning here can drop the
-            // prefix needed for a future cross-page match.
+            // prefix needed for a cross-page match.
             self.assertIntegrity();
             return null;
         }
@@ -435,17 +436,30 @@ pub const SlidingWindow = struct {
         len: usize,
     };
 
-    const RegexEdgeSensitivity = enum {
-        none,
-        word_boundary,
-        anchor,
+    const RegexEdgeContext = struct {
+        word_boundary: bool = false,
+        line_anchor: bool = false,
+        absolute_anchor: bool = false,
+
+        fn any(self: RegexEdgeContext) bool {
+            return self.word_boundary or self.line_anchor or self.absolute_anchor;
+        }
+    };
+
+    const RegexEdgeSensitivity = struct {
+        before: RegexEdgeContext = .{},
+        after: RegexEdgeContext = .{},
+
+        fn any(self: RegexEdgeSensitivity) bool {
+            return self.before.any() or self.after.any();
+        }
     };
 
     fn regexMatch(
         self: *SlidingWindow,
         first: []const u8,
         second: []const u8,
-    ) anyerror!?RegexMatch {
+    ) SearchError!?RegexMatch {
         if (comptime !build_options.oniguruma) return null;
         const state = if (self.regex_state) |*state| state else return null;
         const edge_sensitivity = self.regexEdgeSensitivity();
@@ -474,7 +488,7 @@ pub const SlidingWindow = struct {
                 search_start = start_i + 1;
                 continue;
             }
-            if (edge_sensitivity != .none and self.regexMatchTouchesSyntheticEdge(
+            if (edge_sensitivity.any() and self.regexMatchTouchesSyntheticEdge(
                 haystack,
                 start_i,
                 end_i,
@@ -506,7 +520,7 @@ pub const SlidingWindow = struct {
         self: *SlidingWindow,
         first: []const u8,
         second: []const u8,
-    ) anyerror![]const u8 {
+    ) Allocator.Error![]const u8 {
         const total_len = first.len + second.len;
         self.regex_buf.clearRetainingCapacity();
         try self.regex_buf.ensureTotalCapacity(self.alloc, total_len);
@@ -517,9 +531,8 @@ pub const SlidingWindow = struct {
                 self.regex_buf.appendSliceAssumeCapacity(second);
             },
             .reverse => {
-                // Reverse-mode storage is byte-reversed search order for
-                // literal scans. Restore a forward UTF-8 haystack before
-                // handing text to Oniguruma.
+                // Reverse storage is rev(page_n), rev(page_n-1). Reversing the
+                // slices in opposite order reconstructs forward UTF-8 bytes.
                 self.appendReverseForRegex(second);
                 self.appendReverseForRegex(first);
             },
@@ -543,58 +556,83 @@ pub const SlidingWindow = struct {
         end: usize,
         sensitivity: RegexEdgeSensitivity,
     ) bool {
-        if (start == 0 and self.hasRegexContextBeforeHaystack(haystack, sensitivity)) return true;
-        if (end == haystack.len and self.hasRegexContextAfterHaystack(haystack, sensitivity)) return true;
+        if (start == 0 and
+            sensitivity.before.any() and
+            self.hasRegexContextBeforeHaystack(haystack, sensitivity.before))
+        {
+            return true;
+        }
+        if (end == haystack.len and
+            sensitivity.after.any() and
+            self.hasRegexContextAfterHaystack(haystack, sensitivity.after))
+        {
+            return true;
+        }
         return false;
     }
 
     fn hasRegexContextBeforeHaystack(
         self: *const SlidingWindow,
         haystack: []const u8,
-        sensitivity: RegexEdgeSensitivity,
+        context: RegexEdgeContext,
     ) bool {
         return switch (self.direction) {
-            .forward => self.hasSearchOrderContextBeforeWindow(sensitivity, haystack[0]),
-            .reverse => self.hasSearchOrderContextAfterWindow(),
+            .forward => self.hasSearchOrderContextBeforeWindow(context, haystack[0]),
+            .reverse => self.hasSearchOrderContextAfterWindow(context, haystack[0]),
         };
     }
 
     fn hasRegexContextAfterHaystack(
         self: *const SlidingWindow,
         haystack: []const u8,
-        sensitivity: RegexEdgeSensitivity,
+        context: RegexEdgeContext,
     ) bool {
         return switch (self.direction) {
-            .forward => self.hasSearchOrderContextAfterWindow(),
-            .reverse => self.hasSearchOrderContextBeforeWindow(sensitivity, haystack[haystack.len - 1]),
+            .forward => self.hasSearchOrderContextAfterWindow(context, haystack[haystack.len - 1]),
+            .reverse => self.hasSearchOrderContextBeforeWindow(context, haystack[haystack.len - 1]),
         };
     }
 
     fn hasSearchOrderContextBeforeWindow(
         self: *const SlidingWindow,
-        sensitivity: RegexEdgeSensitivity,
+        context: RegexEdgeContext,
         edge_byte: u8,
     ) bool {
         if (self.data_offset > 0) {
-            if (sensitivity == .anchor) return true;
             const prior_byte = self.dataByteAt(self.data_offset - 1) orelse return true;
-            return !isAsciiWordBoundary(prior_byte, edge_byte);
+            return regexContextRejectsKnownBefore(context, prior_byte, edge_byte);
         }
 
         var it = self.meta.iterator(.forward);
         const meta = it.next() orelse return false;
         return switch (self.direction) {
-            .forward => meta.node.prev != null,
+            .forward => {
+                const prev = meta.node.prev orelse return false;
+                if (hardNewlineAfterNode(prev)) |byte| {
+                    return regexContextRejectsKnownBefore(context, byte, edge_byte);
+                }
+                return true;
+            },
             .reverse => meta.node.next != null,
         };
     }
 
-    fn hasSearchOrderContextAfterWindow(self: *const SlidingWindow) bool {
+    fn hasSearchOrderContextAfterWindow(
+        self: *const SlidingWindow,
+        context: RegexEdgeContext,
+        edge_byte: u8,
+    ) bool {
         var it = self.meta.iterator(.reverse);
         const meta = it.next() orelse return false;
         return switch (self.direction) {
             .forward => meta.node.next != null,
-            .reverse => meta.node.prev != null,
+            .reverse => {
+                const prev = meta.node.prev orelse return false;
+                if (hardNewlineAfterNode(prev)) |byte| {
+                    return regexContextRejectsKnownAfter(context, edge_byte, byte);
+                }
+                return true;
+            },
         };
     }
 
@@ -613,25 +651,57 @@ pub const SlidingWindow = struct {
         return std.ascii.isAlphanumeric(c) or c == '_';
     }
 
+    fn regexContextRejectsKnownBefore(context: RegexEdgeContext, prior_byte: u8, edge_byte: u8) bool {
+        if (context.absolute_anchor) return true;
+        if (context.line_anchor and prior_byte != '\n') return true;
+        if (context.word_boundary and !isAsciiWordBoundary(prior_byte, edge_byte)) return true;
+        return false;
+    }
+
+    fn regexContextRejectsKnownAfter(context: RegexEdgeContext, edge_byte: u8, next_byte: u8) bool {
+        if (context.absolute_anchor) return true;
+        if (context.line_anchor and next_byte != '\n') return true;
+        if (context.word_boundary and !isAsciiWordBoundary(edge_byte, next_byte)) return true;
+        return false;
+    }
+
+    fn hardNewlineAfterNode(node: *const PageList.List.Node) ?u8 {
+        const row = node.data.getRow(node.data.size.rows - 1);
+        return if (row.wrap) null else '\n';
+    }
+
     fn regexEdgeSensitivity(self: *const SlidingWindow) RegexEdgeSensitivity {
         if (comptime build_options.oniguruma) {
-            if (self.query_options.whole_word) return .word_boundary;
-            if (!self.query_options.regex) return .none;
-            const state = self.regex_state orelse return .none;
+            if (self.query_options.whole_word) return .{
+                .before = .{ .word_boundary = true },
+                .after = .{ .word_boundary = true },
+            };
+            if (!self.query_options.regex) return .{};
+            const state = self.regex_state orelse return .{};
             return regexPatternEdgeSensitivity(state.pattern);
         } else {
-            return .none;
+            return .{};
         }
     }
 
     fn regexPatternEdgeSensitivity(pattern: []const u8) RegexEdgeSensitivity {
-        var sensitivity: RegexEdgeSensitivity = .none;
+        var sensitivity: RegexEdgeSensitivity = .{};
         var escaped = false;
+        var in_class = false;
         for (pattern) |c| {
             if (escaped) {
                 escaped = false;
-                if (c == 'A' or c == 'Z' or c == 'z') return .anchor;
-                if (c == 'b') sensitivity = .word_boundary;
+                if (!in_class) {
+                    switch (c) {
+                        'A', 'G' => sensitivity.before.absolute_anchor = true,
+                        'Z', 'z' => sensitivity.after.absolute_anchor = true,
+                        'b' => {
+                            sensitivity.before.word_boundary = true;
+                            sensitivity.after.word_boundary = true;
+                        },
+                        else => {},
+                    }
+                }
                 continue;
             }
 
@@ -640,7 +710,17 @@ pub const SlidingWindow = struct {
                 continue;
             }
 
-            if (c == '^' or c == '$') return .anchor;
+            if (in_class) {
+                if (c == ']') in_class = false;
+                continue;
+            }
+
+            switch (c) {
+                '[' => in_class = true,
+                '^' => sensitivity.before.line_anchor = true,
+                '$' => sensitivity.after.line_anchor = true,
+                else => {},
+            }
         }
 
         return sensitivity;
@@ -661,7 +741,7 @@ pub const SlidingWindow = struct {
         self: *SlidingWindow,
         start_offset: usize,
         len: usize,
-    ) terminal.highlight.Flattened {
+    ) FlattenedHighlight {
         const start = start_offset + self.data_offset;
         const end = start + len - 1;
         if (comptime std.debug.runtime_safety) {
@@ -669,9 +749,8 @@ pub const SlidingWindow = struct {
             assert(start + len <= self.data.len());
         }
 
-        // Clear our previous chunk buffer to store this result
         self.chunk_buf.clearRetainingCapacity();
-        var result: terminal.highlight.Flattened = .empty;
+        var result: FlattenedHighlight = .empty;
 
         // Go through the meta nodes to find our start.
         const tl: struct {
@@ -899,10 +978,8 @@ pub const SlidingWindow = struct {
         };
         errdefer meta.deinit(self.alloc);
 
-        // This is suboptimal but we need to encode the page once to
-        // temporary memory, and then copy it into our circular buffer.
-        // In the future, we should benchmark and see if we can encode
-        // directly into the circular buffer.
+        // PageFormatter writes to a linear writer; copy that encoded
+        // page into the circular search window below.
         var encoded: std.Io.Writer.Allocating = .init(self.alloc);
         defer encoded.deinit();
 
@@ -919,8 +996,7 @@ pub const SlidingWindow = struct {
             break :formatter formatter;
         };
         formatter.format(&encoded.writer) catch {
-            // writer uses anyerror but the only realistic error on
-            // an ArrayList is out of memory.
+            // The ArrayList-backed writer can only fail by exhausting memory.
             return error.OutOfMemory;
         };
         assert(meta.cell_map.items.len == encoded.written().len);
@@ -1393,25 +1469,66 @@ test "SlidingWindow regex match can span more than literal overlap" {
     try testing.expectEqual(first_node.next.?, sel.end.node);
 }
 
-test "SlidingWindow regex edge sensitivity detects absolute anchors" {
+test "SlidingWindow regex edge sensitivity detects anchors and character classes" {
     const testing = std.testing;
 
-    try testing.expectEqual(
-        SlidingWindow.RegexEdgeSensitivity.anchor,
-        SlidingWindow.regexPatternEdgeSensitivity("\\Afoo"),
-    );
-    try testing.expectEqual(
-        SlidingWindow.RegexEdgeSensitivity.anchor,
-        SlidingWindow.regexPatternEdgeSensitivity("foo\\Z"),
-    );
-    try testing.expectEqual(
-        SlidingWindow.RegexEdgeSensitivity.anchor,
-        SlidingWindow.regexPatternEdgeSensitivity("foo\\z"),
-    );
-    try testing.expectEqual(
-        SlidingWindow.RegexEdgeSensitivity.word_boundary,
-        SlidingWindow.regexPatternEdgeSensitivity("\\bfoo"),
-    );
+    const absolute_start = SlidingWindow.regexPatternEdgeSensitivity("\\Afoo");
+    try testing.expect(absolute_start.before.absolute_anchor);
+    try testing.expect(!absolute_start.after.any());
+
+    const search_start = SlidingWindow.regexPatternEdgeSensitivity("\\Gfoo");
+    try testing.expect(search_start.before.absolute_anchor);
+    try testing.expect(!search_start.after.any());
+
+    const absolute_end = SlidingWindow.regexPatternEdgeSensitivity("foo\\Z");
+    try testing.expect(!absolute_end.before.any());
+    try testing.expect(absolute_end.after.absolute_anchor);
+
+    const strict_end = SlidingWindow.regexPatternEdgeSensitivity("foo\\z");
+    try testing.expect(!strict_end.before.any());
+    try testing.expect(strict_end.after.absolute_anchor);
+
+    const word = SlidingWindow.regexPatternEdgeSensitivity("\\bfoo");
+    try testing.expect(word.before.word_boundary);
+    try testing.expect(word.after.word_boundary);
+
+    const class_only = SlidingWindow.regexPatternEdgeSensitivity("[^$^]+");
+    try testing.expect(!class_only.any());
+
+    const anchors = SlidingWindow.regexPatternEdgeSensitivity("[^$^]+^foo$");
+    try testing.expect(anchors.before.line_anchor);
+    try testing.expect(anchors.after.line_anchor);
+}
+
+test "SlidingWindow whole-word regex accepts hard newline page boundary" {
+    if (comptime !build_options.oniguruma) return error.SkipZigTest;
+
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    try oni.testing.ensureInit();
+
+    var w: SlidingWindow = try .initWithOptions(alloc, .forward, "boo", .{
+        .whole_word = true,
+    });
+    defer w.deinit();
+
+    var s = try Screen.init(alloc, .{ .cols = 80, .rows = 24, .max_scrollback = 1000 });
+    defer s.deinit();
+
+    const first_page_rows = s.pages.pages.first.?.data.capacity.rows;
+    for (0..first_page_rows - 1) |_| try s.testWriteString("\n");
+    try s.testWriteString("tail");
+    try s.testWriteString("\n");
+    try testing.expect(s.pages.pages.first != s.pages.pages.last);
+    try s.testWriteString("boo ok");
+
+    const second_node: *PageList.List.Node = s.pages.pages.first.?.next.?;
+    _ = try w.append(second_node);
+
+    const h = (try w.next()).?;
+    const sel = h.untracked();
+    try testing.expectEqual(second_node, sel.start.node);
+    try testing.expectEqual(second_node, sel.end.node);
 }
 
 test "SlidingWindow reverse search works with non-default query options" {

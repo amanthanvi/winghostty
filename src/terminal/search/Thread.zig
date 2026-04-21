@@ -28,6 +28,7 @@ const Terminal = @import("../Terminal.zig");
 
 const QueryOptions = @import("query_options.zig").QueryOptions;
 const ScreenSearch = @import("screen.zig").ScreenSearch;
+const SlidingWindow = @import("sliding_window.zig").SlidingWindow;
 const ViewportSearch = @import("viewport.zig").ViewportSearch;
 const oni = if (build_options.oniguruma) @import("oniguruma") else struct {};
 
@@ -51,13 +52,6 @@ const darwin = if (builtin.os.tag.isDarwin()) struct {
 
     fn setQosClass(_: QosClass) !void {}
 };
-
-// TODO: Some stuff that could be improved:
-// - pause the refresh timer when the terminal isn't focused
-// - we probably want to know our progress through the search
-//   for viewport matches so we can show n/total UI.
-// - notifications should be coalesced to avoid spamming a massive
-//   amount of events if the terminal is changing rapidly.
 
 /// The interval at which we refresh the terminal state to check if
 /// there are any changes that require us to re-search. This should be
@@ -705,7 +699,7 @@ const Search = struct {
         alloc: Allocator,
         needle: []const u8,
         query_options: QueryOptions,
-    ) !Search {
+    ) SlidingWindow.InitError!Search {
         var vp: ViewportSearch = try .initWithOptions(alloc, needle, query_options);
         errdefer vp.deinit();
 
@@ -974,7 +968,19 @@ const Search = struct {
                 self.viewport.reset();
                 break :viewport;
             }) |hl| {
-                const hl_cloned = hl.clone(arena_alloc) catch continue;
+                const hl_cloned = hl.clone(arena_alloc) catch |err| switch (err) {
+                    error.OutOfMemory => {
+                        log.warn(
+                            "error collecting viewport matches err={}",
+                            .{err},
+                        );
+
+                        // Reset the viewport so we force an update on the
+                        // next feed instead of notifying a partial match set.
+                        self.viewport.reset();
+                        break :viewport;
+                    },
+                };
                 results.append(arena_alloc, hl_cloned) catch |err| switch (err) {
                     error.OutOfMemory => {
                         log.warn(

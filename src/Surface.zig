@@ -1148,7 +1148,7 @@ pub fn handleMessage(self: *Surface, msg: Message) !void {
             }
 
             _ = self.renderer_thread.mailbox.push(
-                .{ .search_viewport_matches = payload.payload },
+                .{ .search_viewport_matches = payload },
                 .forever,
             );
             try self.renderer_thread.wakeup.notify();
@@ -1162,10 +1162,7 @@ pub fn handleMessage(self: *Surface, msg: Message) !void {
             }
 
             _ = self.renderer_thread.mailbox.push(
-                .{ .search_selected_match = .{
-                    .generation = payload.generation,
-                    .match = payload.payload,
-                } },
+                .{ .search_selected_match = payload },
                 .forever,
             );
             try self.renderer_thread.wakeup.notify();
@@ -1488,11 +1485,8 @@ fn searchCallback_(
             _ = self.surfaceMailbox().push(
                 .{ .search_viewport_matches = .{
                     .generation = generation,
-                    .payload = .{
-                        .generation = generation,
-                        .arena = arena,
-                        .matches = matches,
-                    },
+                    .arena = arena,
+                    .matches = matches,
                 } },
                 .forever,
             );
@@ -1509,7 +1503,7 @@ fn searchCallback_(
                 _ = self.surfaceMailbox().push(
                     .{ .search_selected_match = .{
                         .generation = generation,
-                        .payload = .{
+                        .match = .{
                             .arena = arena,
                             .match = match,
                         },
@@ -1530,7 +1524,7 @@ fn searchCallback_(
                 _ = self.surfaceMailbox().push(
                     .{ .search_selected_match = .{
                         .generation = generation,
-                        .payload = null,
+                        .match = null,
                     } },
                     .forever,
                 );
@@ -1574,18 +1568,15 @@ fn searchCallback_(
             _ = self.surfaceMailbox().push(
                 .{ .search_selected_match = .{
                     .generation = generation,
-                    .payload = null,
+                    .match = null,
                 } },
                 .forever,
             );
             _ = self.surfaceMailbox().push(
                 .{ .search_viewport_matches = .{
                     .generation = generation,
-                    .payload = .{
-                        .generation = generation,
-                        .arena = .init(self.alloc),
-                        .matches = &.{},
-                    },
+                    .arena = .init(self.alloc),
+                    .matches = &.{},
                 } },
                 .forever,
             );

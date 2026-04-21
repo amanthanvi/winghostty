@@ -1212,17 +1212,9 @@ pub fn Renderer(comptime GraphicsAPI: type) type {
                 // Update our terminal state
                 try self.terminal_state.update(self.alloc, state.terminal);
 
-                // If the grid dimensions changed, any cached search
-                // matches reference PIN coordinates from the PRE-resize
-                // viewport. Applying them against the NEW row_pins can
-                // light up the wrong row when the viewport scroll shifts
-                // by a few lines to keep the cursor visible (task #45 —
-                // "highlight paints 2-3 rows below the actual match"
-                // matches ceil(overlay_height / cell_height)). Clear
-                // the cached matches, raise `search_matches_dirty` so
-                // the highlight application loop erases old paint, and
-                // nudge the search thread to recompute against the
-                // fresh viewport.
+                // Cached search pins target row geometry. If the grid
+                // changed, drop them so highlights are recomputed
+                // against the fresh viewport before repaint.
                 const dims_changed =
                     self.terminal_state.rows != pre_update_rows or
                     self.terminal_state.cols != pre_update_cols;

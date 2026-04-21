@@ -34,22 +34,8 @@ pub const Message = union(enum) {
             self.rows.deinit();
         }
     };
-    pub const SearchViewportMatches = struct {
-        generation: u64,
-        payload: renderer.Message.SearchMatches,
-
-        pub fn deinit(self: *SearchViewportMatches) void {
-            self.payload.deinit();
-        }
-    };
-    pub const SearchSelectedMatch = struct {
-        generation: u64,
-        payload: ?renderer.Message.SearchMatch,
-
-        pub fn deinit(self: *SearchSelectedMatch) void {
-            if (self.payload) |*payload| payload.arena.deinit();
-        }
-    };
+    pub const SearchViewportMatches = renderer.Message.SearchMatches;
+    pub const SearchSelectedMatch = renderer.Message.SearchSelectedMatch;
 
     /// Set the title of the surface.
     /// TODO: we should change this to a "WriteReq" style structure in
@@ -154,8 +140,6 @@ pub const Message = union(enum) {
 
     pub const ReportTitleStyle = enum {
         csi_21_t,
-
-        // This enum is a placeholder for future title styles.
     };
 
     pub const ChildExited = extern struct {

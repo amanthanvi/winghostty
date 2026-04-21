@@ -36,7 +36,7 @@ pub const ActiveSearch = struct {
         alloc: Allocator,
         needle: []const u8,
         query_options: QueryOptions,
-    ) anyerror!ActiveSearch {
+    ) SlidingWindow.InitError!ActiveSearch {
         // We just do a forward search since the active area is usually
         // pretty small so search results are instant anyways. This avoids
         // a small amount of work to reverse things.
@@ -109,7 +109,7 @@ pub const ActiveSearch = struct {
 
     /// Find the next match for the needle in the active area. This returns
     /// null when there are no more matches.
-    pub fn next(self: *ActiveSearch) anyerror!?FlattenedHighlight {
+    pub fn next(self: *ActiveSearch) SlidingWindow.SearchError!?FlattenedHighlight {
         return self.window.next();
     }
 };

@@ -1,6 +1,6 @@
 //! Per-pane docked search bar state machine.
 //!
-//! Owns query text, regex/case/word toggles, match navigation, a 40 ms
+//! Owns query text, regex/case/word toggles, result display state, a 40 ms
 //! debounce policy, and match-marker downsampling for the scrollbar
 //! overlay.  No HWND creation, painting, or keybind dispatch — those
 //! belong to the Win32 surface layer.
@@ -116,38 +116,6 @@ pub const SearchBar = struct {
     // -----------------------------------------------------------------
     // Results / navigation
     // -----------------------------------------------------------------
-
-    pub fn setResults(self: *SearchBar, total: usize) void {
-        self.total = total;
-        self.selected = if (total > 0) 1 else null;
-        self.searched = true;
-    }
-
-    pub fn navigateNext(self: *SearchBar) void {
-        const sel = self.selected orelse return;
-        const tot = self.total orelse return;
-        if (tot == 0) return;
-
-        if (sel >= tot) {
-            if (self.toggles.wrap) self.selected = 1;
-            // else clamp — no change
-        } else {
-            self.selected = sel + 1;
-        }
-    }
-
-    pub fn navigatePrev(self: *SearchBar) void {
-        const sel = self.selected orelse return;
-        const tot = self.total orelse return;
-        if (tot == 0) return;
-
-        if (sel <= 1) {
-            if (self.toggles.wrap) self.selected = tot;
-            // else clamp — no change
-        } else {
-            self.selected = sel - 1;
-        }
-    }
 
     // -----------------------------------------------------------------
     // Toggles
@@ -274,7 +242,8 @@ test "setQuery clears stale results for a new search" {
     defer bar.deinit();
 
     try bar.setQuery("foo", 1000);
-    bar.setResults(8);
+    bar.total = 8;
+    bar.searched = true;
     bar.selected = 4;
 
     try bar.setQuery("bar", 1100);
@@ -290,7 +259,8 @@ test "empty query clears results" {
 
     bar.open();
     try bar.setQuery("x", 1000);
-    bar.setResults(5);
+    bar.total = 5;
+    bar.searched = true;
     try std.testing.expectEqual(@as(?usize, 5), bar.total);
 
     try bar.setQuery("", 2000);
@@ -322,60 +292,6 @@ test "forceSearch bypasses debounce" {
     try bar.setQuery("q", 1000);
     try std.testing.expect(bar.forceSearch());
     try std.testing.expect(!bar.shouldRunSearch(9999)); // already searched
-}
-
-test "setResults primes selected=1" {
-    var bar = SearchBar.init(std.testing.allocator);
-    defer bar.deinit();
-
-    bar.open();
-    try bar.setQuery("q", 100);
-    bar.setResults(7);
-    try std.testing.expectEqual(@as(?usize, 7), bar.total);
-    try std.testing.expectEqual(@as(?usize, 1), bar.selected);
-}
-
-test "navigateNext wraps when wrap=true" {
-    var bar = SearchBar.init(std.testing.allocator);
-    defer bar.deinit();
-
-    try bar.setQuery("q", 100);
-    bar.setResults(3);
-    bar.selected = 3;
-    bar.navigateNext();
-    try std.testing.expectEqual(@as(?usize, 1), bar.selected);
-}
-
-test "navigateNext clamps when wrap=false" {
-    var bar = SearchBar.init(std.testing.allocator);
-    defer bar.deinit();
-
-    try bar.setQuery("q", 100);
-    bar.setResults(3);
-    bar.selected = 3;
-    bar.toggles.wrap = false;
-    bar.navigateNext();
-    try std.testing.expectEqual(@as(?usize, 3), bar.selected);
-}
-
-test "navigatePrev wraps when wrap=true" {
-    var bar = SearchBar.init(std.testing.allocator);
-    defer bar.deinit();
-
-    try bar.setQuery("q", 100);
-    bar.setResults(3);
-    bar.selected = 1;
-    bar.navigatePrev();
-    try std.testing.expectEqual(@as(?usize, 3), bar.selected);
-}
-
-test "navigate no-op when total is null" {
-    var bar = SearchBar.init(std.testing.allocator);
-    defer bar.deinit();
-
-    try bar.setQuery("", 100);
-    bar.navigateNext();
-    try std.testing.expectEqual(@as(?usize, null), bar.selected);
 }
 
 test "toggleRegex flips bit" {

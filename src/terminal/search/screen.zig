@@ -154,7 +154,7 @@ pub const ScreenSearch = struct {
         screen: *Screen,
         needle_unowned: []const u8,
         query_options: QueryOptions,
-    ) anyerror!ScreenSearch {
+    ) SlidingWindow.InitError!ScreenSearch {
         var result: ScreenSearch = .{
             .screen = screen,
             .rows = screen.pages.rows,
@@ -425,11 +425,8 @@ pub const ScreenSearch = struct {
                 },
             } orelse break;
 
-            // If this fails, then we miss a result since `active.next()`
-            // moves forward and prunes data. In the future, we may want
-            // to have some more robust error handling but the only
-            // scenario this would fail is OOM and we're probably in
-            // deeper trouble at that point anyways.
+            // `active.next()` prunes as it advances, so clone before
+            // appending to keep result ownership stable.
             var hl_cloned = try hl.clone(alloc);
             errdefer hl_cloned.deinit(alloc);
             try self.active_results.append(alloc, hl_cloned);
