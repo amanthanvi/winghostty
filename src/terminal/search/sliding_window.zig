@@ -359,7 +359,7 @@ pub const SlidingWindow = struct {
             }
         }
 
-        if (using_regex_engine) {
+        if (using_regex_engine and self.query_options.regex) {
             // Regexes are arbitrary-width. A no-match window may still become
             // a match after a later page append, so pruning here can drop the
             // prefix needed for a cross-page match.
@@ -367,7 +367,7 @@ pub const SlidingWindow = struct {
             return null;
         }
 
-        const retain_len: usize = self.needle.len - 1;
+        const retain_len = self.noMatchRetainLen(using_regex_engine);
 
         // Special case zero-overlap searches to delete the entire buffer.
         if (retain_len == 0) {
@@ -429,6 +429,18 @@ pub const SlidingWindow = struct {
 
         self.assertIntegrity();
         return null;
+    }
+
+    fn noMatchRetainLen(self: *const SlidingWindow, using_regex_engine: bool) usize {
+        if (self.needle.len == 0) return 0;
+
+        if (using_regex_engine and self.query_options.whole_word) {
+            // A literal whole-word match at the end of the current window may
+            // need the next page's first byte to validate the trailing boundary.
+            return self.needle.len;
+        }
+
+        return self.needle.len - 1;
     }
 
     const RegexMatch = struct {
@@ -1195,6 +1207,35 @@ test "SlidingWindow single append case sensitive" {
     try testing.expect((try w.next()) == null);
 }
 
+test "SlidingWindow non-regex regex engine prunes no-match pages" {
+    if (comptime !build_options.oniguruma) return error.SkipZigTest;
+
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    try oni.testing.ensureInit();
+
+    var w: SlidingWindow = try .initWithOptions(alloc, .forward, "Needle", .{
+        .case_sensitive = true,
+    });
+    defer w.deinit();
+
+    var s = try Screen.init(alloc, .{ .cols = 20, .rows = 4, .max_scrollback = 1000 });
+    defer s.deinit();
+
+    const first_page_cells = s.pages.cols * s.pages.pages.first.?.data.capacity.rows;
+    for (0..first_page_cells + w.needle.len + 1) |_| try s.testWriteString("x");
+    try testing.expect(s.pages.pages.first != s.pages.pages.last);
+
+    const first_node: *PageList.List.Node = s.pages.pages.first.?;
+    _ = try w.append(first_node);
+    try testing.expect((try w.next()) == null);
+
+    _ = try w.append(first_node.next.?);
+    try testing.expect((try w.next()) == null);
+    try testing.expectEqual(@as(usize, 1), w.meta.len());
+    try testing.expectEqual(w.needle.len - 1, w.data.len() - w.data_offset);
+}
+
 test "SlidingWindow single append whole word" {
     if (comptime !build_options.oniguruma) return error.SkipZigTest;
 
@@ -1293,6 +1334,39 @@ test "SlidingWindow whole word does not match synthetic page edge" {
 
     _ = try w.append(first_node.next.?);
     try testing.expect((try w.next()) == null);
+}
+
+test "SlidingWindow whole-word literal retains full synthetic edge match" {
+    if (comptime !build_options.oniguruma) return error.SkipZigTest;
+
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    try oni.testing.ensureInit();
+
+    var w: SlidingWindow = try .initWithOptions(alloc, .forward, "boo", .{
+        .whole_word = true,
+    });
+    defer w.deinit();
+
+    var s = try Screen.init(alloc, .{ .cols = 80, .rows = 24, .max_scrollback = 1000 });
+    defer s.deinit();
+
+    const first_page_rows = s.pages.pages.first.?.data.capacity.rows;
+    for (0..first_page_rows - 1) |_| try s.testWriteString("\n");
+    for (0..s.pages.cols - 4) |_| try s.testWriteString("x");
+    try s.testWriteString(" boo");
+    try s.testWriteString(" ");
+    try testing.expect(s.pages.pages.first != s.pages.pages.last);
+
+    const first_node: *PageList.List.Node = s.pages.pages.first.?;
+    _ = try w.append(first_node);
+    try testing.expect((try w.next()) == null);
+
+    _ = try w.append(first_node.next.?);
+    const h = (try w.next()).?;
+    const sel = h.untracked();
+    try testing.expectEqual(first_node, sel.start.node);
+    try testing.expectEqual(first_node, sel.end.node);
 }
 
 test "SlidingWindow single append regex" {

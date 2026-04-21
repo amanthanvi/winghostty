@@ -138,6 +138,17 @@ pub const Message = union(enum) {
     /// Search match rows for scrollbar markers.
     search_match_rows: SearchMatchRows,
 
+    pub fn deinit(self: *Message) void {
+        switch (self.*) {
+            .clipboard_write => |v| v.req.deinit(),
+            .pwd_change => |v| v.deinit(),
+            .search_viewport_matches => |*v| v.deinit(),
+            .search_selected_match => |*v| v.deinit(),
+            .search_match_rows => |v| v.deinit(),
+            else => {},
+        }
+    }
+
     pub const ReportTitleStyle = enum {
         csi_21_t,
     };
