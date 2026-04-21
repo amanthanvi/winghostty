@@ -176,6 +176,7 @@ command_timer: ?std.time.Instant = null,
 /// Search state
 search: ?Search = null,
 search_generation: std.atomic.Value(u64) = .init(0),
+search_query_options: terminal.search.QueryOptions = .{},
 
 /// Used to rate limit BEL handling.
 last_bell_time: ?std.time.Instant = null,
@@ -1195,6 +1196,8 @@ pub fn handleMessage(self: *Surface, msg: Message) !void {
                 .{ .rows = rows.rows.slice() },
             );
         },
+
+        .search_clear => try self.syncClearSearchState(),
     }
 }
 
@@ -1565,47 +1568,7 @@ fn searchCallback_(
 
         // When we quit, tell our renderer to reset any search state.
         .quit => {
-            _ = self.surfaceMailbox().push(
-                .{ .search_selected_match = .{
-                    .generation = generation,
-                    .match = null,
-                } },
-                .forever,
-            );
-            _ = self.surfaceMailbox().push(
-                .{ .search_viewport_matches = .{
-                    .generation = generation,
-                    .arena = .init(self.alloc),
-                    .matches = &.{},
-                } },
-                .forever,
-            );
-
-            // Reset search totals in the surface
-            _ = self.surfaceMailbox().push(
-                .{ .search_total = .{
-                    .generation = generation,
-                    .total = null,
-                } },
-                .forever,
-            );
-            _ = self.surfaceMailbox().push(
-                .{ .search_selected = .{
-                    .generation = generation,
-                    .selected = null,
-                } },
-                .forever,
-            );
-            _ = self.surfaceMailbox().push(
-                .{ .search_match_rows = .{
-                    .generation = generation,
-                    .rows = try apprt.surface.Message.SearchRowsReq.init(
-                        self.alloc,
-                        @as([]const u32, &.{}),
-                    ),
-                } },
-                .forever,
-            );
+            _ = self.surfaceMailbox().push(.search_clear, .forever);
         },
 
         // Unhandled, so far.
@@ -5234,7 +5197,7 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
 
         .end_search => return try self.endSearch(),
 
-        .search => |text| return try self.setSearchText(text),
+        .search => |text| return try self.setSearchQuery(text, .{}),
 
         .navigate_search => |nav| {
             const s: *Search = if (self.search) |*s| s else return false;
@@ -5891,6 +5854,7 @@ pub fn endSearch(self: *Surface) !bool {
         _ = self.nextSearchGeneration();
         s.deinit();
         self.search = null;
+        self.search_query_options = .{};
         try self.syncClearSearchState();
     }
 
@@ -5932,7 +5896,7 @@ fn syncClearSearchState(self: *Surface) !void {
 }
 
 pub fn setSearchText(self: *Surface, text: []const u8) !bool {
-    return try self.setSearchQuery(text, .{});
+    return try self.setSearchQuery(text, self.search_query_options);
 }
 
 pub fn setSearchQuery(
@@ -5980,9 +5944,12 @@ pub fn setSearchQuery(
         _ = self.nextSearchGeneration();
         s.deinit();
         self.search = null;
+        self.search_query_options = .{};
         try self.syncClearSearchState();
         return true;
     }
+
+    self.search_query_options = query_options;
 
     var req = try terminal.search.Thread.Message.WriteReq.init(
         self.alloc,

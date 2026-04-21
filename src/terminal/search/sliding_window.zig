@@ -13,6 +13,10 @@ const FlattenedHighlight = @import("../highlight.zig").Flattened;
 const QueryOptions = @import("query_options.zig").QueryOptions;
 const oni = if (build_options.oniguruma) @import("oniguruma") else struct {};
 
+// Regexes can be arbitrary-width. Keep a generous bounded suffix on no-match
+// scans so large scrollback cannot accumulate in the sliding window forever.
+const regex_no_match_retain_len = 64 * 1024;
+
 /// Searches page nodes via a sliding window. The sliding window maintains
 /// the invariant that data isn't pruned until (1) we've searched it and
 /// (2) we've accounted for overlaps across pages to fit the needle.
@@ -359,14 +363,6 @@ pub const SlidingWindow = struct {
             }
         }
 
-        if (using_regex_engine and self.query_options.regex) {
-            // Regexes are arbitrary-width. A no-match window may still become
-            // a match after a later page append, so pruning here can drop the
-            // prefix needed for a cross-page match.
-            self.assertIntegrity();
-            return null;
-        }
-
         const retain_len = self.noMatchRetainLen(using_regex_engine);
 
         // Special case zero-overlap searches to delete the entire buffer.
@@ -376,68 +372,59 @@ pub const SlidingWindow = struct {
             return null;
         }
 
-        // No match. We keep a bounded suffix available to handle future
-        // overlap/context cases.
-        prune: {
-            var meta_it = self.meta.iterator(.reverse);
-            var saved: usize = 0;
-            while (meta_it.next()) |meta| {
-                const needed = retain_len - saved;
-                if (meta.cell_map.items.len >= needed) {
-                    // We save up to this meta. We set our data offset
-                    // to exactly where it needs to be to continue
-                    // searching.
-                    self.data_offset = meta.cell_map.items.len - needed;
-                    break;
-                }
-
-                saved += meta.cell_map.items.len;
-            } else {
-                // If we exited the while loop naturally then we
-                // never got the amount we needed and so there is
-                // nothing to prune.
-                assert(saved < retain_len);
-                break :prune;
-            }
-
-            const prune_count = self.meta.len() - meta_it.idx;
-            if (prune_count == 0) {
-                // This can happen if we need to save up to the first
-                // meta value to retain our window.
-                break :prune;
-            }
-
-            // We can now delete all the metas up to but NOT including
-            // the meta we found through meta_it.
-            meta_it = self.meta.iterator(.forward);
-            var prune_data_len: usize = 0;
-            for (0..prune_count) |_| {
-                const meta = meta_it.next().?;
-                prune_data_len += meta.cell_map.items.len;
-                meta.deinit(self.alloc);
-            }
-            self.meta.deleteOldest(prune_count);
-            self.data.deleteOldest(prune_data_len);
-        }
-
-        // Our data offset now moves to the retained suffix so that we can
-        // handle the literal overlap case.
-        self.data_offset = if (self.data.len() > retain_len)
-            self.data.len() - retain_len
-        else
-            0;
+        self.pruneRetainingSuffix(retain_len);
 
         self.assertIntegrity();
         return null;
     }
 
+    fn pruneRetainingSuffix(self: *SlidingWindow, retain_len: usize) void {
+        if (self.data.len() <= retain_len) {
+            self.data_offset = 0;
+            return;
+        }
+
+        var drop = self.data.len() - retain_len;
+        while (drop > 0) {
+            var meta_it = self.meta.iterator(.forward);
+            const meta = meta_it.next().?;
+            const meta_len = meta.cell_map.items.len;
+            assert(meta_len > 0);
+
+            if (drop >= meta_len) {
+                meta.deinit(self.alloc);
+                self.meta.deleteOldest(1);
+                self.data.deleteOldest(meta_len);
+                drop -= meta_len;
+                continue;
+            }
+
+            const keep_len = meta_len - drop;
+            std.mem.copyForwards(
+                point.Coordinate,
+                meta.cell_map.items[0..keep_len],
+                meta.cell_map.items[drop..],
+            );
+            meta.cell_map.shrinkRetainingCapacity(keep_len);
+            self.data.deleteOldest(drop);
+            drop = 0;
+        }
+
+        self.data_offset = 0;
+    }
+
     fn noMatchRetainLen(self: *const SlidingWindow, using_regex_engine: bool) usize {
         if (self.needle.len == 0) return 0;
 
+        if (using_regex_engine and self.query_options.regex) {
+            return @max(self.needle.len + 1, regex_no_match_retain_len);
+        }
+
         if (using_regex_engine and self.query_options.whole_word) {
             // A literal whole-word match at the end of the current window may
-            // need the next page's first byte to validate the trailing boundary.
-            return self.needle.len;
+            // need left context and the next page's first byte to validate
+            // word boundaries.
+            return self.needle.len + 1;
         }
 
         return self.needle.len - 1;
@@ -688,11 +675,6 @@ pub const SlidingWindow = struct {
 
     fn regexEdgeSensitivity(self: *const SlidingWindow) RegexEdgeSensitivity {
         if (comptime build_options.oniguruma) {
-            if (self.query_options.whole_word) return .{
-                .before = .{ .word_boundary = true },
-                .after = .{ .word_boundary = true },
-            };
-            if (!self.query_options.regex) return .{};
             const state = self.regex_state orelse return .{};
             return regexPatternEdgeSensitivity(state.pattern);
         } else {
@@ -1513,6 +1495,38 @@ test "SlidingWindow regex no match defers pruning" {
     try testing.expectEqual(@as(usize, 0), w.data_offset);
 }
 
+test "SlidingWindow regex no match keeps bounded suffix" {
+    if (comptime !build_options.oniguruma) return error.SkipZigTest;
+
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    try oni.testing.ensureInit();
+
+    var w: SlidingWindow = try .initWithOptions(alloc, .forward, "y+z", .{
+        .regex = true,
+    });
+    defer w.deinit();
+
+    var s = try Screen.init(alloc, .{ .cols = 120, .rows = 24, .max_scrollback = 1000 });
+    defer s.deinit();
+
+    var text: std.ArrayList(u8) = .empty;
+    defer text.deinit(alloc);
+    try text.appendNTimes(alloc, 'x', regex_no_match_retain_len + 8192);
+    try s.testWriteString(text.items);
+
+    var node: ?*PageList.List.Node = s.pages.pages.first.?;
+    while (node) |n| : (node = n.next) {
+        _ = try w.append(n);
+    }
+    const meta_len = w.meta.len();
+    try testing.expect(meta_len > 1);
+
+    try testing.expect((try w.next()) == null);
+    try testing.expectEqual(@as(usize, 0), w.data_offset);
+    try testing.expectEqual(regex_no_match_retain_len, w.data.len());
+}
+
 test "SlidingWindow regex match can span more than literal overlap" {
     if (comptime !build_options.oniguruma) return error.SkipZigTest;
 
@@ -1576,6 +1590,25 @@ test "SlidingWindow regex edge sensitivity detects anchors and character classes
     const anchors = SlidingWindow.regexPatternEdgeSensitivity("[^$^]+^foo$");
     try testing.expect(anchors.before.line_anchor);
     try testing.expect(anchors.after.line_anchor);
+}
+
+test "SlidingWindow whole-word regex edge sensitivity preserves embedded anchors" {
+    if (comptime !build_options.oniguruma) return error.SkipZigTest;
+
+    const testing = std.testing;
+    const alloc = testing.allocator;
+    try oni.testing.ensureInit();
+
+    var w: SlidingWindow = try .initWithOptions(alloc, .forward, "^boo", .{
+        .regex = true,
+        .whole_word = true,
+    });
+    defer w.deinit();
+
+    const sensitivity = w.regexEdgeSensitivity();
+    try testing.expect(sensitivity.before.word_boundary);
+    try testing.expect(sensitivity.before.line_anchor);
+    try testing.expect(sensitivity.after.word_boundary);
 }
 
 test "SlidingWindow whole-word regex accepts hard newline page boundary" {

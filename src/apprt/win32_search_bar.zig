@@ -337,6 +337,40 @@ test "toggle invalidates stale results for non-empty query" {
     try std.testing.expect(bar.shouldRunSearch(2041));
 }
 
+test "toggleCase invalidates stale results for non-empty query" {
+    var bar = SearchBar.init(std.testing.allocator);
+    defer bar.deinit();
+
+    try bar.setQuery("needle", 1000);
+    try std.testing.expect(bar.forceSearch());
+    bar.total = 10;
+    bar.selected = 3;
+
+    bar.toggleCase(2000);
+    try std.testing.expectEqual(@as(?usize, null), bar.total);
+    try std.testing.expectEqual(@as(?usize, null), bar.selected);
+    try std.testing.expect(!bar.searched);
+    try std.testing.expectEqual(@as(i64, 2000), bar.last_edit_ms);
+    try std.testing.expect(bar.shouldRunSearch(2041));
+}
+
+test "toggleWord invalidates stale results for non-empty query" {
+    var bar = SearchBar.init(std.testing.allocator);
+    defer bar.deinit();
+
+    try bar.setQuery("needle", 1000);
+    try std.testing.expect(bar.forceSearch());
+    bar.total = 10;
+    bar.selected = 3;
+
+    bar.toggleWord(2000);
+    try std.testing.expectEqual(@as(?usize, null), bar.total);
+    try std.testing.expectEqual(@as(?usize, null), bar.selected);
+    try std.testing.expect(!bar.searched);
+    try std.testing.expectEqual(@as(i64, 2000), bar.last_edit_ms);
+    try std.testing.expect(bar.shouldRunSearch(2041));
+}
+
 test "toggles persist across open/close" {
     var bar = SearchBar.init(std.testing.allocator);
     defer bar.deinit();

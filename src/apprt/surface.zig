@@ -138,6 +138,9 @@ pub const Message = union(enum) {
     /// Search match rows for scrollbar markers.
     search_match_rows: SearchMatchRows,
 
+    /// Force-clear search state without generation filtering.
+    search_clear,
+
     pub fn deinit(self: *Message) void {
         switch (self.*) {
             .clipboard_write => |v| v.req.deinit(),

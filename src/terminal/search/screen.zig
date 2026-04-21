@@ -208,6 +208,28 @@ pub const ScreenSearch = struct {
         self.match_rows_revision +%= 1;
     }
 
+    fn failSearch(self: *ScreenSearch) void {
+        const alloc = self.allocator();
+        const had_results = self.active_results.items.len > 0 or
+            self.history_results.items.len > 0 or
+            self.selected != null;
+
+        if (self.selected) |*m| {
+            m.deinit(self.screen);
+            self.selected = null;
+        }
+        if (self.history) |*h| {
+            h.deinit(self.screen);
+            self.history = null;
+        }
+        for (self.active_results.items) |*hl| hl.deinit(alloc);
+        self.active_results.clearRetainingCapacity();
+        for (self.history_results.items) |*hl| hl.deinit(alloc);
+        self.history_results.clearRetainingCapacity();
+        if (had_results) self.markMatchRowsDirty();
+        self.state = .complete;
+    }
+
     /// Returns all matches as an owned slice (caller must free).
     /// The matches are ordered from most recent to oldest (e.g. bottom
     /// of the screen to top of the screen).
@@ -421,7 +443,8 @@ pub const ScreenSearch = struct {
                 error.OutOfMemory => return error.OutOfMemory,
                 else => {
                     log.warn("error searching active area err={}", .{err});
-                    break;
+                    self.failSearch();
+                    return;
                 },
             } orelse break;
 
@@ -454,7 +477,8 @@ pub const ScreenSearch = struct {
                 error.OutOfMemory => return error.OutOfMemory,
                 else => {
                     log.warn("error searching history err={}", .{err});
-                    break;
+                    self.failSearch();
+                    return;
                 },
             } orelse break;
 
