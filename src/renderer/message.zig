@@ -61,6 +61,9 @@ pub const Message = union(enum) {
     /// no match currently.
     search_selected_match: SearchSelectedMatch,
 
+    /// Force-clear all rendered search state, bypassing generation checks.
+    search_clear,
+
     /// Activate or deactivate the inspector.
     inspector: bool,
 
@@ -117,6 +120,16 @@ pub const Message = union(enum) {
                 v.impl.deinit();
                 v.alloc.destroy(v.impl);
                 v.alloc.destroy(v.thread);
+            },
+
+            .search_viewport_matches => |v| {
+                var payload = v;
+                payload.deinit();
+            },
+
+            .search_selected_match => |v| {
+                var payload = v;
+                payload.deinit();
             },
 
             else => {},

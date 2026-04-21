@@ -649,10 +649,14 @@ pub const SlidingWindow = struct {
     }
 
     fn dataByteAt(self: *const SlidingWindow, offset: usize) ?u8 {
-        var it = self.data.iterator(.forward);
-        for (0..offset) |_| _ = it.next() orelse return null;
-        const byte = it.next() orelse return null;
-        return byte.*;
+        if (offset >= self.data.len()) return null;
+
+        const cap = self.data.capacity();
+        if (cap == 0) return null;
+
+        const idx = self.data.tail + offset;
+        const storage_idx = if (idx < cap) idx else idx - cap;
+        return self.data.storage[storage_idx];
     }
 
     fn isAsciiWordBoundary(a: u8, b: u8) bool {

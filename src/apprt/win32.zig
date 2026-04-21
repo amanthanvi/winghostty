@@ -12786,12 +12786,11 @@ fn searchBarNeedsRelayoutForQueryChange(previous_query_len: usize, next_query_le
     return (previous_query_len == 0) != (next_query_len == 0);
 }
 
-/// Clearing the core search is only required when the query becomes empty.
-/// Non-empty edits stay in the pending/debounce state and ignore any stale
-/// core callbacks until the debounced rerun marks the new query as active.
-fn searchBarShouldStopCoreSearchOnEdit(previous_query_len: usize, next_query_len: usize) bool {
-    _ = previous_query_len;
-    return next_query_len == 0;
+/// Once a query has reached core search, any edit must invalidate it until the
+/// debounced replacement query runs.
+fn searchBarShouldInvalidateCoreSearchOnEdit(previous_query_len: usize, next_query_len: usize) bool {
+    _ = next_query_len;
+    return previous_query_len > 0;
 }
 
 fn shouldAcceptCoreSearchUpdates(bar: *const win32_search_bar.SearchBar) bool {
@@ -18150,9 +18149,17 @@ pub const Surface = struct {
             previous_query_len,
             text.len,
         );
+        const invalidate_core_search = searchBarShouldInvalidateCoreSearchOnEdit(
+            previous_query_len,
+            text.len,
+        );
         try self.search_bar.setQuery(text, @intCast(GetTickCount64()));
-        if (searchBarShouldStopCoreSearchOnEdit(previous_query_len, text.len)) {
-            _ = try self.core_surface.setSearchQuery("", self.searchQueryOptions());
+        if (invalidate_core_search) {
+            if (text.len == 0) {
+                _ = try self.core_surface.setSearchQuery("", self.searchQueryOptions());
+            } else {
+                _ = try self.core_surface.invalidateSearchResults();
+            }
         }
         try self.setSearchActive(text.len > 0, text);
         if (self.host) |host| {
@@ -18185,10 +18192,11 @@ pub const Surface = struct {
     }
 
     fn handleSearchToggleClick(self: *Surface, command_id: usize) !bool {
+        const now_ms: i64 = @intCast(GetTickCount64());
         switch (command_id) {
-            SEARCH_REGEX_ID => self.search_bar.toggleRegex(),
-            SEARCH_CASE_ID => self.search_bar.toggleCase(),
-            SEARCH_WORD_ID => self.search_bar.toggleWord(),
+            SEARCH_REGEX_ID => self.search_bar.toggleRegex(now_ms),
+            SEARCH_CASE_ID => self.search_bar.toggleCase(now_ms),
+            SEARCH_WORD_ID => self.search_bar.toggleWord(now_ms),
             else => return false,
         }
 
@@ -21320,12 +21328,13 @@ test "win32 searchBarNeedsRelayoutForQueryChange only trips on empty-state trans
     try std.testing.expect(searchBarNeedsRelayoutForQueryChange(3, 0));
 }
 
-test "win32 searchBarShouldStopCoreSearchOnEdit only stops on empty query" {
+test "win32 searchBarShouldInvalidateCoreSearchOnEdit invalidates active query edits" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
-    try std.testing.expect(!searchBarShouldStopCoreSearchOnEdit(0, 1));
-    try std.testing.expect(!searchBarShouldStopCoreSearchOnEdit(5, 2));
-    try std.testing.expect(searchBarShouldStopCoreSearchOnEdit(5, 0));
+    try std.testing.expect(!searchBarShouldInvalidateCoreSearchOnEdit(0, 0));
+    try std.testing.expect(!searchBarShouldInvalidateCoreSearchOnEdit(0, 1));
+    try std.testing.expect(searchBarShouldInvalidateCoreSearchOnEdit(5, 2));
+    try std.testing.expect(searchBarShouldInvalidateCoreSearchOnEdit(5, 0));
 }
 
 test "win32 shouldAcceptCoreSearchUpdates rejects pending docked search state" {

@@ -5891,6 +5891,7 @@ pub fn endSearch(self: *Surface) !bool {
         _ = self.nextSearchGeneration();
         s.deinit();
         self.search = null;
+        try self.syncClearSearchState();
     }
 
     _ = try self.rt_app.performAction(
@@ -5900,6 +5901,34 @@ pub fn endSearch(self: *Surface) !bool {
     );
 
     return performed;
+}
+
+pub fn invalidateSearchResults(self: *Surface) !bool {
+    if (self.search == null) return false;
+    _ = self.nextSearchGeneration();
+    try self.syncClearSearchState();
+    return true;
+}
+
+fn syncClearSearchState(self: *Surface) !void {
+    _ = self.renderer_thread.mailbox.push(.search_clear, .forever);
+    try self.renderer_thread.wakeup.notify();
+
+    _ = try self.rt_app.performAction(
+        .{ .surface = self },
+        .search_total,
+        .{ .total = null },
+    );
+    _ = try self.rt_app.performAction(
+        .{ .surface = self },
+        .search_selected,
+        .{ .selected = null },
+    );
+    _ = try self.rt_app.performAction(
+        .{ .surface = self },
+        .search_match_rows,
+        .{ .rows = @as([]const u32, &.{}) },
+    );
 }
 
 pub fn setSearchText(self: *Surface, text: []const u8) !bool {
@@ -5951,6 +5980,7 @@ pub fn setSearchQuery(
         _ = self.nextSearchGeneration();
         s.deinit();
         self.search = null;
+        try self.syncClearSearchState();
         return true;
     }
 

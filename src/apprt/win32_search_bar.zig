@@ -121,16 +121,31 @@ pub const SearchBar = struct {
     // Toggles
     // -----------------------------------------------------------------
 
-    pub fn toggleRegex(self: *SearchBar) void {
+    fn invalidateResults(self: *SearchBar, now_ms: i64) void {
+        self.total = null;
+        self.selected = null;
+        if (self.query.len == 0) {
+            self.searched = true;
+            self.last_edit_ms = 0;
+        } else {
+            self.searched = false;
+            self.last_edit_ms = now_ms;
+        }
+    }
+
+    pub fn toggleRegex(self: *SearchBar, now_ms: i64) void {
         self.toggles.regex = !self.toggles.regex;
+        self.invalidateResults(now_ms);
     }
 
-    pub fn toggleCase(self: *SearchBar) void {
+    pub fn toggleCase(self: *SearchBar, now_ms: i64) void {
         self.toggles.case_sensitive = !self.toggles.case_sensitive;
+        self.invalidateResults(now_ms);
     }
 
-    pub fn toggleWord(self: *SearchBar) void {
+    pub fn toggleWord(self: *SearchBar, now_ms: i64) void {
         self.toggles.whole_word = !self.toggles.whole_word;
+        self.invalidateResults(now_ms);
     }
 };
 
@@ -299,10 +314,27 @@ test "toggleRegex flips bit" {
     defer bar.deinit();
 
     try std.testing.expect(!bar.toggles.regex);
-    bar.toggleRegex();
+    bar.toggleRegex(1000);
     try std.testing.expect(bar.toggles.regex);
-    bar.toggleRegex();
+    bar.toggleRegex(2000);
     try std.testing.expect(!bar.toggles.regex);
+}
+
+test "toggle invalidates stale results for non-empty query" {
+    var bar = SearchBar.init(std.testing.allocator);
+    defer bar.deinit();
+
+    try bar.setQuery("needle", 1000);
+    try std.testing.expect(bar.forceSearch());
+    bar.total = 10;
+    bar.selected = 3;
+
+    bar.toggleRegex(2000);
+    try std.testing.expectEqual(@as(?usize, null), bar.total);
+    try std.testing.expectEqual(@as(?usize, null), bar.selected);
+    try std.testing.expect(!bar.searched);
+    try std.testing.expectEqual(@as(i64, 2000), bar.last_edit_ms);
+    try std.testing.expect(bar.shouldRunSearch(2041));
 }
 
 test "toggles persist across open/close" {
@@ -310,7 +342,7 @@ test "toggles persist across open/close" {
     defer bar.deinit();
 
     bar.open();
-    bar.toggleCase();
+    bar.toggleCase(1000);
     bar.close();
     bar.open();
     try std.testing.expect(bar.toggles.case_sensitive);
