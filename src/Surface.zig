@@ -175,6 +175,8 @@ command_timer: ?std.time.Instant = null,
 
 /// Search state
 search: ?Search = null,
+search_generation: std.atomic.Value(u64) = .init(0),
+search_query_options: terminal.search.QueryOptions = .{},
 
 /// Used to rate limit BEL handling.
 last_bell_time: ?std.time.Instant = null,
@@ -200,6 +202,7 @@ pub const InputEffect = enum {
 
 /// The search state for the surface.
 const Search = struct {
+    surface: *Surface,
     state: terminal.search.Thread,
     thread: std.Thread,
 
@@ -579,6 +582,7 @@ pub fn init(
         &self.renderer,
         &self.renderer_state,
         app_mailbox,
+        &self.search_generation,
     );
     errdefer render_thread.deinit();
 
@@ -1137,20 +1141,65 @@ pub fn handleMessage(self: *Surface, msg: Message) !void {
             };
         },
 
+        .search_viewport_matches => |v| {
+            var payload = v;
+            if (!self.shouldAcceptSearchGeneration(payload.generation)) {
+                payload.deinit();
+                return;
+            }
+
+            _ = self.renderer_thread.mailbox.push(
+                .{ .search_viewport_matches = payload },
+                .forever,
+            );
+            try self.renderer_thread.wakeup.notify();
+        },
+
+        .search_selected_match => |v| {
+            var payload = v;
+            if (!self.shouldAcceptSearchGeneration(payload.generation)) {
+                payload.deinit();
+                return;
+            }
+
+            _ = self.renderer_thread.mailbox.push(
+                .{ .search_selected_match = payload },
+                .forever,
+            );
+            try self.renderer_thread.wakeup.notify();
+        },
+
         .search_total => |v| {
+            if (!self.shouldAcceptSearchGeneration(v.generation)) return;
             _ = try self.rt_app.performAction(
                 .{ .surface = self },
                 .search_total,
-                .{ .total = v },
+                .{ .total = v.total },
             );
         },
 
         .search_selected => |v| {
+            if (!self.shouldAcceptSearchGeneration(v.generation)) return;
             _ = try self.rt_app.performAction(
                 .{ .surface = self },
                 .search_selected,
-                .{ .selected = v },
+                .{ .selected = v.selected },
             );
+        },
+
+        .search_match_rows => |rows| {
+            defer rows.deinit();
+            if (!self.shouldAcceptSearchGeneration(rows.generation)) return;
+            _ = try self.rt_app.performAction(
+                .{ .surface = self },
+                .search_match_rows,
+                .{ .rows = rows.rows.slice() },
+            );
+        },
+
+        .search_clear => |v| {
+            if (!self.shouldAcceptSearchGeneration(v.generation)) return;
+            try self.syncClearSearchState(v.generation);
         },
     }
 }
@@ -1382,20 +1431,51 @@ fn passwordInput(self: *Surface, v: bool) !void {
     try self.queueRender();
 }
 
-fn searchCallback(event: terminal.search.Thread.Event, ud: ?*anyopaque) void {
+fn searchCallback(
+    event: terminal.search.Thread.Event,
+    generation: u64,
+    ud: ?*anyopaque,
+) void {
     // IMPORTANT: This function is run on the SEARCH THREAD! It is NOT SAFE
     // to access anything other than values that never change on the surface.
     // The surface is guaranteed to be valid for the lifetime of the search
     // thread.
-    const self: *Surface = @ptrCast(@alignCast(ud.?));
-    self.searchCallback_(event) catch |err| {
+    const search: *Search = @ptrCast(@alignCast(ud.?));
+    const self = search.surface;
+    const current_generation = self.search_generation.load(.acquire);
+    const event_tag = std.meta.activeTag(event);
+    if (event_tag != .quit and
+        !shouldAcceptSearchEvent(current_generation, generation)) return;
+
+    // Shutdown clears must win over stale queued query generations. A fast
+    // type-then-close can stop the search thread before it drains the newest
+    // query message, so tag quit with the surface's current generation.
+    const accepted_generation = if (event_tag == .quit) current_generation else generation;
+    self.searchCallback_(event, accepted_generation) catch |err| {
         log.warn("error in search callback err={}", .{err});
     };
+}
+
+fn apprtSearchSelectedIndex(idx: usize) usize {
+    return idx + 1;
+}
+
+fn shouldAcceptSearchEvent(current_generation: u64, event_generation: u64) bool {
+    return current_generation == event_generation;
+}
+
+fn shouldAcceptSearchGeneration(self: *Surface, generation: u64) bool {
+    return shouldAcceptSearchEvent(self.search_generation.load(.acquire), generation);
+}
+
+fn nextSearchGeneration(self: *Surface) u64 {
+    return self.search_generation.fetchAdd(1, .acq_rel) + 1;
 }
 
 fn searchCallback_(
     self: *Surface,
     event: terminal.search.Thread.Event,
+    generation: u64,
 ) !void {
     // NOTE: This runs on the search thread.
 
@@ -1408,14 +1488,14 @@ fn searchCallback_(
             const matches = try alloc.dupe(terminal.highlight.Flattened, matches_unowned);
             for (matches) |*m| m.* = try m.clone(alloc);
 
-            _ = self.renderer_thread.mailbox.push(
+            _ = self.surfaceMailbox().push(
                 .{ .search_viewport_matches = .{
+                    .generation = generation,
                     .arena = arena,
                     .matches = matches,
                 } },
                 .forever,
             );
-            try self.renderer_thread.wakeup.notify();
         },
 
         .selected_match => |selected_| {
@@ -1426,65 +1506,73 @@ fn searchCallback_(
                 const alloc = arena.allocator();
                 const match = try sel.highlight.clone(alloc);
 
-                _ = self.renderer_thread.mailbox.push(
+                _ = self.surfaceMailbox().push(
                     .{ .search_selected_match = .{
-                        .arena = arena,
-                        .match = match,
+                        .generation = generation,
+                        .match = .{
+                            .arena = arena,
+                            .match = match,
+                        },
                     } },
                     .forever,
                 );
 
                 // Send the selected index to the surface mailbox
                 _ = self.surfaceMailbox().push(
-                    .{ .search_selected = sel.idx },
+                    .{ .search_selected = .{
+                        .generation = generation,
+                        .selected = apprtSearchSelectedIndex(sel.idx),
+                    } },
                     .forever,
                 );
             } else {
                 // Reset our selected match
-                _ = self.renderer_thread.mailbox.push(
-                    .{ .search_selected_match = null },
+                _ = self.surfaceMailbox().push(
+                    .{ .search_selected_match = .{
+                        .generation = generation,
+                        .match = null,
+                    } },
                     .forever,
                 );
 
                 // Reset the selected index
                 _ = self.surfaceMailbox().push(
-                    .{ .search_selected = null },
+                    .{ .search_selected = .{
+                        .generation = generation,
+                        .selected = null,
+                    } },
                     .forever,
                 );
             }
-
-            try self.renderer_thread.wakeup.notify();
         },
 
         .total_matches => |total| {
             _ = self.surfaceMailbox().push(
-                .{ .search_total = total },
+                .{ .search_total = .{
+                    .generation = generation,
+                    .total = total,
+                } },
+                .forever,
+            );
+        },
+
+        .match_rows => |rows| {
+            _ = self.surfaceMailbox().push(
+                .{ .search_match_rows = .{
+                    .generation = generation,
+                    .rows = try apprt.surface.Message.SearchRowsReq.init(
+                        self.alloc,
+                        rows,
+                    ),
+                } },
                 .forever,
             );
         },
 
         // When we quit, tell our renderer to reset any search state.
         .quit => {
-            _ = self.renderer_thread.mailbox.push(
-                .{ .search_selected_match = null },
-                .forever,
-            );
-            _ = self.renderer_thread.mailbox.push(
-                .{ .search_viewport_matches = .{
-                    .arena = .init(self.alloc),
-                    .matches = &.{},
-                } },
-                .forever,
-            );
-            try self.renderer_thread.wakeup.notify();
-
-            // Reset search totals in the surface
             _ = self.surfaceMailbox().push(
-                .{ .search_total = null },
-                .forever,
-            );
-            _ = self.surfaceMailbox().push(
-                .{ .search_selected = null },
+                .{ .search_clear = .{ .generation = generation } },
                 .forever,
             );
         },
@@ -1656,6 +1744,16 @@ fn updateRendererHealth(self: *Surface, health: rendererpkg.Health) void {
     ) catch |err| {
         log.warn("failed to notify app of renderer health change err={}", .{err});
     };
+}
+
+test "surface apprtSearchSelectedIndex converts to one-based display index" {
+    try std.testing.expectEqual(@as(usize, 1), apprtSearchSelectedIndex(0));
+    try std.testing.expectEqual(@as(usize, 8), apprtSearchSelectedIndex(7));
+}
+
+test "surface shouldAcceptSearchEvent rejects stale search generations" {
+    try std.testing.expect(shouldAcceptSearchEvent(7, 7));
+    try std.testing.expect(!shouldAcceptSearchEvent(8, 7));
 }
 
 /// Called when the scrollbar state changes.
@@ -5105,7 +5203,7 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
 
         .end_search => return try self.endSearch(),
 
-        .search => |text| return try self.setSearchText(text),
+        .search => |text| return try self.setSearchQuery(text, .{}),
 
         .navigate_search => |nav| {
             const s: *Search = if (self.search) |*s| s else return false;
@@ -5759,8 +5857,11 @@ pub fn endSearch(self: *Surface) !bool {
     const performed = self.search != null;
 
     if (self.search) |*s| {
+        const generation = self.nextSearchGeneration();
         s.deinit();
         self.search = null;
+        self.search_query_options = .{};
+        try self.syncClearSearchState(generation);
     }
 
     _ = try self.rt_app.performAction(
@@ -5772,7 +5873,55 @@ pub fn endSearch(self: *Surface) !bool {
     return performed;
 }
 
+pub fn invalidateSearchResults(self: *Surface) !bool {
+    const s: *Search = if (self.search) |*s| s else return false;
+    const generation = self.nextSearchGeneration();
+    try self.syncClearSearchState(generation);
+
+    var req = try terminal.search.Thread.Message.WriteReq.init(self.alloc, "");
+    errdefer req.deinit();
+    _ = s.state.mailbox.push(
+        .{ .change_query = .{
+            .generation = generation,
+            .options = self.search_query_options,
+            .req = req,
+        } },
+        .forever,
+    );
+    s.state.wakeup.notify() catch {};
+    return true;
+}
+
+fn syncClearSearchState(self: *Surface, generation: u64) !void {
+    _ = self.renderer_thread.mailbox.push(.{ .search_clear = generation }, .forever);
+    try self.renderer_thread.wakeup.notify();
+
+    _ = try self.rt_app.performAction(
+        .{ .surface = self },
+        .search_total,
+        .{ .total = null },
+    );
+    _ = try self.rt_app.performAction(
+        .{ .surface = self },
+        .search_selected,
+        .{ .selected = null },
+    );
+    _ = try self.rt_app.performAction(
+        .{ .surface = self },
+        .search_match_rows,
+        .{ .rows = @as([]const u32, &.{}) },
+    );
+}
+
 pub fn setSearchText(self: *Surface, text: []const u8) !bool {
+    return try self.setSearchQuery(text, self.search_query_options);
+}
+
+pub fn setSearchQuery(
+    self: *Surface,
+    text: []const u8,
+    query_options: terminal.search.QueryOptions,
+) !bool {
     const s: *Search = if (self.search) |*s| s else init: {
         // If we're stopping the search and we had no prior search,
         // then there is nothing to do.
@@ -5781,17 +5930,21 @@ pub fn setSearchText(self: *Surface, text: []const u8) !bool {
         // We need to assign directly to self.search because we need
         // a stable pointer back to the thread state.
         self.search = .{
-            .state = try .init(self.alloc, .{
-                .mutex = self.renderer_state.mutex,
-                .terminal = self.renderer_state.terminal,
-                .event_cb = &searchCallback,
-                .event_userdata = self,
-                .visible = self.visible,
-                .focused = self.focused,
-            }),
+            .surface = self,
+            .state = undefined,
             .thread = undefined,
         };
         const state: *Search = &self.search.?;
+        errdefer self.search = null;
+
+        state.state = try .init(self.alloc, .{
+            .mutex = self.renderer_state.mutex,
+            .terminal = self.renderer_state.terminal,
+            .event_cb = &searchCallback,
+            .event_userdata = state,
+            .visible = self.visible,
+            .focused = self.focused,
+        });
         errdefer state.state.deinit();
 
         state.thread = try .spawn(
@@ -5806,16 +5959,29 @@ pub fn setSearchText(self: *Surface, text: []const u8) !bool {
 
     // Zero-length text means stop searching.
     if (text.len == 0) {
+        const generation = self.nextSearchGeneration();
         s.deinit();
         self.search = null;
+        self.search_query_options = .{};
+        try self.syncClearSearchState(generation);
         return true;
     }
 
+    self.search_query_options = query_options;
+
+    var req = try terminal.search.Thread.Message.WriteReq.init(
+        self.alloc,
+        text,
+    );
+    errdefer req.deinit();
+    const generation = self.nextSearchGeneration();
+
     _ = s.state.mailbox.push(
-        .{ .change_needle = try .init(
-            self.alloc,
-            text,
-        ) },
+        .{ .change_query = .{
+            .generation = generation,
+            .options = query_options,
+            .req = req,
+        } },
         .forever,
     );
     s.state.wakeup.notify() catch {};

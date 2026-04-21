@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: "en-US"
+early_access: false
+
+reviews:
+  profile: "assertive"
+  request_changes_workflow: false
+  high_level_summary: true
+  review_status: true
+  collapse_walkthrough: true
+  poem: false
+  sequence_diagrams: false
+  auto_review:
+    enabled: true
+    auto_incremental_review: true
+    drafts: false
+  path_filters:
+    - "!zig-out/**"
+    - "!.zig-cache/**"
+    - "!dist/windows/**/*.zip"
+    - "!dist/windows/**/*.msix"
+    - "!dist/windows/**/*.png"
+    - "!dist/windows/**/*.ico"
+  path_instructions:
+    - path: "**/*.zig"
+      instructions: |
+        This repository is winghostty, a Windows-focused Ghostty fork. Review against amanthanvi/winghostty, not ghostty-org/ghostty. Do not suggest reintroducing the removed macos/ Xcode app or src/apprt/gtk runtime. Prefer minimal Zig changes, targeted `zig build test -Dtest-filter=<name>` validation, and `zig fmt` on touched Zig files.
+    - path: "src/apprt/win32*.zig"
+      instructions: |
+        Win32 UI fixes should preserve child HWND invalidation, split-pane focus tracking, and repaint coalescing semantics documented in AGENTS.md. Flag stale paint, lifetime, and message-ordering regressions over stylistic nits.
+  tools:
+    github-checks:
+      enabled: true
+      timeout_ms: 900000
+    yamllint:
+      enabled: true
+
+chat:
+  auto_reply: true

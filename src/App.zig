@@ -513,10 +513,13 @@ fn surfaceMessage(self: *App, surface: *Surface, msg: apprt.surface.Message) !vo
     // a simple linear search here.
     if (self.hasSurface(surface)) {
         try surface.handleMessage(msg);
+        return;
     }
 
     // Window was not found, it probably quit before we handled the message.
-    // Not a problem.
+    // Not a problem, but the queued payload may own memory.
+    var dropped = msg;
+    dropped.deinit();
 }
 
 fn hasSurface(self: *const App, surface: *const Surface) bool {

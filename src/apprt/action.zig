@@ -336,6 +336,9 @@ pub const Action = union(Key) {
     /// The currently selected search match index (1-based).
     search_selected: SearchSelected,
 
+    /// Search match rows for the active screen, sorted ascending and unique.
+    search_match_rows: SearchMatchRows,
+
     /// The readonly state of the surface has changed.
     readonly: Readonly,
 
@@ -409,6 +412,7 @@ pub const Action = union(Key) {
         end_search,
         search_total,
         search_selected,
+        search_match_rows,
         readonly,
         copy_title_to_clipboard,
 
@@ -1001,6 +1005,23 @@ pub const SearchSelected = struct {
     pub fn cval(self: SearchSelected) C {
         return .{
             .selected = if (self.selected) |s| @intCast(s) else -1,
+        };
+    }
+};
+
+pub const SearchMatchRows = struct {
+    rows: []const u32,
+
+    // Sync with: ghostty_action_search_match_rows_s
+    pub const C = extern struct {
+        rows: [*]const u32,
+        len: usize,
+    };
+
+    pub fn cval(self: SearchMatchRows) C {
+        return .{
+            .rows = self.rows.ptr,
+            .len = self.rows.len,
         };
     }
 };

@@ -113,6 +113,10 @@ cursor_c_cancel: xev.Completion = .{},
 /// The surface we're rendering to.
 surface: *apprt.Surface,
 
+/// Search generation shared with the surface so stale async search payloads
+/// can be dropped after a query is replaced or cleared.
+search_generation: *const std.atomic.Value(u64),
+
 /// The underlying renderer implementation.
 renderer: *rendererpkg.Renderer,
 
@@ -167,6 +171,7 @@ pub fn init(
     renderer_impl: *rendererpkg.Renderer,
     state: *rendererpkg.State,
     app_mailbox: App.Mailbox,
+    search_generation: *const std.atomic.Value(u64),
 ) !Thread {
     // Create our event loop.
     var loop = try xev.Loop.init(.{});
@@ -211,6 +216,7 @@ pub fn init(
         .draw_now = draw_now,
         .cursor_h = cursor_timer,
         .surface = surface,
+        .search_generation = search_generation,
         .renderer = renderer_impl,
         .state = state,
         .mailbox = mailbox,
@@ -492,19 +498,40 @@ fn drainMailbox(self: *Thread) !void {
                 self.syncDrawTimer();
             },
 
-            .search_viewport_matches => |v| {
+            .search_viewport_matches => |v| search: {
+                var payload = v;
+                if (!self.shouldAcceptSearchGeneration(payload.generation)) {
+                    payload.deinit();
+                    break :search;
+                }
+
                 // Note we don't free the new value because we expect our
                 // allocators to match.
-                if (self.renderer.search_matches) |*m| m.arena.deinit();
-                self.renderer.search_matches = v;
+                if (self.renderer.search_matches) |*m| m.deinit();
+                self.renderer.search_matches = payload;
                 self.renderer.search_matches_dirty = true;
             },
 
-            .search_selected_match => |v| {
+            .search_selected_match => |v| search: {
+                var payload = v;
+                if (!self.shouldAcceptSearchGeneration(payload.generation)) {
+                    payload.deinit();
+                    break :search;
+                }
+
                 // Note we don't free the new value because we expect our
                 // allocators to match.
                 if (self.renderer.search_selected_match) |*m| m.arena.deinit();
-                self.renderer.search_selected_match = v;
+                self.renderer.search_selected_match = payload.match;
+                self.renderer.search_matches_dirty = true;
+            },
+
+            .search_clear => |generation| search: {
+                if (!self.shouldAcceptSearchGeneration(generation)) break :search;
+                if (self.renderer.search_matches) |*m| m.deinit();
+                self.renderer.search_matches = null;
+                if (self.renderer.search_selected_match) |*m| m.arena.deinit();
+                self.renderer.search_selected_match = null;
                 self.renderer.search_matches_dirty = true;
             },
 
@@ -523,6 +550,10 @@ fn drainMailbox(self: *Thread) !void {
 
 fn changeConfig(self: *Thread, config: *const DerivedConfig) !void {
     self.config = config.*;
+}
+
+fn shouldAcceptSearchGeneration(self: *const Thread, generation: u64) bool {
+    return self.search_generation.load(.acquire) == generation;
 }
 
 /// Trigger a draw. This will not update frame data or anything, it will

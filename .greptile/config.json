@@ -1,0 +1,27 @@
+{
+  "strictness": 2,
+  "commentTypes": ["logic", "syntax", "style"],
+  "triggerOnUpdates": true,
+  "statusCheck": true,
+  "ignorePatterns": ".zig-cache/**\nzig-out/**\ndist/windows/**/*.zip\ndist/windows/**/*.msix\n**/*.png\n**/*.ico",
+  "instructions": "This repository is winghostty, a Windows-focused Ghostty fork. Review against amanthanvi/winghostty, not ghostty-org/ghostty. Do not suggest reintroducing the removed macos/ Xcode app or src/apprt/gtk runtime. Prefer minimal Zig changes and targeted zig build test -Dtest-filter validation.",
+  "rules": [
+    {
+      "id": "win32-search-generation",
+      "rule": "Search events that cross thread or mailbox boundaries must carry and validate the current search generation before mutating renderer or UI state.",
+      "scope": ["src/Surface.zig", "src/apprt/**", "src/terminal/search/**"],
+      "severity": "high"
+    },
+    {
+      "id": "win32-repaint-scope",
+      "rule": "Win32 chrome or pane layout changes must explicitly invalidate affected child HWND or content regions; avoid full-window invalidation unless the repaint scope is truly unknown.",
+      "scope": ["src/apprt/win32*.zig"],
+      "severity": "medium"
+    },
+    {
+      "id": "fork-target",
+      "rule": "Repository operations and review suggestions must target amanthanvi/winghostty and must not assume upstream ghostty-org/ghostty publishing paths.",
+      "severity": "medium"
+    }
+  ]
+}

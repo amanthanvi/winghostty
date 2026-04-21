@@ -1,0 +1,8 @@
+{
+  "files": [
+    {
+      "path": "AGENTS.md",
+      "description": "Repository-specific agent instructions, fork-targeting rules, and Win32 repaint/search pitfalls."
+    }
+  ]
+}

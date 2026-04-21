@@ -1,6 +1,6 @@
 //! Per-pane docked search bar state machine.
 //!
-//! Owns query text, regex/case/word toggles, match navigation, a 40 ms
+//! Owns query text, regex/case/word toggles, result display state, a 40 ms
 //! debounce policy, and match-marker downsampling for the scrollbar
 //! overlay.  No HWND creation, painting, or keybind dispatch — those
 //! belong to the Win32 surface layer.
@@ -10,9 +10,10 @@
 //! large histories.  A 40 ms window batches rapid keystrokes into a
 //! single search pass while feeling instantaneous to the user.
 //!
-//! **Wrap-search semantics.**  The `wrap` toggle (default true) mirrors
-//! the existing `wrap-search` config key.  When true, navigateNext at
-//! the last match jumps to match 1; when false it clamps.
+//! **Wrap navigation.**  The helper keeps an internal `wrap` flag so
+//! callers can choose whether next/previous navigation wraps. The
+//! current Win32 UI does not surface a dedicated wrap toggle; it keeps
+//! the default wrapping behaviour unless a caller opts out.
 //!
 //! **Toggle persistence across close.**  Closing the bar (Esc) hides
 //! the visual but preserves query + toggles so that re-opening (Ctrl+F)
@@ -71,6 +72,9 @@ pub const SearchBar = struct {
     // -----------------------------------------------------------------
 
     pub fn setQuery(self: *SearchBar, next: []const u8, now_ms: i64) Allocator.Error!void {
+        const next_owned: ?[]u8 = if (next.len > 0) try self.alloc.dupe(u8, next) else null;
+        errdefer if (next_owned) |value| self.alloc.free(value);
+
         if (self.query.len > 0) self.alloc.free(self.query);
 
         if (next.len == 0) {
@@ -82,7 +86,9 @@ pub const SearchBar = struct {
             return;
         }
 
-        self.query = try self.alloc.dupe(u8, next);
+        self.query = next_owned.?;
+        self.total = null;
+        self.selected = null;
         self.last_edit_ms = now_ms;
         self.searched = false;
     }
@@ -111,52 +117,35 @@ pub const SearchBar = struct {
     // Results / navigation
     // -----------------------------------------------------------------
 
-    pub fn setResults(self: *SearchBar, total: usize) void {
-        self.total = total;
-        self.selected = if (total > 0) 1 else null;
-        self.searched = true;
-    }
-
-    pub fn navigateNext(self: *SearchBar) void {
-        const sel = self.selected orelse return;
-        const tot = self.total orelse return;
-        if (tot == 0) return;
-
-        if (sel >= tot) {
-            if (self.toggles.wrap) self.selected = 1;
-            // else clamp — no change
-        } else {
-            self.selected = sel + 1;
-        }
-    }
-
-    pub fn navigatePrev(self: *SearchBar) void {
-        const sel = self.selected orelse return;
-        const tot = self.total orelse return;
-        if (tot == 0) return;
-
-        if (sel <= 1) {
-            if (self.toggles.wrap) self.selected = tot;
-            // else clamp — no change
-        } else {
-            self.selected = sel - 1;
-        }
-    }
-
     // -----------------------------------------------------------------
     // Toggles
     // -----------------------------------------------------------------
 
-    pub fn toggleRegex(self: *SearchBar) void {
+    fn invalidateResults(self: *SearchBar, now_ms: i64) void {
+        self.total = null;
+        self.selected = null;
+        if (self.query.len == 0) {
+            self.searched = true;
+            self.last_edit_ms = 0;
+        } else {
+            self.searched = false;
+            self.last_edit_ms = now_ms;
+        }
+    }
+
+    pub fn toggleRegex(self: *SearchBar, now_ms: i64) void {
         self.toggles.regex = !self.toggles.regex;
+        self.invalidateResults(now_ms);
     }
 
-    pub fn toggleCase(self: *SearchBar) void {
+    pub fn toggleCase(self: *SearchBar, now_ms: i64) void {
         self.toggles.case_sensitive = !self.toggles.case_sensitive;
+        self.invalidateResults(now_ms);
     }
 
-    pub fn toggleWord(self: *SearchBar) void {
+    pub fn toggleWord(self: *SearchBar, now_ms: i64) void {
         self.toggles.whole_word = !self.toggles.whole_word;
+        self.invalidateResults(now_ms);
     }
 };
 
@@ -253,13 +242,40 @@ test "query survives close/open" {
     try std.testing.expectEqualStrings("foo", bar.query);
 }
 
+test "setQuery accepts aliased source slice" {
+    var bar = SearchBar.init(std.testing.allocator);
+    defer bar.deinit();
+
+    try bar.setQuery("foo", 1000);
+    try bar.setQuery(bar.query, 2000);
+    try std.testing.expectEqualStrings("foo", bar.query);
+    try std.testing.expectEqual(@as(i64, 2000), bar.last_edit_ms);
+}
+
+test "setQuery clears stale results for a new search" {
+    var bar = SearchBar.init(std.testing.allocator);
+    defer bar.deinit();
+
+    try bar.setQuery("foo", 1000);
+    bar.total = 8;
+    bar.searched = true;
+    bar.selected = 4;
+
+    try bar.setQuery("bar", 1100);
+    try std.testing.expectEqual(@as(?usize, null), bar.total);
+    try std.testing.expectEqual(@as(?usize, null), bar.selected);
+    try std.testing.expect(!bar.searched);
+    try std.testing.expectEqual(@as(i64, 1100), bar.last_edit_ms);
+}
+
 test "empty query clears results" {
     var bar = SearchBar.init(std.testing.allocator);
     defer bar.deinit();
 
     bar.open();
     try bar.setQuery("x", 1000);
-    bar.setResults(5);
+    bar.total = 5;
+    bar.searched = true;
     try std.testing.expectEqual(@as(?usize, 5), bar.total);
 
     try bar.setQuery("", 2000);
@@ -293,69 +309,66 @@ test "forceSearch bypasses debounce" {
     try std.testing.expect(!bar.shouldRunSearch(9999)); // already searched
 }
 
-test "setResults primes selected=1" {
-    var bar = SearchBar.init(std.testing.allocator);
-    defer bar.deinit();
-
-    bar.open();
-    try bar.setQuery("q", 100);
-    bar.setResults(7);
-    try std.testing.expectEqual(@as(?usize, 7), bar.total);
-    try std.testing.expectEqual(@as(?usize, 1), bar.selected);
-}
-
-test "navigateNext wraps when wrap=true" {
-    var bar = SearchBar.init(std.testing.allocator);
-    defer bar.deinit();
-
-    try bar.setQuery("q", 100);
-    bar.setResults(3);
-    bar.selected = 3;
-    bar.navigateNext();
-    try std.testing.expectEqual(@as(?usize, 1), bar.selected);
-}
-
-test "navigateNext clamps when wrap=false" {
-    var bar = SearchBar.init(std.testing.allocator);
-    defer bar.deinit();
-
-    try bar.setQuery("q", 100);
-    bar.setResults(3);
-    bar.selected = 3;
-    bar.toggles.wrap = false;
-    bar.navigateNext();
-    try std.testing.expectEqual(@as(?usize, 3), bar.selected);
-}
-
-test "navigatePrev wraps when wrap=true" {
-    var bar = SearchBar.init(std.testing.allocator);
-    defer bar.deinit();
-
-    try bar.setQuery("q", 100);
-    bar.setResults(3);
-    bar.selected = 1;
-    bar.navigatePrev();
-    try std.testing.expectEqual(@as(?usize, 3), bar.selected);
-}
-
-test "navigate no-op when total is null" {
-    var bar = SearchBar.init(std.testing.allocator);
-    defer bar.deinit();
-
-    try bar.setQuery("", 100);
-    bar.navigateNext();
-    try std.testing.expectEqual(@as(?usize, null), bar.selected);
-}
-
 test "toggleRegex flips bit" {
     var bar = SearchBar.init(std.testing.allocator);
     defer bar.deinit();
 
     try std.testing.expect(!bar.toggles.regex);
-    bar.toggleRegex();
+    bar.toggleRegex(1000);
     try std.testing.expect(bar.toggles.regex);
-    bar.toggleRegex();
+    bar.toggleRegex(2000);
     try std.testing.expect(!bar.toggles.regex);
+}
+
+test "toggle invalidates stale results for non-empty query" {
+    var bar = SearchBar.init(std.testing.allocator);
+    defer bar.deinit();
+
+    try bar.setQuery("needle", 1000);
+    try std.testing.expect(bar.forceSearch());
+    bar.total = 10;
+    bar.selected = 3;
+
+    bar.toggleRegex(2000);
+    try std.testing.expectEqual(@as(?usize, null), bar.total);
+    try std.testing.expectEqual(@as(?usize, null), bar.selected);
+    try std.testing.expect(!bar.searched);
+    try std.testing.expectEqual(@as(i64, 2000), bar.last_edit_ms);
+    try std.testing.expect(bar.shouldRunSearch(2041));
+}
+
+test "toggleCase invalidates stale results for non-empty query" {
+    var bar = SearchBar.init(std.testing.allocator);
+    defer bar.deinit();
+
+    try bar.setQuery("needle", 1000);
+    try std.testing.expect(bar.forceSearch());
+    bar.total = 10;
+    bar.selected = 3;
+
+    bar.toggleCase(2000);
+    try std.testing.expectEqual(@as(?usize, null), bar.total);
+    try std.testing.expectEqual(@as(?usize, null), bar.selected);
+    try std.testing.expect(!bar.searched);
+    try std.testing.expectEqual(@as(i64, 2000), bar.last_edit_ms);
+    try std.testing.expect(bar.shouldRunSearch(2041));
+}
+
+test "toggleWord invalidates stale results for non-empty query" {
+    var bar = SearchBar.init(std.testing.allocator);
+    defer bar.deinit();
+
+    try bar.setQuery("needle", 1000);
+    try std.testing.expect(bar.forceSearch());
+    bar.total = 10;
+    bar.selected = 3;
+
+    bar.toggleWord(2000);
+    try std.testing.expectEqual(@as(?usize, null), bar.total);
+    try std.testing.expectEqual(@as(?usize, null), bar.selected);
+    try std.testing.expect(!bar.searched);
+    try std.testing.expectEqual(@as(i64, 2000), bar.last_edit_ms);
+    try std.testing.expect(bar.shouldRunSearch(2041));
 }
 
 test "toggles persist across open/close" {
@@ -363,7 +376,7 @@ test "toggles persist across open/close" {
     defer bar.deinit();
 
     bar.open();
-    bar.toggleCase();
+    bar.toggleCase(1000);
     bar.close();
     bar.open();
     try std.testing.expect(bar.toggles.case_sensitive);

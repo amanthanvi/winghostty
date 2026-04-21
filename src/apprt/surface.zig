@@ -15,6 +15,30 @@ pub const Message = union(enum) {
     /// Represents a write request. Magic number comes from the max size
     /// we want this union to be.
     pub const WriteReq = MessageData(u8, 255);
+    // 64 is only the inline-small capacity; larger row snapshots allocate in
+    // MessageData.init and are not truncated.
+    pub const SearchRowsReq = MessageData(u32, 64);
+    pub const SearchTotal = struct {
+        generation: u64,
+        total: ?usize,
+    };
+    pub const SearchSelected = struct {
+        generation: u64,
+        selected: ?usize,
+    };
+    pub const SearchClear = struct {
+        generation: u64,
+    };
+    pub const SearchMatchRows = struct {
+        generation: u64,
+        rows: SearchRowsReq,
+
+        pub fn deinit(self: SearchMatchRows) void {
+            self.rows.deinit();
+        }
+    };
+    pub const SearchViewportMatches = renderer.Message.SearchMatches;
+    pub const SearchSelectedMatch = renderer.Message.SearchSelectedMatch;
 
     /// Set the title of the surface.
     /// TODO: we should change this to a "WriteReq" style structure in
@@ -102,16 +126,37 @@ pub const Message = union(enum) {
     /// The scrollbar state changed for the surface.
     scrollbar: terminal.Scrollbar,
 
-    /// Search progress update
-    search_total: ?usize,
+    /// Search viewport highlight updates.
+    search_viewport_matches: SearchViewportMatches,
 
-    /// Selected search index change
-    search_selected: ?usize,
+    /// Selected search highlight update.
+    search_selected_match: SearchSelectedMatch,
+
+    /// Search progress update.
+    search_total: SearchTotal,
+
+    /// Selected search index change.
+    search_selected: SearchSelected,
+
+    /// Search match rows for scrollbar markers.
+    search_match_rows: SearchMatchRows,
+
+    /// Force-clear search state for the current search generation.
+    search_clear: SearchClear,
+
+    pub fn deinit(self: *Message) void {
+        switch (self.*) {
+            .clipboard_write => |v| v.req.deinit(),
+            .pwd_change => |v| v.deinit(),
+            .search_viewport_matches => |*v| v.deinit(),
+            .search_selected_match => |*v| v.deinit(),
+            .search_match_rows => |v| v.deinit(),
+            else => {},
+        }
+    }
 
     pub const ReportTitleStyle = enum {
         csi_21_t,
-
-        // This enum is a placeholder for future title styles.
     };
 
     pub const ChildExited = extern struct {

@@ -10,6 +10,7 @@ pub const Thread = @This();
 
 const std = @import("std");
 const builtin = @import("builtin");
+const build_options = @import("terminal_options");
 const testing = std.testing;
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
@@ -25,8 +26,11 @@ const ScreenSet = @import("../ScreenSet.zig");
 const Selection = @import("../Selection.zig");
 const Terminal = @import("../Terminal.zig");
 
+const QueryOptions = @import("query_options.zig").QueryOptions;
 const ScreenSearch = @import("screen.zig").ScreenSearch;
+const SlidingWindow = @import("sliding_window.zig").SlidingWindow;
 const ViewportSearch = @import("viewport.zig").ViewportSearch;
+const oni = if (build_options.oniguruma) @import("oniguruma") else struct {};
 
 const log = std.log.scoped(.search_thread);
 const darwin = if (builtin.os.tag.isDarwin()) struct {
@@ -48,13 +52,6 @@ const darwin = if (builtin.os.tag.isDarwin()) struct {
 
     fn setQosClass(_: QosClass) !void {}
 };
-
-// TODO: Some stuff that could be improved:
-// - pause the refresh timer when the terminal isn't focused
-// - we probably want to know our progress through the search
-//   for viewport matches so we can show n/total UI.
-// - notifications should be coalesced to avoid spamming a massive
-//   amount of events if the terminal is changing rapidly.
 
 /// The interval at which we refresh the terminal state to check if
 /// there are any changes that require us to re-search. This should be
@@ -100,6 +97,10 @@ focused: bool = true,
 /// Search state. Starts as null and is populated when a search is
 /// started (a needle is given).
 search: ?Search = null,
+
+/// Generation for callbacks from the currently active query. The surface
+/// uses this to reject events from superseded query-change messages.
+event_generation: u64 = 0,
 
 /// The options used to initialize this thread.
 opts: Options,
@@ -198,7 +199,7 @@ fn threadMain_(self: *Thread) !void {
 
         // Send the quit message
         if (self.opts.event_cb) |cb| {
-            cb(.quit, self.opts.event_userdata);
+            cb(.quit, self.event_generation, self.opts.event_userdata);
         }
     }
 
@@ -229,7 +230,9 @@ fn threadMain_(self: *Thread) !void {
             s.notify(
                 self.alloc,
                 cb,
+                self.event_generation,
                 self.opts.event_userdata,
+                false,
             );
         }
 
@@ -271,10 +274,13 @@ fn drainMailbox(self: *Thread) !void {
     while (self.mailbox.pop()) |message| {
         log.debug("mailbox message={}", .{message});
         switch (message) {
-            .change_needle => |v| {
-                defer v.deinit();
-                try self.changeNeedle(v.slice());
-                self.syncRefreshTimer();
+            .change_query => |v| {
+                defer v.req.deinit();
+                try self.changeQueryAndSyncRefreshTimer(
+                    v.req.slice(),
+                    v.options,
+                    v.generation,
+                );
             },
             .select => |v| try self.select(v),
             .visible => |v| {
@@ -340,45 +346,126 @@ fn select(self: *Thread, sel: ScreenSearch.Select) !void {
     screen.scroll(.{ .pin = flattened.startPin() });
 }
 
+fn changeQueryAndSyncRefreshTimer(
+    self: *Thread,
+    needle: []const u8,
+    query_options: QueryOptions,
+    generation: u64,
+) !void {
+    defer self.syncRefreshTimer();
+    try self.changeQuery(needle, query_options, generation);
+}
+
 /// Change the search term to the given value.
-fn changeNeedle(self: *Thread, needle: []const u8) !void {
-    log.debug("changing search needle to '{s}'", .{needle});
+fn changeQuery(
+    self: *Thread,
+    needle: []const u8,
+    query_options: QueryOptions,
+    generation: u64,
+) !void {
+    log.debug("changing search query len={} options={}", .{
+        needle.len,
+        query_options,
+    });
+    self.event_generation = generation;
 
     // Stop the previous search
+    var cleared_previous = false;
     if (self.search) |*s| {
         // If our search is unchanged, do nothing.
-        if (std.ascii.eqlIgnoreCase(s.viewport.needle(), needle)) return;
+        if (queryEquals(s.viewport.needle(), s.viewport.window.query_options, needle, query_options)) {
+            // Reset clears both the viewport fingerprint and sliding-window
+            // buffer, so the forced notify below rescans from a clean state.
+            s.viewport.reset();
+            s.stale_viewport_matches = true;
+
+            {
+                self.opts.mutex.lock();
+                defer self.opts.mutex.unlock();
+                s.feed(self.alloc, self.opts.terminal);
+            }
+
+            if (self.opts.event_cb) |cb| {
+                s.notify(
+                    self.alloc,
+                    cb,
+                    generation,
+                    self.opts.event_userdata,
+                    true,
+                );
+            }
+            return;
+        }
 
         s.deinit();
         self.search = null;
 
         // When the search changes then we need to emit that it stopped.
-        if (self.opts.event_cb) |cb| {
-            cb(
-                .{ .total_matches = 0 },
-                self.opts.event_userdata,
-            );
-            cb(
-                .{ .selected_match = null },
-                self.opts.event_userdata,
-            );
-            cb(
-                .{ .viewport_matches = &.{} },
-                self.opts.event_userdata,
-            );
-        }
+        self.notifySearchCleared();
+        cleared_previous = true;
     }
 
     // No needle means stop the search.
     if (needle.len == 0) return;
 
     // Setup our search state.
-    self.search = try .init(self.alloc, needle);
+    self.search = Search.init(self.alloc, needle, query_options) catch |err| switch (err) {
+        error.OutOfMemory => return error.OutOfMemory,
+        else => {
+            log.warn("error initializing search query err={}", .{err});
+            if (!cleared_previous) self.notifySearchCleared();
+            return;
+        },
+    };
 
     // We need to grab the terminal lock and do an initial feed.
     self.opts.mutex.lock();
     defer self.opts.mutex.unlock();
     self.search.?.feed(self.alloc, self.opts.terminal);
+}
+
+fn notifySearchCleared(self: *Thread) void {
+    if (self.opts.event_cb) |cb| {
+        cb(
+            .{ .total_matches = 0 },
+            self.event_generation,
+            self.opts.event_userdata,
+        );
+        cb(
+            .{ .selected_match = null },
+            self.event_generation,
+            self.opts.event_userdata,
+        );
+        cb(
+            .{ .viewport_matches = &.{} },
+            self.event_generation,
+            self.opts.event_userdata,
+        );
+        // The previous Search is about to be discarded; do not mutate its
+        // notified row snapshot just to publish the explicit clear event.
+        cb(
+            .{ .match_rows = &.{} },
+            self.event_generation,
+            self.opts.event_userdata,
+        );
+    }
+}
+
+fn queryEquals(
+    prev_needle: []const u8,
+    prev_options: QueryOptions,
+    next_needle: []const u8,
+    next_options: QueryOptions,
+) bool {
+    if (!prev_options.eql(next_options)) return false;
+
+    if (next_options.regex or next_options.case_sensitive) {
+        return std.mem.eql(u8, prev_needle, next_needle);
+    }
+
+    // Whole-word without explicit case sensitivity still uses the regex
+    // engine's ignorecase path, so equivalent queries are ASCII-insensitive.
+    return std.ascii.eqlIgnoreCase(prev_needle, next_needle);
 }
 
 fn startRefreshTimer(self: *Thread) void {
@@ -499,7 +586,11 @@ pub const Options = struct {
     focused: bool = true,
 };
 
-pub const EventCallback = *const fn (event: Event, userdata: ?*anyopaque) void;
+pub const EventCallback = *const fn (
+    event: Event,
+    generation: u64,
+    userdata: ?*anyopaque,
+) void;
 
 /// The type used for sending messages to the thread.
 pub const Mailbox = BlockingQueue(Message, 64);
@@ -513,7 +604,11 @@ pub const Message = union(enum) {
     /// Change the search term. If no prior search term is given this
     /// will start a search. If an existing search term is given this will
     /// stop the prior search and start a new one.
-    change_needle: WriteReq,
+    change_query: struct {
+        generation: u64,
+        options: QueryOptions,
+        req: WriteReq,
+    },
 
     /// Select a search result.
     select: ScreenSearch.Select,
@@ -544,6 +639,11 @@ pub const Event = union(enum) {
     /// search thread and is only valid during the callback.
     viewport_matches: []const FlattenedHighlight,
 
+    /// Search match rows for the active screen, sorted ascending and unique.
+    /// The memory is owned by the search thread and is only valid during
+    /// the callback.
+    match_rows: []const u32,
+
     pub const SelectedMatch = struct {
         idx: usize,
         highlight: FlattenedHighlight,
@@ -568,6 +668,17 @@ const Search = struct {
     /// The last viewport matches we found.
     stale_viewport_matches: bool,
 
+    /// Match rows for the active screen. Rebuilt while the terminal lock
+    /// is held so downstream consumers never have to touch terminal state.
+    match_rows: std.ArrayList(u32),
+
+    /// Inputs used to build the current match row snapshot.
+    match_rows_screen: ?ScreenSet.Key,
+    match_rows_revision: u64,
+
+    /// Last match rows snapshot emitted to the callback.
+    notified_match_rows: std.ArrayList(u32),
+
     const ScreenState = struct {
         /// Last active screen key
         key: ScreenSet.Key,
@@ -587,8 +698,9 @@ const Search = struct {
     pub fn init(
         alloc: Allocator,
         needle: []const u8,
-    ) Allocator.Error!Search {
-        var vp: ViewportSearch = try .init(alloc, needle);
+        query_options: QueryOptions,
+    ) SlidingWindow.InitError!Search {
+        var vp: ViewportSearch = try .initWithOptions(alloc, needle, query_options);
         errdefer vp.deinit();
 
         // We use dirty tracking for active area changes. Start with it
@@ -601,10 +713,16 @@ const Search = struct {
             .last_screen = .{ .key = .primary },
             .last_complete = false,
             .stale_viewport_matches = true,
+            .match_rows = .empty,
+            .match_rows_screen = null,
+            .match_rows_revision = 0,
+            .notified_match_rows = .empty,
         };
     }
 
     pub fn deinit(self: *Search) void {
+        self.match_rows.deinit(self.viewport.window.alloc);
+        self.notified_match_rows.deinit(self.viewport.window.alloc);
         self.viewport.deinit();
         var it = self.screens.iterator();
         while (it.next()) |entry| entry.value.deinit();
@@ -669,6 +787,12 @@ const Search = struct {
         return result;
     }
 
+    fn clearMatchRowsCache(self: *Search) void {
+        self.match_rows.clearRetainingCapacity();
+        self.match_rows_screen = null;
+        self.match_rows_revision = 0;
+    }
+
     /// Grab the mutex and update any state that requires it, such as
     /// feeding additional data to the searches or updating the active screen.
     pub fn feed(
@@ -700,6 +824,9 @@ const Search = struct {
                 };
 
                 if (remove) {
+                    if (self.match_rows_screen) |key| {
+                        if (key == entry.key) self.clearMatchRowsCache();
+                    }
                     entry.value.deinit();
                     _ = self.screens.remove(entry.key);
                 }
@@ -710,15 +837,23 @@ const Search = struct {
             var it = t.screens.all.iterator();
             while (it.next()) |entry| {
                 if (self.screens.contains(entry.key)) continue;
-                self.screens.put(entry.key, ScreenSearch.init(
+                self.screens.put(entry.key, ScreenSearch.initWithOptions(
                     alloc,
                     entry.value.*,
                     self.viewport.needle(),
+                    self.viewport.window.query_options,
                 ) catch |err| switch (err) {
                     error.OutOfMemory => {
                         // OOM is probably going to sink the entire ship but
                         // we can just ignore it and wait on the next
                         // reconciliation to try again.
+                        log.warn(
+                            "error initializing screen search for key={} err={}",
+                            .{ entry.key, err },
+                        );
+                        continue;
+                    },
+                    else => {
                         log.warn(
                             "error initializing screen search for key={} err={}",
                             .{ entry.key, err },
@@ -772,6 +907,25 @@ const Search = struct {
                 };
             }
         }
+
+        const screen_search = self.screens.getPtr(self.last_screen.key) orelse {
+            self.clearMatchRowsCache();
+            return;
+        };
+        const match_rows_revision = screen_search.matchRowsRevision();
+        const same_match_rows_screen = if (self.match_rows_screen) |key|
+            key == self.last_screen.key
+        else
+            false;
+        if (same_match_rows_screen and
+            self.match_rows_revision == match_rows_revision) return;
+
+        self.rebuildMatchRows(alloc, screen_search) catch |err| {
+            log.warn("error rebuilding search match rows err={}", .{err});
+            return;
+        };
+        self.match_rows_screen = self.last_screen.key;
+        self.match_rows_revision = match_rows_revision;
     }
 
     /// Notify about any changes to the search state.
@@ -781,23 +935,25 @@ const Search = struct {
         self: *Search,
         alloc: Allocator,
         cb: EventCallback,
+        generation: u64,
         ud: ?*anyopaque,
+        force: bool,
     ) void {
         const screen_search = self.screens.get(self.last_screen.key) orelse return;
 
         // Check our total match data
         const total = screen_search.matchesLen();
-        if (total != self.last_screen.total) {
+        if (force or total != self.last_screen.total) {
             log.debug("notifying total matches={}", .{total});
             self.last_screen.total = total;
-            cb(.{ .total_matches = total }, ud);
+            cb(.{ .total_matches = total }, generation, ud);
         }
 
         // Check our viewport matches. If they're stale, we do the
         // viewport search now. We do this as part of notify and not
         // tick because the viewport search is very fast and doesn't
         // require ticked progress or feeds.
-        if (self.stale_viewport_matches) viewport: {
+        if (force or self.stale_viewport_matches) viewport: {
             // We always make stale as false. Even if we fail below
             // we require a re-feed to re-search the viewport. The feed
             // process will make it stale again.
@@ -807,8 +963,24 @@ const Search = struct {
             defer arena.deinit();
             const arena_alloc = arena.allocator();
             var results: std.ArrayList(FlattenedHighlight) = .empty;
-            while (self.viewport.next()) |hl| {
-                const hl_cloned = hl.clone(arena_alloc) catch continue;
+            while (self.viewport.next() catch |err| {
+                log.warn("error collecting viewport matches err={}", .{err});
+                self.viewport.reset();
+                break :viewport;
+            }) |hl| {
+                const hl_cloned = hl.clone(arena_alloc) catch |err| switch (err) {
+                    error.OutOfMemory => {
+                        log.warn(
+                            "error collecting viewport matches err={}",
+                            .{err},
+                        );
+
+                        // Reset the viewport so we force an update on the
+                        // next feed instead of notifying a partial match set.
+                        self.viewport.reset();
+                        break :viewport;
+                    },
+                };
                 results.append(arena_alloc, hl_cloned) catch |err| switch (err) {
                     error.OutOfMemory => {
                         log.warn(
@@ -825,7 +997,24 @@ const Search = struct {
             }
 
             log.debug("notifying viewport matches len={}", .{results.items.len});
-            cb(.{ .viewport_matches = results.items }, ud);
+            cb(.{ .viewport_matches = results.items }, generation, ud);
+        }
+
+        if (force or !std.mem.eql(u32, self.match_rows.items, self.notified_match_rows.items)) match_rows: {
+            self.notified_match_rows.ensureTotalCapacity(
+                alloc,
+                self.match_rows.items.len,
+            ) catch |err| switch (err) {
+                error.OutOfMemory => {
+                    log.warn("error caching notified search match rows err={}", .{err});
+                    break :match_rows;
+                },
+            };
+            self.notified_match_rows.clearRetainingCapacity();
+            self.notified_match_rows.appendSliceAssumeCapacity(self.match_rows.items);
+
+            log.debug("notifying search match rows len={}", .{self.match_rows.items.len});
+            cb(.{ .match_rows = self.match_rows.items }, generation, ud);
         }
 
         // Check our last selected match data.
@@ -833,7 +1022,7 @@ const Search = struct {
             const flattened = screen_search.selectedMatch() orelse break :match;
             const untracked = flattened.untracked();
             if (self.last_screen.selected) |prev| {
-                if (prev.idx == m.idx and prev.highlight.eql(untracked)) {
+                if (!force and prev.idx == m.idx and prev.highlight.eql(untracked)) {
                     // Same selection, don't update it.
                     break :match;
                 }
@@ -851,13 +1040,15 @@ const Search = struct {
                     .idx = m.idx,
                     .highlight = flattened,
                 } },
+                generation,
                 ud,
             );
-        } else if (self.last_screen.selected != null) {
+        } else if (force or self.last_screen.selected != null) {
             log.debug("notifying selection cleared", .{});
             self.last_screen.selected = null;
             cb(
                 .{ .selected_match = null },
+                generation,
                 ud,
             );
         }
@@ -866,8 +1057,20 @@ const Search = struct {
         if (!self.last_complete and self.isComplete()) {
             log.debug("notifying search complete", .{});
             self.last_complete = true;
-            cb(.complete, ud);
+            cb(.complete, generation, ud);
         }
+    }
+
+    fn rebuildMatchRows(
+        self: *Search,
+        alloc: Allocator,
+        screen_search: *ScreenSearch,
+    ) Allocator.Error!void {
+        const rows = try screen_search.matchRows(alloc);
+        defer alloc.free(rows);
+
+        self.match_rows.clearRetainingCapacity();
+        try self.match_rows.appendSlice(alloc, rows);
     }
 };
 
@@ -877,13 +1080,27 @@ const TestUserData = struct {
     total: usize = 0,
     selected: ?Event.SelectedMatch = null,
     viewport: []FlattenedHighlight = &.{},
+    rows: []u32 = &.{},
 
     fn deinit(self: *Self) void {
         for (self.viewport) |*hl| hl.deinit(testing.allocator);
         testing.allocator.free(self.viewport);
+        testing.allocator.free(self.rows);
     }
 
-    fn callback(event: Event, userdata: ?*anyopaque) void {
+    fn clearObserved(self: *Self) void {
+        for (self.viewport) |*hl| hl.deinit(testing.allocator);
+        testing.allocator.free(self.viewport);
+        testing.allocator.free(self.rows);
+
+        self.total = 0;
+        self.selected = null;
+        self.viewport = &.{};
+        self.rows = &.{};
+    }
+
+    fn callback(event: Event, generation: u64, userdata: ?*anyopaque) void {
+        _ = generation;
         const ud: *Self = @ptrCast(@alignCast(userdata.?));
         switch (event) {
             .quit => {},
@@ -901,6 +1118,10 @@ const TestUserData = struct {
                 for (ud.viewport, v) |*dst, src| {
                     dst.* = src.clone(testing.allocator) catch unreachable;
                 }
+            },
+            .match_rows => |v| {
+                testing.allocator.free(ud.rows);
+                ud.rows = testing.allocator.dupe(u32, v) catch unreachable;
             },
         }
     }
@@ -934,10 +1155,14 @@ test {
 
     // Start our search
     _ = thread.mailbox.push(
-        .{ .change_needle = try .init(
-            alloc,
-            @as([]const u8, "world"),
-        ) },
+        .{ .change_query = .{
+            .generation = 1,
+            .options = .{},
+            .req = try .init(
+                alloc,
+                @as([]const u8, "world"),
+            ),
+        } },
         .forever,
     );
     try thread.wakeup.notify();
@@ -951,6 +1176,7 @@ test {
 
     // 1 total matches
     try testing.expectEqual(1, ud.total);
+    try testing.expectEqualSlices(u32, &.{0}, ud.rows);
     try testing.expectEqual(1, ud.viewport.len);
     {
         const sel = ud.viewport[0].untracked();
@@ -970,4 +1196,77 @@ test "search refresh timer requires active visible focused search" {
     try testing.expect(!shouldRunRefreshTimer(false, true, true));
     try testing.expect(!shouldRunRefreshTimer(true, false, true));
     try testing.expect(!shouldRunRefreshTimer(true, true, false));
+}
+
+test "invalid regex query clears search and stops refresh polling" {
+    if (comptime !build_options.oniguruma) return error.SkipZigTest;
+
+    const alloc = testing.allocator;
+    try oni.testing.ensureInit();
+
+    var mutex: std.Thread.Mutex = .{};
+    var t: Terminal = try .init(alloc, .{ .cols = 20, .rows = 2 });
+    defer t.deinit(alloc);
+
+    var stream = t.vtStream();
+    defer stream.deinit();
+    stream.nextSlice("Hello, world");
+
+    var ud: TestUserData = .{};
+    defer ud.deinit();
+    var thread: Thread = try .init(alloc, .{
+        .mutex = &mutex,
+        .terminal = &t,
+        .event_cb = &TestUserData.callback,
+        .event_userdata = &ud,
+    });
+    defer thread.deinit();
+
+    try thread.changeQuery("world", .{}, 1);
+    try testing.expect(thread.search != null);
+
+    thread.refresh_active = true;
+    try thread.changeQueryAndSyncRefreshTimer("[", .{ .regex = true }, 2);
+
+    try testing.expect(thread.search == null);
+    try testing.expect(!thread.refresh_active);
+    try testing.expectEqual(0, ud.total);
+    try testing.expectEqual(0, ud.viewport.len);
+    try testing.expectEqualSlices(u32, &.{}, ud.rows);
+}
+
+test "equivalent query replays search state" {
+    const alloc = testing.allocator;
+    var mutex: std.Thread.Mutex = .{};
+    var t: Terminal = try .init(alloc, .{ .cols = 20, .rows = 2 });
+    defer t.deinit(alloc);
+
+    var stream = t.vtStream();
+    defer stream.deinit();
+    stream.nextSlice("Hello, world");
+
+    var ud: TestUserData = .{};
+    defer ud.deinit();
+    var thread: Thread = try .init(alloc, .{
+        .mutex = &mutex,
+        .terminal = &t,
+        .event_cb = &TestUserData.callback,
+        .event_userdata = &ud,
+    });
+    defer thread.deinit();
+
+    try thread.changeQuery("world", .{}, 1);
+    if (thread.search) |*s| {
+        s.notify(alloc, &TestUserData.callback, 1, &ud, false);
+    }
+    try testing.expectEqual(1, ud.total);
+    try testing.expectEqualSlices(u32, &.{0}, ud.rows);
+    try testing.expectEqual(1, ud.viewport.len);
+
+    ud.clearObserved();
+    try thread.changeQuery("world", .{}, 2);
+
+    try testing.expectEqual(1, ud.total);
+    try testing.expectEqualSlices(u32, &.{0}, ud.rows);
+    try testing.expectEqual(1, ud.viewport.len);
 }

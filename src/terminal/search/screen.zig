@@ -15,6 +15,7 @@ const Terminal = @import("../Terminal.zig");
 const ActiveSearch = @import("active.zig").ActiveSearch;
 const PageListSearch = @import("pagelist.zig").PageListSearch;
 const SlidingWindow = @import("sliding_window.zig").SlidingWindow;
+const QueryOptions = @import("query_options.zig").QueryOptions;
 
 const log = std.log.scoped(.search_screen);
 
@@ -62,6 +63,9 @@ pub const ScreenSearch = struct {
     /// re-search scenario.
     history_results: std.ArrayList(FlattenedHighlight),
     active_results: std.ArrayList(FlattenedHighlight),
+
+    /// Monotonic marker for result-set changes that affect match-row markers.
+    match_rows_revision: u64 = 0,
 
     /// The dimensions of the screen. When this changes we need to
     /// restart the whole search, currently.
@@ -138,11 +142,24 @@ pub const ScreenSearch = struct {
         screen: *Screen,
         needle_unowned: []const u8,
     ) Allocator.Error!ScreenSearch {
+        return ScreenSearch.initWithOptions(alloc, screen, needle_unowned, .{}) catch |err| switch (err) {
+            error.OutOfMemory => error.OutOfMemory,
+            // Default options cannot hit unsupported regex/option paths.
+            else => unreachable,
+        };
+    }
+
+    pub fn initWithOptions(
+        alloc: Allocator,
+        screen: *Screen,
+        needle_unowned: []const u8,
+        query_options: QueryOptions,
+    ) SlidingWindow.InitError!ScreenSearch {
         var result: ScreenSearch = .{
             .screen = screen,
             .rows = screen.pages.rows,
             .cols = screen.pages.cols,
-            .active = try .init(alloc, needle_unowned),
+            .active = try .initWithOptions(alloc, needle_unowned, query_options),
             .history = null,
             .state = .active,
             .active_results = .empty,
@@ -182,6 +199,37 @@ pub const ScreenSearch = struct {
         return self.active_results.items.len + self.history_results.items.len;
     }
 
+    /// Returns a version token that changes when match-row inputs change.
+    pub fn matchRowsRevision(self: *const ScreenSearch) u64 {
+        return self.match_rows_revision;
+    }
+
+    fn markMatchRowsDirty(self: *ScreenSearch) void {
+        self.match_rows_revision +%= 1;
+    }
+
+    fn failSearch(self: *ScreenSearch) void {
+        const alloc = self.allocator();
+        const had_results = self.active_results.items.len > 0 or
+            self.history_results.items.len > 0 or
+            self.selected != null;
+
+        if (self.selected) |*m| {
+            m.deinit(self.screen);
+            self.selected = null;
+        }
+        if (self.history) |*h| {
+            h.deinit(self.screen);
+            self.history = null;
+        }
+        for (self.active_results.items) |*hl| hl.deinit(alloc);
+        self.active_results.clearRetainingCapacity();
+        for (self.history_results.items) |*hl| hl.deinit(alloc);
+        self.history_results.clearRetainingCapacity();
+        if (had_results) self.markMatchRowsDirty();
+        self.state = .complete;
+    }
+
     /// Returns all matches as an owned slice (caller must free).
     /// The matches are ordered from most recent to oldest (e.g. bottom
     /// of the screen to top of the screen).
@@ -215,6 +263,43 @@ pub const ScreenSearch = struct {
         );
 
         return results;
+    }
+
+    /// Returns the unique screen row for each match as an owned slice,
+    /// sorted from oldest to newest. Callers must hold the screen lock.
+    pub fn matchRows(
+        self: *ScreenSearch,
+        alloc: Allocator,
+    ) Allocator.Error![]u32 {
+        var rows: std.ArrayList(u32) = .empty;
+        errdefer rows.deinit(alloc);
+
+        try self.appendMatchRows(alloc, &rows, self.active_results.items);
+        try self.appendMatchRows(alloc, &rows, self.history_results.items);
+        if (rows.items.len == 0) return try rows.toOwnedSlice(alloc);
+
+        std.mem.sort(u32, rows.items, {}, std.sort.asc(u32));
+
+        var write: usize = 1;
+        for (rows.items[1..]) |row| {
+            if (row == rows.items[write - 1]) continue;
+            rows.items[write] = row;
+            write += 1;
+        }
+        rows.shrinkRetainingCapacity(write);
+        return try rows.toOwnedSlice(alloc);
+    }
+
+    fn appendMatchRows(
+        self: *ScreenSearch,
+        alloc: Allocator,
+        rows: *std.ArrayList(u32),
+        matches_: []const FlattenedHighlight,
+    ) Allocator.Error!void {
+        for (matches_) |hl| {
+            const pt = self.screen.pages.pointFromPin(.screen, hl.startPin()) orelse continue;
+            try rows.append(alloc, pt.screen.y);
+        }
     }
 
     /// Search the full screen state. This will block until the search
@@ -267,16 +352,27 @@ pub const ScreenSearch = struct {
         if (self.screen.pages.rows != self.rows or
             self.screen.pages.cols != self.cols)
         {
+            const previous_match_rows_revision = self.match_rows_revision;
+
             // Reinit
-            const new: ScreenSearch = try .init(
+            const new: ScreenSearch = ScreenSearch.initWithOptions(
                 self.allocator(),
                 self.screen,
                 self.needle(),
-            );
+                self.active.window.query_options,
+            ) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => {
+                    log.warn("error reinitializing screen search after resize err={}", .{err});
+                    self.failSearch();
+                    return;
+                },
+            };
 
             // Deinit/reinit
             self.deinit();
             self.* = new;
+            self.match_rows_revision = previous_match_rows_revision +% 1;
 
             // New result should have matching dimensions
             assert(self.screen.pages.rows == self.rows);
@@ -331,6 +427,7 @@ pub const ScreenSearch = struct {
                 const alloc = self.allocator();
                 for (self.history_results.items[i..]) |*prune_hl| prune_hl.deinit(alloc);
                 self.history_results.shrinkAndFree(alloc, i);
+                self.markMatchRowsDirty();
                 return;
             }
         }
@@ -340,16 +437,25 @@ pub const ScreenSearch = struct {
         // For the active area, we consume the entire search in one go
         // because the active area is generally small.
         const alloc = self.allocator();
-        while (self.active.next()) |hl| {
-            // If this fails, then we miss a result since `active.next()`
-            // moves forward and prunes data. In the future, we may want
-            // to have some more robust error handling but the only
-            // scenario this would fail is OOM and we're probably in
-            // deeper trouble at that point anyways.
+        var appended = false;
+        while (true) {
+            const hl = self.active.next() catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => {
+                    log.warn("error searching active area err={}", .{err});
+                    self.failSearch();
+                    return;
+                },
+            } orelse break;
+
+            // `active.next()` prunes as it advances, so clone before
+            // appending to keep result ownership stable.
             var hl_cloned = try hl.clone(alloc);
             errdefer hl_cloned.deinit(alloc);
             try self.active_results.append(alloc, hl_cloned);
+            appended = true;
         }
+        if (appended) self.markMatchRowsDirty();
 
         // We've consumed the entire active area, move to history.
         self.state = .history;
@@ -365,7 +471,17 @@ pub const ScreenSearch = struct {
         // Try to consume all the loaded matches in one go, because
         // the search is generally fast for loaded data.
         const alloc = self.allocator();
-        while (history.searcher.next()) |hl| {
+        var appended = false;
+        while (true) {
+            const hl = history.searcher.next() catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => {
+                    log.warn("error searching history err={}", .{err});
+                    self.failSearch();
+                    return;
+                },
+            } orelse break;
+
             // Ignore selections that are found within the starting
             // node since those are covered by the active area search.
             if (hl.chunks.items(.node)[0] == history.start_pin.node) continue;
@@ -374,11 +490,13 @@ pub const ScreenSearch = struct {
             var hl_cloned = try hl.clone(alloc);
             errdefer hl_cloned.deinit(alloc);
             try self.history_results.append(alloc, hl_cloned);
+            appended = true;
 
             // Since history only appends to our results in reverse order,
             // we don't need to update any selected match state. The index
             // and prior results are unaffected.
         }
+        if (appended) self.markMatchRowsDirty();
 
         // We need to be fed more data.
         self.state = .history_feed;
@@ -433,8 +551,10 @@ pub const ScreenSearch = struct {
                 if (h.start_pin.garbage) {
                     h.deinit(self.screen);
                     self.history = null;
+                    const had_results = self.history_results.items.len > 0;
                     for (self.history_results.items) |*hl| hl.deinit(alloc);
                     self.history_results.clearRetainingCapacity();
+                    if (had_results) self.markMatchRowsDirty();
                     break :state null;
                 }
 
@@ -445,12 +565,20 @@ pub const ScreenSearch = struct {
                 // No history search yet, but we now have history. So let's
                 // initialize.
 
-                var search: PageListSearch = try .init(
+                var search: PageListSearch = PageListSearch.initWithOptions(
                     alloc,
                     self.needle(),
+                    self.active.window.query_options,
                     list,
                     history_node,
-                );
+                ) catch |err| switch (err) {
+                    error.OutOfMemory => return error.OutOfMemory,
+                    else => {
+                        log.warn("error initializing history search err={}", .{err});
+                        self.failSearch();
+                        return;
+                    },
+                };
                 errdefer search.deinit();
 
                 const pin = try list.trackPin(.{ .node = history_node });
@@ -475,11 +603,19 @@ pub const ScreenSearch = struct {
             // collect all the results into a new list. We ASSUME that
             // reloadActive is being called frequently enough that there isn't
             // a massive amount of history to search here.
-            var window: SlidingWindow = try .init(
+            var window: SlidingWindow = SlidingWindow.initWithOptions(
                 alloc,
                 .forward,
                 self.needle(),
-            );
+                self.active.window.query_options,
+            ) catch |err| switch (err) {
+                error.OutOfMemory => return error.OutOfMemory,
+                else => {
+                    log.warn("error initializing active-history reconciliation search err={}", .{err});
+                    self.failSearch();
+                    return;
+                },
+            };
             defer window.deinit();
             while (true) {
                 _ = try window.append(history.start_pin.node);
@@ -497,7 +633,16 @@ pub const ScreenSearch = struct {
                 for (results.items) |*hl| hl.deinit(alloc);
                 results.deinit(alloc);
             }
-            while (window.next()) |hl| {
+            while (true) {
+                const hl = window.next() catch |err| switch (err) {
+                    error.OutOfMemory => return error.OutOfMemory,
+                    else => {
+                        log.warn("error refreshing history matches err={}", .{err});
+                        self.failSearch();
+                        return;
+                    },
+                } orelse break;
+
                 if (hl.chunks.items(.node)[0] == history_node) continue;
 
                 var hl_cloned = try hl.clone(alloc);
@@ -521,6 +666,7 @@ pub const ScreenSearch = struct {
             try results.appendSlice(alloc, self.history_results.items);
             self.history_results.deinit(alloc);
             self.history_results = results;
+            self.markMatchRowsDirty();
 
             // If our prior selection was in the history area, update
             // the offset.
@@ -541,8 +687,10 @@ pub const ScreenSearch = struct {
             if (self.history) |*h| {
                 h.deinit(self.screen);
                 self.history = null;
+                const had_results = self.history_results.items.len > 0;
                 for (self.history_results.items) |*hl| hl.deinit(alloc);
                 self.history_results.clearRetainingCapacity();
+                if (had_results) self.markMatchRowsDirty();
             }
 
             // If we have a selection in the history area, we need to
@@ -580,6 +728,7 @@ pub const ScreenSearch = struct {
         // Reset our active search results and search again.
         for (self.active_results.items) |*hl| hl.deinit(alloc);
         self.active_results.clearRetainingCapacity();
+        self.markMatchRowsDirty();
         switch (self.state) {
             // If we're in the active state we run a normal tick so
             // we can move into a better state.
@@ -1549,4 +1698,27 @@ test "select after clearing scrollback" {
     // the FlattenedHighlight contained dangling node pointers.
     _ = try search.select(.next);
     _ = try search.select(.prev);
+}
+
+test "matchRows returns ascending unique screen rows" {
+    const alloc = testing.allocator;
+    var t: Terminal = try .init(alloc, .{
+        .cols = 20,
+        .rows = 4,
+        .max_scrollback = std.math.maxInt(usize),
+    });
+    defer t.deinit(alloc);
+
+    var s = t.vtStream();
+    defer s.deinit();
+    s.nextSlice("Fizz Fizz\r\nnoop\r\nFizz");
+
+    var search: ScreenSearch = try .init(alloc, t.screens.active, "Fizz");
+    defer search.deinit();
+    try search.searchAll();
+
+    const rows = try search.matchRows(alloc);
+    defer alloc.free(rows);
+
+    try testing.expectEqualSlices(u32, &.{ 0, 2 }, rows);
 }

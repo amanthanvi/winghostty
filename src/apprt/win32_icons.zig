@@ -1,6 +1,6 @@
 //! Geometric GDI icon primitives for the winghostty Windows apprt.
 //!
-//! Provides a palette of 18 small (16-24 px) geometric icons rendered via
+//! Provides a palette of small (16-24 px) geometric icons rendered via
 //! Win32 GDI pens, brushes, and polygon calls.  No raster assets -- every
 //! icon is drawn procedurally, eliminating the need for DPI-variant bitmaps
 //! and a resource pipeline.
@@ -41,6 +41,8 @@ pub const Rect = extern struct {
 
 pub const Kind = enum {
     close,
+    arrow_up,
+    arrow_down,
     split_h,
     split_v,
     pin,
@@ -193,6 +195,30 @@ fn line(hdc: HDC, x1: i32, y1: i32, x2: i32, y2: i32) void {
 fn drawClose(hdc: HDC, r: Rect) void {
     line(hdc, r.left, r.top, r.right, r.bottom);
     line(hdc, r.right, r.top, r.left, r.bottom);
+}
+
+const ArrowDir = enum { up, down };
+
+fn drawArrow(hdc: HDC, r: Rect, dir: ArrowDir) void {
+    const cx = r.left + @divTrunc(r.width(), 2);
+    switch (dir) {
+        .up => {
+            line(hdc, r.left, r.bottom - 1, cx, r.top);
+            line(hdc, cx, r.top, r.right, r.bottom - 1);
+        },
+        .down => {
+            line(hdc, r.left, r.top, cx, r.bottom - 1);
+            line(hdc, cx, r.bottom - 1, r.right, r.top);
+        },
+    }
+}
+
+fn drawArrowUp(hdc: HDC, r: Rect) void {
+    drawArrow(hdc, r, .up);
+}
+
+fn drawArrowDown(hdc: HDC, r: Rect) void {
+    drawArrow(hdc, r, .down);
 }
 
 fn drawSplitH(hdc: HDC, r: Rect) void {
@@ -410,6 +436,8 @@ pub fn drawIcon(
 
     switch (kind) {
         .close => drawClose(hdc, content),
+        .arrow_up => drawArrowUp(hdc, content),
+        .arrow_down => drawArrowDown(hdc, content),
         .split_h => drawSplitH(hdc, content),
         .split_v => drawSplitV(hdc, content),
         .pin => drawPin(hdc, content),
