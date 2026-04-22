@@ -1,0 +1,218 @@
+const std = @import("std");
+const windows = std.os.windows;
+const progress_report = @import("../progress_report.zig");
+
+const HRESULT = windows.HRESULT;
+const GUID = windows.GUID;
+const DWORD = u32;
+const ULONGLONG = u64;
+
+const CLSCTX_INPROC_SERVER: DWORD = 0x1;
+
+pub const TBPFLAG = enum(u32) {
+    no_progress = 0x0,
+    indeterminate = 0x1,
+    normal = 0x2,
+    @"error" = 0x4,
+    paused = 0x8,
+};
+pub const TBPF_NOPROGRESS: TBPFLAG = .no_progress;
+pub const TBPF_INDETERMINATE: TBPFLAG = .indeterminate;
+pub const TBPF_NORMAL: TBPFLAG = .normal;
+pub const TBPF_ERROR: TBPFLAG = .@"error";
+pub const TBPF_PAUSED: TBPFLAG = .paused;
+
+const CLSID_TaskbarList = GUID.parse("{56FDF344-FD6D-11d0-958A-006097C9A090}");
+const IID_ITaskbarList3 = GUID.parse("{EA1AFB91-9E28-4B86-90E9-9E9F8A5EEFAF}");
+
+extern "ole32" fn CoCreateInstance(
+    rclsid: *const GUID,
+    pUnkOuter: ?*anyopaque,
+    dwClsContext: DWORD,
+    riid: *const GUID,
+    ppv: *?*anyopaque,
+) callconv(.winapi) HRESULT;
+
+const ITaskbarList3Vtbl = extern struct {
+    QueryInterface: *const fn (*anyopaque, *const GUID, *?*anyopaque) callconv(.winapi) HRESULT,
+    AddRef: *const fn (*anyopaque) callconv(.winapi) u32,
+    Release: *const fn (*anyopaque) callconv(.winapi) u32,
+    HrInit: *const fn (*anyopaque) callconv(.winapi) HRESULT,
+    AddTab: *const fn (*anyopaque, windows.HWND) callconv(.winapi) HRESULT,
+    DeleteTab: *const fn (*anyopaque, windows.HWND) callconv(.winapi) HRESULT,
+    ActivateTab: *const fn (*anyopaque, windows.HWND) callconv(.winapi) HRESULT,
+    SetActiveAlt: *const fn (*anyopaque, windows.HWND) callconv(.winapi) HRESULT,
+    MarkFullscreenWindow: *const fn (*anyopaque, windows.HWND, windows.BOOL) callconv(.winapi) HRESULT,
+    SetProgressValue: *const fn (*anyopaque, windows.HWND, ULONGLONG, ULONGLONG) callconv(.winapi) HRESULT,
+    SetProgressState: *const fn (*anyopaque, windows.HWND, DWORD) callconv(.winapi) HRESULT,
+};
+
+const ITaskbarList3 = extern struct {
+    vtbl: *const ITaskbarList3Vtbl,
+
+    fn fromRaw(raw: *anyopaque) *ITaskbarList3 {
+        return @ptrCast(@alignCast(raw));
+    }
+
+    fn asRaw(self: *ITaskbarList3) *anyopaque {
+        return @ptrCast(self);
+    }
+
+    fn release(self: *ITaskbarList3) u32 {
+        return self.vtbl.Release(self.asRaw());
+    }
+
+    fn hrInit(self: *ITaskbarList3) HRESULT {
+        return self.vtbl.HrInit(self.asRaw());
+    }
+
+    fn setProgressState(self: *ITaskbarList3, hwnd: windows.HWND, flags: TBPFLAG) HRESULT {
+        return self.vtbl.SetProgressState(self.asRaw(), hwnd, @intFromEnum(flags));
+    }
+
+    fn setProgressValue(self: *ITaskbarList3, hwnd: windows.HWND, completed: ULONGLONG, total: ULONGLONG) HRESULT {
+        return self.vtbl.SetProgressValue(self.asRaw(), hwnd, completed, total);
+    }
+};
+
+pub const ProgressValue = struct {
+    completed: u64,
+    total: u64,
+};
+
+pub const ProgressMapping = struct {
+    flags: TBPFLAG,
+    value: ?ProgressValue = null,
+};
+
+pub const ProgressReport = progress_report.Report;
+pub const ProgressState = progress_report.State;
+
+pub fn clampPercent(progress: ?u8) ?u8 {
+    return if (progress) |value|
+        std.math.clamp(value, 0, 100)
+    else
+        null;
+}
+
+pub fn mapProgressReport(report: ProgressReport) ProgressMapping {
+    const progress = clampPercent(report.progress);
+    return switch (report.state) {
+        .remove => .{ .flags = TBPF_NOPROGRESS },
+        .indeterminate => .{ .flags = TBPF_INDETERMINATE },
+        .set => .{
+            .flags = TBPF_NORMAL,
+            .value = .{ .completed = progress orelse 0, .total = 100 },
+        },
+        .@"error" => .{
+            .flags = TBPF_ERROR,
+            .value = .{ .completed = progress orelse 0, .total = 100 },
+        },
+        .pause => .{
+            .flags = TBPF_PAUSED,
+            .value = .{ .completed = progress orelse 0, .total = 100 },
+        },
+    };
+}
+
+pub const InitError = error{
+    Unavailable,
+    InitializationFailed,
+};
+
+pub const ApplyError = error{
+    SetProgressStateFailed,
+    SetProgressValueFailed,
+};
+
+pub const TaskbarProgress = struct {
+    taskbar: *ITaskbarList3,
+
+    pub fn init() InitError!TaskbarProgress {
+        var raw: ?*anyopaque = null;
+        const create_hr = CoCreateInstance(
+            &CLSID_TaskbarList,
+            null,
+            CLSCTX_INPROC_SERVER,
+            &IID_ITaskbarList3,
+            &raw,
+        );
+        if (create_hr < 0 or raw == null) return error.Unavailable;
+
+        const taskbar = ITaskbarList3.fromRaw(raw.?);
+        errdefer _ = taskbar.release();
+
+        const init_hr = taskbar.hrInit();
+        if (init_hr < 0) return error.InitializationFailed;
+
+        return .{ .taskbar = taskbar };
+    }
+
+    pub fn deinit(self: *TaskbarProgress) void {
+        _ = self.taskbar.release();
+        self.* = undefined;
+    }
+
+    pub fn apply(self: *TaskbarProgress, hwnd: windows.HWND, report: ?ProgressReport) ApplyError!void {
+        const mapping = if (report) |value| mapProgressReport(value) else ProgressMapping{ .flags = TBPF_NOPROGRESS };
+
+        const state_hr = self.taskbar.setProgressState(hwnd, mapping.flags);
+        if (state_hr < 0) return error.SetProgressStateFailed;
+
+        if (mapping.value) |value| {
+            const value_hr = self.taskbar.setProgressValue(
+                hwnd,
+                value.completed,
+                value.total,
+            );
+            if (value_hr < 0) return error.SetProgressValueFailed;
+        }
+    }
+};
+
+test "ITaskbarList3 IID matches Windows shell interface" {
+    const expected = GUID.parse("{EA1AFB91-9E28-4B86-90E9-9E9F8A5EEFAF}");
+    try std.testing.expectEqualDeep(expected, IID_ITaskbarList3);
+}
+
+test "ITaskbarList3 wrapper preserves COM pointer layout" {
+    try std.testing.expectEqual(@as(usize, 0), @offsetOf(ITaskbarList3, "vtbl"));
+    try std.testing.expectEqual(@sizeOf(*anyopaque), @sizeOf(ITaskbarList3));
+}
+
+test "taskbar progress maps remove and indeterminate states without values" {
+    try std.testing.expectEqual(
+        ProgressMapping{ .flags = TBPF_NOPROGRESS },
+        mapProgressReport(.{ .state = .remove }),
+    );
+    try std.testing.expectEqual(
+        ProgressMapping{ .flags = TBPF_INDETERMINATE },
+        mapProgressReport(.{ .state = .indeterminate }),
+    );
+}
+
+test "taskbar progress maps determinate states to shell colors and values" {
+    try std.testing.expectEqual(
+        ProgressMapping{ .flags = TBPF_NORMAL, .value = .{ .completed = 42, .total = 100 } },
+        mapProgressReport(.{ .state = .set, .progress = 42 }),
+    );
+    try std.testing.expectEqual(
+        ProgressMapping{ .flags = TBPF_ERROR, .value = .{ .completed = 42, .total = 100 } },
+        mapProgressReport(.{ .state = .@"error", .progress = 42 }),
+    );
+    try std.testing.expectEqual(
+        ProgressMapping{ .flags = TBPF_PAUSED, .value = .{ .completed = 42, .total = 100 } },
+        mapProgressReport(.{ .state = .pause, .progress = 42 }),
+    );
+}
+
+test "taskbar progress defaults missing progress and clamps overflow" {
+    try std.testing.expectEqual(
+        ProgressMapping{ .flags = TBPF_NORMAL, .value = .{ .completed = 0, .total = 100 } },
+        mapProgressReport(.{ .state = .set }),
+    );
+    try std.testing.expectEqual(
+        ProgressMapping{ .flags = TBPF_NORMAL, .value = .{ .completed = 100, .total = 100 } },
+        mapProgressReport(.{ .state = .set, .progress = 255 }),
+    );
+}

@@ -16,6 +16,7 @@ const LibEnum = lib.Enum;
 const kitty_color = @import("kitty/color.zig");
 const parsers = @import("osc/parsers.zig");
 const encoding = @import("osc/encoding.zig");
+const progress_report = @import("../progress_report.zig");
 
 pub const color = parsers.color;
 pub const semantic_prompt = parsers.semantic_prompt;
@@ -196,40 +197,7 @@ pub const Command = union(Key) {
         },
     );
 
-    pub const ProgressReport = struct {
-        pub const State = enum(c_int) {
-            remove,
-            set,
-            @"error",
-            indeterminate,
-            pause,
-
-            test "ghostty.h Command.ProgressReport.State" {
-                if (comptime build_options.artifact == .lib) return error.SkipZigTest;
-                try lib.checkGhosttyHEnum(State, "GHOSTTY_PROGRESS_STATE_");
-            }
-        };
-
-        state: State,
-        progress: ?u8 = null,
-
-        // sync with ghostty_action_progress_report_s
-        pub const C = extern struct {
-            state: c_int,
-            progress: i8,
-        };
-
-        pub fn cval(self: ProgressReport) C {
-            return .{
-                .state = @intFromEnum(self.state),
-                .progress = if (self.progress) |progress| @intCast(std.math.clamp(
-                    progress,
-                    0,
-                    100,
-                )) else -1,
-            };
-        }
-    };
+    pub const ProgressReport = progress_report.Report;
 
     comptime {
         assert(@sizeOf(Command) == switch (@sizeOf(usize)) {
@@ -239,6 +207,11 @@ pub const Command = union(Key) {
         });
     }
 };
+
+test "ghostty.h Command.ProgressReport.State" {
+    if (comptime build_options.artifact == .lib) return error.SkipZigTest;
+    try lib.checkGhosttyHEnum(Command.ProgressReport.State, "GHOSTTY_PROGRESS_STATE_");
+}
 
 /// The terminator used to end an OSC command. For OSC commands that demand
 /// a response, we try to match the terminator used in the request since that

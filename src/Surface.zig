@@ -345,6 +345,7 @@ const DerivedConfig = struct {
     links: []DerivedConfig.Link,
     link_previews: configpkg.LinkPreviews,
     scroll_to_bottom: configpkg.Config.ScrollToBottom,
+    progress_style: bool,
     notify_on_command_finish: configpkg.Config.NotifyOnCommandFinish,
     notify_on_command_finish_action: configpkg.Config.NotifyOnCommandFinishAction,
     notify_on_command_finish_after: Duration,
@@ -422,6 +423,7 @@ const DerivedConfig = struct {
             .links = links,
             .link_previews = config.@"link-previews",
             .scroll_to_bottom = config.@"scroll-to-bottom",
+            .progress_style = config.@"progress-style",
             .notify_on_command_finish = config.@"notify-on-command-finish",
             .notify_on_command_finish_action = config.@"notify-on-command-finish-action",
             .notify_on_command_finish_after = config.@"notify-on-command-finish-after",
@@ -1103,6 +1105,7 @@ pub fn handleMessage(self: *Surface, msg: Message) !void {
         },
 
         .progress_report => |v| {
+            if (!self.config.progress_style) return;
             _ = self.rt_app.performAction(
                 .{ .surface = self },
                 .progress_report,
@@ -1801,6 +1804,7 @@ pub fn updateConfig(
     const config: *const configpkg.Config = if (config_) |*c| c else original;
 
     // Update our new derived config immediately
+    const had_progress_style = self.config.progress_style;
     const derived = DerivedConfig.init(self.alloc, config) catch |err| {
         // If the derivation fails then we just log and return. We don't
         // hard fail in this case because we don't want to error the surface
@@ -1810,6 +1814,16 @@ pub fn updateConfig(
     };
     self.config.deinit();
     self.config = derived;
+
+    if (had_progress_style and !self.config.progress_style) {
+        _ = self.rt_app.performAction(
+            .{ .surface = self },
+            .progress_report,
+            .{ .state = .remove },
+        ) catch |err| {
+            log.warn("failed to clear progress after disabling progress-style err={}", .{err});
+        };
+    }
 
     // If our mouse is hidden but we disabled mouse hiding, then show it again.
     if (!self.config.mouse_hide_while_typing and self.mouse.hidden) {
@@ -3388,10 +3402,14 @@ pub fn focusCallback(self: *Surface, focused: bool) !void {
 
         // Release the full key first
         if (pressed_key.key != .unidentified) {
-            assert(self.keyCallback(pressed_key) catch |err| err: {
+            const effect = self.keyCallback(pressed_key) catch |err| err: {
                 log.warn("error releasing key on focus loss err={}", .{err});
                 break :err .ignored;
-            } != .closed);
+            };
+            if (effect == .closed) {
+                log.warn("key release on focus loss closed the surface", .{});
+                return;
+            }
         }
 
         // Release any modifiers if set
@@ -3417,10 +3435,14 @@ pub fn focusCallback(self: *Surface, focused: bool) !void {
                     };
                     pressed_key.key = @field(input.Key, keyname ++ "_" ++ side);
                     if (pressed_key.key != original_key) {
-                        assert(self.keyCallback(pressed_key) catch |err| err: {
+                        const effect = self.keyCallback(pressed_key) catch |err| err: {
                             log.warn("error releasing key on focus loss err={}", .{err});
                             break :err .ignored;
-                        } != .closed);
+                        };
+                        if (effect == .closed) {
+                            log.warn("modifier release on focus loss closed the surface", .{});
+                            return;
+                        }
                     }
                 }
             }

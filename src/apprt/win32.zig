@@ -25,8 +25,8 @@ const win32_settings = @import("win32_settings.zig");
 const win32_aumid = @import("win32_aumid.zig");
 const win32_clipboard_html = @import("win32_clipboard_html.zig");
 const win32_undo = @import("win32_undo.zig");
-const win32_toast = @import("win32_toast.zig");
 const win32_toast_winrt = @import("win32_toast_winrt.zig");
+const win32_taskbar_progress = @import("win32_taskbar_progress.zig");
 const win32_powershell_install = @import("win32_powershell_install.zig");
 const win32_link_preview = @import("win32_link_preview.zig");
 const win32_quick_terminal = @import("win32_quick_terminal.zig");
@@ -192,6 +192,7 @@ const WM_SYSKEYDOWN = 0x0104;
 const WM_SYSKEYUP = 0x0105;
 const WM_WINHOSTTY_WAKE = WM_APP + 1;
 const WM_WINHOSTTY_UPDATE = WM_APP + 2;
+const WM_WINHOSTTY_TOAST_ACTIVATION = WM_APP + 3;
 const PM_NOREMOVE: UINT = 0x0000;
 const WS_OVERLAPPED = 0x00000000;
 const WS_CHILD = 0x40000000;
@@ -225,7 +226,7 @@ const RDW_UPDATENOW: UINT = 0x0100;
 const RDW_FRAME: UINT = 0x0400;
 const MONITOR_DEFAULTTONEAREST = 0x00000002;
 const MONITOR_DEFAULTTOPRIMARY = 0x00000001;
-const HRESULT = i32;
+const HRESULT = windows.HRESULT;
 const COLOR_WINDOW = 5;
 const CF_UNICODETEXT = 13;
 /// CF_HTML: registered clipboard format name is the literal string
@@ -696,6 +697,7 @@ extern "user32" fn GetMonitorInfoW(hMonitor: ?*anyopaque, lpmi: *MONITORINFO) ca
 extern "user32" fn GetWindowRect(hWnd: HWND, lpRect: *RECT) callconv(.winapi) BOOL;
 extern "user32" fn GetWindowTextLengthW(hWnd: HWND) callconv(.winapi) i32;
 extern "user32" fn GetWindowTextW(hWnd: HWND, lpString: [*]u16, nMaxCount: i32) callconv(.winapi) i32;
+extern "user32" fn IsWindow(hWnd: HWND) callconv(.winapi) BOOL;
 extern "user32" fn IsWindowVisible(hWnd: HWND) callconv(.winapi) BOOL;
 extern "user32" fn IsZoomed(hWnd: HWND) callconv(.winapi) BOOL;
 extern "user32" fn MonitorFromWindow(hwnd: HWND, dwFlags: u32) callconv(.winapi) ?*anyopaque;
@@ -1654,9 +1656,6 @@ pub const App = struct {
     /// enough; re-registering on every copy is documented as
     /// cheap by MS but still pointless work.
     cf_html_format: UINT = 0,
-    /// In-app toast state, owned at App scope so notifications can
-    /// outlive the Host/tab that created them.
-    toast_stack: win32_toast.ToastStack = undefined,
     /// Hyperlink hover-dwell tracker. Reset via `dismiss()` whenever
     /// focus leaves a surface or a click arrives.
     link_hover_tracker: win32_link_preview.HoverTracker = undefined,
@@ -1665,6 +1664,10 @@ pub const App = struct {
     /// case `showDesktopNotification` falls back to the in-app banner
     /// path. One notifier per App, released in `App.terminate`.
     winrt_toast: ?win32_toast_winrt.WinrtToast = null,
+    /// Taskbar progress COM object. `null` when the taskbar API is
+    /// unavailable, in which case progress continues to render only in
+    /// the window title/status text.
+    taskbar_progress: ?win32_taskbar_progress.TaskbarProgress = null,
     /// Absolute path supplied via `--config-file <path>` on the CLI.
     /// Resolved ONCE against the startup cwd during `App.init` — that's
     /// important because `run()` later calls `sanitizeCurrentDirectory()`,
@@ -1682,6 +1685,9 @@ pub const App = struct {
     startup_cwd: ?[]u8 = null,
     /// Parsed `wgh://activate?...` launch argument from a cold-start
     /// toast activation. `null` when no such argv entry is present.
+    /// Consumed once after the first window spawns. We first try the
+    /// requested surface/window identity and fall back to the newly
+    /// created primary surface when the IDs came from a prior process.
     pending_toast_activation: ?win32_toast_activation.ActivationTarget = null,
 
     pub fn init(
@@ -1724,15 +1730,18 @@ pub const App = struct {
         win32_aumid.setProcessAumid();
         win32_aumid.registerAumidDisplayName();
 
-        // Boot the WinRT toast notifier. Failure is silent — the
-        // in-app banner / toast stack covers the functional gap.
+        // Boot the WinRT toast notifier. Failure falls back to the
+        // host banner/log path in `showDesktopNotificationWithLaunch`.
         // MUST run AFTER `setProcessAumid` so `CreateToastNotifierWithId`
         // attributes toasts to our AUMID.
         const aumid_utf16 = std.unicode.utf8ToUtf16LeStringLiteral("com.ghostty.winghostty");
         self.winrt_toast = win32_toast_winrt.WinrtToast.init(core_app.alloc, aumid_utf16) catch |err| blk: {
-            std.log.warn("winrt toast init failed err={}; falling back to in-app notifications", .{err});
+            std.log.warn("winrt toast init failed err={}; falling back to host notifications", .{err});
             break :blk null;
         };
+        if (self.winrt_toast) |*toast| {
+            toast.setActivationCallback(self, winrtToastActivationCallback);
+        }
 
         // Install the PowerShell shell-integration script into
         // %LOCALAPPDATA%\winghostty\shell-integration\powershell\
@@ -1749,10 +1758,9 @@ pub const App = struct {
             std.log.warn("powershell integration install path resolve failed err={}", .{err});
         }
 
-        // Windows version probe. Keep the integrated-titlebar path
-        // hard-disabled for now so Win32 uses the stock non-client
-        // caption/buttons path on every build while the redesign work
-        // on this branch settles.
+        // Windows version probe. Integrated titlebar remains disabled
+        // here so Win32 consistently uses the stock non-client caption
+        // and button path.
         self.os_build = probeWindowsBuild();
         self.use_integrated_titlebar = false;
         log.info("win32 os_build={d} integrated_titlebar={}", .{
@@ -1761,6 +1769,10 @@ pub const App = struct {
         });
 
         self.initComApartment();
+        self.taskbar_progress = win32_taskbar_progress.TaskbarProgress.init() catch |err| blk: {
+            std.log.warn("taskbar progress init failed err={}; falling back to title-only progress", .{err});
+            break :blk null;
+        };
         self.refreshSystemWheelSettings();
         self.refreshSystemScrollbarPreference();
         self.resolved_theme = resolveTheme(&self.config);
@@ -1777,7 +1789,6 @@ pub const App = struct {
             .notifySuccess = &settingsNotifySuccessThunk,
             .onClosed = &settingsOnClosedThunk,
         });
-        self.toast_stack = win32_toast.ToastStack.init(core_app.alloc);
         self.link_hover_tracker = win32_link_preview.HoverTracker.init();
     }
 
@@ -1799,33 +1810,6 @@ pub const App = struct {
                 std.log.warn("COM apartment: CoInitializeEx failed hr=0x{x:0>8}", .{@as(u32, @bitCast(hr))});
             },
         }
-    }
-
-    /// Push a transient in-app toast onto the stack. Safe to call from
-    /// any app-thread context (message handlers, action dispatch). The
-    /// per-toast HWND + paint path lands with a later P4 pass; for now
-    /// the stack holds the message in memory and expires on schedule
-    /// so `tickToasts` logging gives visible confirmation the plumbing
-    /// works end-to-end.
-    pub fn showToast(
-        self: *App,
-        title: []const u8,
-        body: []const u8,
-        severity: win32_toast.Severity,
-    ) !void {
-        const now: u64 = @intCast(std.time.milliTimestamp());
-        const id = try self.toast_stack.push(title, body, severity, now);
-        std.log.info("toast pushed id={d} severity={s} title={s}", .{ id, @tagName(severity), title });
-    }
-
-    /// Advance the toast stack: expire old toasts, promote pending,
-    /// recompute y-offsets. Called from the message-loop idle path
-    /// (once per WM_TIMER or WM_WINHOSTTY_WAKE tick). Cheap when the
-    /// stack is empty.
-    pub fn tickToasts(self: *App) void {
-        if (!self.toast_stack.hasAny()) return;
-        const now: u64 = @intCast(std.time.milliTimestamp());
-        _ = self.toast_stack.tick(now);
     }
 
     pub fn run(self: *App) !void {
@@ -1904,6 +1888,15 @@ pub const App = struct {
                 continue;
             }
 
+            if (msg.message == WM_WINHOSTTY_TOAST_ACTIVATION) {
+                const activation: *win32_toast_activation.ActivationTarget = @ptrFromInt(@as(usize, @bitCast(msg.lParam)));
+                defer std.heap.page_allocator.destroy(activation);
+                _ = self.handleToastActivation(activation.*);
+                try self.core_app.tick(self);
+                if (!self.running and self.windows.items.len == 0) break;
+                continue;
+            }
+
             if (msg.message == WM_TIMER) {
                 if (self.quit_timer_id) |timer_id| {
                     if (msg.wParam == timer_id) {
@@ -1933,7 +1926,6 @@ pub const App = struct {
             }
 
             try self.core_app.tick(self);
-            self.tickToasts();
 
             if (!self.running and self.windows.items.len == 0) break;
         }
@@ -1964,10 +1956,13 @@ pub const App = struct {
             slot.* = null;
         }
         self.settings_window.deinit();
-        self.toast_stack.deinit();
         if (self.winrt_toast) |*toast| {
             toast.deinit();
             self.winrt_toast = null;
+        }
+        if (self.taskbar_progress) |*taskbar| {
+            taskbar.deinit();
+            self.taskbar_progress = null;
         }
         if (self.cli_config_override_path) |path| {
             self.core_app.alloc.free(path);
@@ -2448,6 +2443,17 @@ pub const App = struct {
             },
 
             .new_window => {
+                switch (scanForwardedToastActivation(value.arguments)) {
+                    .none => {},
+                    .malformed => {
+                        std.log.warn("dropping malformed forwarded toast activation argv", .{});
+                        return true;
+                    },
+                    .activation => |activation| {
+                        _ = self.handleToastActivation(activation);
+                        return true;
+                    },
+                }
                 var config = try apprt.surface.newConfig(
                     self.core_app,
                     &self.config,
@@ -2555,9 +2561,6 @@ pub const App = struct {
                     try self.core_app.updateConfig(self, &self.config);
                     if (self.config.@"app-notifications".@"config-reload") {
                         try self.showDesktopNotification(.app, "winghostty", "Configuration reloaded");
-                        self.showToast("Config reloaded", "", .success) catch |err| {
-                            std.log.warn("toast push failed err={}", .{err});
-                        };
                     }
                     return true;
                 }
@@ -2604,9 +2607,6 @@ pub const App = struct {
                 try self.core_app.updateConfig(self, &config);
                 if (self.config.@"app-notifications".@"config-reload") {
                     try self.showDesktopNotification(.app, "winghostty", "Configuration reloaded");
-                    self.showToast("Config reloaded", "", .success) catch |err| {
-                        std.log.warn("toast push failed err={}", .{err});
-                    };
                 }
                 return true;
             },
@@ -3213,6 +3213,7 @@ pub const App = struct {
         errdefer self.core_app.alloc.destroy(surface);
 
         try surface.init(self, title, config, opts);
+        self.consumePendingToastActivation();
         return surface;
     }
 
@@ -3437,6 +3438,14 @@ pub const App = struct {
         return tab.focusedSurface();
     }
 
+    fn findSurfaceById(self: *App, surface_id: u64) ?*Surface {
+        for (self.windows.items) |surface| {
+            if (surface.core().id == surface_id) return surface;
+        }
+
+        return null;
+    }
+
     fn inheritHostWindowState(_: *App, destination: *Host, source: *Host) !void {
         const dst_hwnd = destination.hwnd orelse return;
         const src_hwnd = source.hwnd orelse return;
@@ -3588,6 +3597,75 @@ pub const App = struct {
             }
         }
         self.showHostSurface(surface, true);
+        self.syncTaskbarProgressForHost(surface.host_id);
+    }
+
+    fn syncTaskbarProgressForHost(self: *App, host_id: u32) void {
+        const taskbar = if (self.taskbar_progress) |*value| value else return;
+        const host = self.findHostById(host_id) orelse return;
+        const hwnd = host.hwnd orelse return;
+        const report = if (self.activeSurfaceForHost(host_id)) |surface|
+            surface.taskbar_progress
+        else
+            null;
+        const state_name = if (report) |value| @tagName(value.state) else "remove";
+        std.log.debug("taskbar progress sync host_id={d} state={s}", .{ host_id, state_name });
+        taskbar.apply(hwnd, report) catch |err| {
+            std.log.warn("taskbar progress sync failed host_id={d} err={}", .{ host_id, err });
+        };
+    }
+
+    fn focusedSurfaceForHostTab(_: *App, host: *Host, tab_id: u32) ?*Surface {
+        for (host.tabs.items) |*tab| {
+            if (tab.id != tab_id) continue;
+            return tab.focusedSurface();
+        }
+
+        return null;
+    }
+
+    fn resolveToastActivationSurface(
+        self: *App,
+        activation: win32_toast_activation.ActivationTarget,
+    ) ?*Surface {
+        if (activation.surface_id) |surface_id| {
+            if (self.findSurfaceById(surface_id)) |surface| {
+                return surface;
+            }
+        }
+
+        if (activation.window_id) |window_id| {
+            if (self.findHostById(window_id)) |host| {
+                if (activation.tab_id) |tab_id| {
+                    if (self.focusedSurfaceForHostTab(host, tab_id)) |surface| {
+                        return surface;
+                    }
+                }
+                if (self.activeTab(host)) |tab| {
+                    if (tab.focusedSurface()) |surface| {
+                        return surface;
+                    }
+                }
+            }
+        }
+
+        return self.primarySurface();
+    }
+
+    fn handleToastActivation(self: *App, activation: win32_toast_activation.ActivationTarget) bool {
+        if (activation.action) |action| {
+            if (action != .focus) return false;
+        }
+
+        const surface = self.resolveToastActivationSurface(activation) orelse return false;
+        surface.present();
+        return true;
+    }
+
+    fn consumePendingToastActivation(self: *App) void {
+        const activation = self.pending_toast_activation orelse return;
+        self.pending_toast_activation = null;
+        _ = self.handleToastActivation(activation);
     }
 
     fn activateSurfaceNoFocus(self: *App, surface: *Surface) void {
@@ -3948,9 +4026,7 @@ pub const App = struct {
 
     /// Resolve the 7 `quick-terminal-*` config fields into a concrete
     /// end rect via `win32_quick_terminal` and apply it immediately
-    /// with `SetWindowPos`. The full animation / tween path lands
-    /// with a later P4.5 pass; this snap-to-final version already
-    /// honours position / size / screen / keyboard-interactivity.
+    /// with `SetWindowPos`.
     fn applyQuickTerminalGeometry(self: *App, hwnd: HWND) !void {
         const qt_cfg = win32_quick_terminal.QuickTerminalConfig{
             .position = switch (self.config.@"quick-terminal-position") {
@@ -4216,9 +4292,8 @@ pub const App = struct {
         //   1. If the process was started with `--config-file <path>`
         //      on the CLI, write to THAT file. Writing to the default
         //      `ghostty.conf` when the user explicitly specified a
-        //      custom config is the regression Codex caught in
-        //      round 7: the user either edits the wrong file OR the
-        //      CLI-provided config masks the saved value on reload.
+        //      custom config would either edit the wrong file or let
+        //      the CLI-provided config mask the saved value on reload.
         //   2. Otherwise, fall back to the per-user default path
         //      (`config_edit.openPath`), which also handles the
         //      first-run "create the file" case.
@@ -4527,11 +4602,12 @@ pub const App = struct {
         _ = MessageBeep(MB_ICONINFORMATION);
     }
 
-    fn showDesktopNotification(
+    fn showDesktopNotificationWithLaunch(
         self: *App,
         target: apprt.Target,
-        title: [:0]const u8,
-        body: [:0]const u8,
+        title: []const u8,
+        body: []const u8,
+        launch: ?[]const u8,
     ) !void {
         const caption = if (title.len > 0) title else "winghostty";
         const message = if (title.len > 0 and !std.mem.eql(u8, title, "winghostty"))
@@ -4547,7 +4623,11 @@ pub const App = struct {
         // Assist, notifications disabled, runtime unavailable) falls
         // back to the banner so the user still gets feedback.
         if (self.winrt_toast) |*toast| {
-            if (toast.show(caption, body, .info)) |_| {
+            const result = if (launch) |value|
+                toast.showWithLaunch(caption, body, .info, value)
+            else
+                toast.show(caption, body, .info);
+            if (result) |_| {
                 return;
             } else |err| {
                 std.log.warn("winrt toast show failed err={}; falling back to banner", .{err});
@@ -4555,12 +4635,20 @@ pub const App = struct {
         }
 
         if (try self.showHostBanner(target, .info, message)) return;
-        // Fallback modal: pass the COMPOSED `message` as the body so
+        // Final local fallback: pass the composed `message` as the body so
         // notifications with an empty `body` (e.g. settings-save
         // success, where title alone carries the signal) still render
-        // something readable. Using raw `body` would produce a blank
-        // modal that looks broken despite the action succeeding.
+        // something readable.
         try self.showInfoMessage(target, caption, message);
+    }
+
+    fn showDesktopNotification(
+        self: *App,
+        target: apprt.Target,
+        title: [:0]const u8,
+        body: [:0]const u8,
+    ) !void {
+        try self.showDesktopNotificationWithLaunch(target, title, body, null);
     }
 
     fn showChildExited(
@@ -4579,13 +4667,60 @@ pub const App = struct {
         try self.showInfoMessage(target, "winghostty", message);
     }
 
+    const CommandFinishPlan = struct {
+        bell: bool = false,
+        notify: bool = false,
+
+        fn any(self: CommandFinishPlan) bool {
+            return self.bell or self.notify;
+        }
+    };
+
+    fn commandFinishPlan(
+        notify_on_command_finish: configpkg.Config.NotifyOnCommandFinish,
+        notify_on_command_finish_action: configpkg.Config.NotifyOnCommandFinishAction,
+        desktop_notifications: bool,
+        notify_on_command_finish_after: configpkg.Config.Duration,
+        is_focused: bool,
+        duration: configpkg.Config.Duration,
+    ) CommandFinishPlan {
+        if (duration.duration < notify_on_command_finish_after.duration) return .{};
+
+        const allow = switch (notify_on_command_finish) {
+            .never => false,
+            .always => true,
+            .unfocused => !is_focused,
+        };
+        if (!allow) return .{};
+
+        return .{
+            .bell = notify_on_command_finish_action.bell,
+            .notify = notify_on_command_finish_action.notify and desktop_notifications,
+        };
+    }
+
     fn showCommandFinished(
         self: *App,
         target: apprt.Target,
         finished: apprt.action.CommandFinished,
     ) !void {
+        const surface = self.findSurfaceForTarget(target) orelse return;
+        const config = &surface.core().config;
+        const plan = commandFinishPlan(
+            config.notify_on_command_finish,
+            config.notify_on_command_finish_action,
+            config.desktop_notifications,
+            config.notify_on_command_finish_after,
+            self.isSurfaceFocused(surface),
+            finished.duration,
+        );
+        if (!plan.any()) return;
+
+        if (plan.bell) self.ringBell(target);
+        if (!plan.notify) return;
+
         const seconds = @as(f64, @floatFromInt(finished.duration.duration)) / @as(f64, std.time.ns_per_s);
-        const message = if (finished.exit_code) |code|
+        const body = if (finished.exit_code) |code|
             try std.fmt.allocPrint(
                 self.core_app.alloc,
                 "Command finished with exit code {d} | Runtime: {d:.2}s",
@@ -4597,9 +4732,18 @@ pub const App = struct {
                 "Command finished | Runtime: {d:.2}s",
                 .{seconds},
             );
-        defer self.core_app.alloc.free(message);
-        if (try self.showHostBanner(target, .info, message)) return;
-        try self.showInfoMessage(target, "winghostty", message);
+        defer self.core_app.alloc.free(body);
+
+        const launch = try buildToastLaunchForSurface(self.core_app.alloc, surface);
+        defer self.core_app.alloc.free(launch);
+        try self.showDesktopNotificationWithLaunch(target, "Command finished", body, launch);
+    }
+
+    fn isSurfaceFocused(self: *App, surface: *Surface) bool {
+        return self.core_app.focused and
+            surface.host_active and
+            surface.window_focused and
+            self.core_app.focusedSurface() == surface.core();
     }
 
     fn showInfoMessage(
@@ -4610,13 +4754,10 @@ pub const App = struct {
     ) !void {
         _ = self;
         _ = target;
-        // Tertiary fallback after WinRT toast + host banner both
-        // fail. Reached only when there's no UI surface to render a
-        // banner AND the WinRT path failed (Focus Assist, corporate
-        // lockdown with no combase, etc.) — i.e. the user genuinely
-        // has nowhere to see the notification. Log so telemetry
-        // captures the event. Replaced a modal `MessageBoxW` per
-        // AGENTS.md:84 ban.
+        // Final fallback for notification paths that cannot surface a
+        // host banner. Replaced the old modal `MessageBoxW` path with
+        // an explicit log entry so failures stay observable without
+        // blocking the UI thread.
         std.log.info("info notification (no visible target): {s} — {s}", .{ title, message });
     }
 
@@ -4721,6 +4862,37 @@ fn postUpdateCheckCompletion(ui_thread_id: DWORD, completion: *UpdateCheckComple
     }
 }
 
+fn winrtToastActivationCallback(ctx: *anyopaque, launch: []const u8) void {
+    const self: *App = @ptrCast(@alignCast(ctx));
+    if (self.ui_thread_id == 0) {
+        std.log.warn("dropping winrt toast activation before ui thread id is available", .{});
+        return;
+    }
+
+    const parsed = win32_toast_activation.parseLaunchArg(launch) catch |err| {
+        std.log.warn("dropping malformed winrt toast activation launch err={}", .{err});
+        return;
+    };
+
+    const activation = std.heap.page_allocator.create(win32_toast_activation.ActivationTarget) catch |err| {
+        std.log.warn("dropping winrt toast activation allocation failed err={}", .{err});
+        return;
+    };
+    activation.* = parsed;
+
+    if (PostThreadMessageW(
+        self.ui_thread_id,
+        WM_WINHOSTTY_TOAST_ACTIVATION,
+        0,
+        @as(LPARAM, @bitCast(@as(usize, @intFromPtr(activation)))),
+    ) == 0) {
+        std.log.warn("dropping winrt toast activation post failed err={}", .{
+            windows.kernel32.GetLastError(),
+        });
+        std.heap.page_allocator.destroy(activation);
+    }
+}
+
 const SearchStatus = struct {
     active: bool = false,
     needle: ?[]const u8 = null,
@@ -4742,9 +4914,7 @@ const OwnedClipboardContent = struct {
 /// `HostOverlayMode.confirm`. The owning `Surface` dupes all caller
 /// payload bytes into `core_app.alloc` when queuing the op so the
 /// confirm overlay's async callback sees valid data regardless of when
-/// the original caller's buffers go out of scope. See AGENTS.md:84 —
-/// this is the migration of the last live `MessageBoxW` out of the
-/// apprt.
+/// the original caller's buffers go out of scope.
 const PendingClipboardOp = union(enum) {
     /// Deferred paste. `request` tells the core path to complete once
     /// the user accepts; `data` is the duplicated payload.
@@ -5720,6 +5890,8 @@ const Host = struct {
         }
         self.tween_sched.deinit();
 
+        self.destroyChildControls();
+
         if (self.banner_text) |value| self.app.core_app.alloc.free(value);
         if (self.overlay_completion_seed) |value| self.app.core_app.alloc.free(value);
         if (self.overlay_completion_value) |value| self.app.core_app.alloc.free(value);
@@ -5739,6 +5911,34 @@ const Host = struct {
         for (self.tabs.items) |*tab| tab.deinit();
         self.tabs.deinit(self.app.core_app.alloc);
         self.* = undefined;
+    }
+
+    fn destroyChildControls(self: *Host) void {
+        if (self.hwnd) |hwnd| {
+            if (IsWindow(hwnd) != 0) {
+                _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+            }
+        }
+
+        destroyChildWindow(&self.overlay_label_hwnd);
+        destroySubclassedWindow(&self.overlay_edit_hwnd, &self.overlay_edit_prev_proc);
+        destroyChildWindow(&self.overlay_hint_hwnd);
+
+        const overlay_prev = self.overlay_button_prev_proc;
+        self.overlay_button_prev_proc = null;
+        destroySubclassedWindowWithPrev(&self.overlay_accept_hwnd, overlay_prev);
+        destroySubclassedWindowWithPrev(&self.overlay_cancel_hwnd, overlay_prev);
+
+        const chrome_prev = self.chrome_button_prev_proc;
+        self.chrome_button_prev_proc = null;
+        destroySubclassedWindowWithPrev(&self.new_tab_hwnd, chrome_prev);
+        destroySubclassedWindowWithPrev(&self.overflow_hwnd, chrome_prev);
+
+        destroyChildWindow(&self.palette_list_hwnd);
+
+        self.hovered_button_hwnd = null;
+        self.tab_close_hover_hwnd = null;
+        self.tab_close_prev_hwnd = null;
     }
 
     fn activeTab(self: *Host) ?*Tab {
@@ -9631,10 +9831,9 @@ const Host = struct {
                     var badge_text_rect = badge_rect;
                     badge_text_rect.left += self.scaled(6);
                     badge_text_rect.right -= self.scaled(6);
-                    _ = DrawTextW(
+                    drawTextWz(
                         hdc,
-                        badge_w.ptr,
-                        @intCast(badge_w.len - 1),
+                        badge_w,
                         &badge_text_rect,
                         DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
                     );
@@ -9644,7 +9843,7 @@ const Host = struct {
             }
             _ = SetTextColor(hdc, overlay_label_color);
             if (self.cached_overlay_paint_label_w) |overlay_label_w| {
-                _ = TextOutW(hdc, overlay_label_x, overlay_rect.top + self.scaled(7), overlay_label_w.ptr, @intCast(overlay_label_w.len - 1));
+                textOutWz(hdc, overlay_label_x, overlay_rect.top + self.scaled(7), overlay_label_w);
             }
 
             const overlay_padding = self.scaled(host_overlay_padding);
@@ -9678,7 +9877,7 @@ const Host = struct {
                 .err => theme.error_fg,
             });
             if (self.cached_overlay_paint_feedback_w) |overlay_feedback_w| {
-                _ = TextOutW(hdc, self.scaled(host_overlay_padding) + self.scaled(10), overlay_rect.top + self.scaled(34), overlay_feedback_w.ptr, @intCast(overlay_feedback_w.len - 1));
+                textOutWz(hdc, self.scaled(host_overlay_padding) + self.scaled(10), overlay_rect.top + self.scaled(34), overlay_feedback_w);
             }
         }
 
@@ -9853,11 +10052,11 @@ const Host = struct {
                 _ = SetBkMode(hdc, TRANSPARENT);
                 if (self.cached_inspector_title_w) |title_w| {
                     _ = SetTextColor(hdc, theme.overlay_label_fg);
-                    _ = TextOutW(hdc, self.scaled(16), panel_rect.top + self.scaled(6), title_w.ptr, @intCast(title_w.len - 1));
+                    textOutWz(hdc, self.scaled(16), panel_rect.top + self.scaled(6), title_w);
                 }
                 if (self.cached_inspector_hint_w) |hint_w| {
                     _ = SetTextColor(hdc, theme.text_secondary);
-                    _ = TextOutW(hdc, self.scaled(16), panel_rect.top + self.scaled(22), hint_w.ptr, @intCast(hint_w.len - 1));
+                    textOutWz(hdc, self.scaled(16), panel_rect.top + self.scaled(22), hint_w);
                 }
             }
         }
@@ -10016,10 +10215,9 @@ const Host = struct {
                 _ = SetTextColor(hdc, theme.info_fg);
                 _ = notice;
                 if (self.cached_banner_w) |banner_w| {
-                    _ = DrawTextW(
+                    drawTextWz(
                         hdc,
-                        banner_w.ptr,
-                        @intCast(banner_w.len - 1),
+                        banner_w,
                         &text_rect,
                         DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
                     );
@@ -10074,7 +10272,7 @@ const Host = struct {
                     .err => theme.error_fg,
                 });
                 if (self.cached_banner_w) |banner_w| {
-                    _ = TextOutW(hdc, self.scaled(16), banner_y, banner_w.ptr, @intCast(banner_w.len - 1));
+                    textOutWz(hdc, self.scaled(16), banner_y, banner_w);
                 }
             }
         } else if (explicit_banner_text != null) {
@@ -10084,7 +10282,7 @@ const Host = struct {
                 .err => theme.error_fg,
             });
             if (self.cached_banner_w) |banner_w| {
-                _ = TextOutW(hdc, self.scaled(16), banner_y, banner_w.ptr, @intCast(banner_w.len - 1));
+                textOutWz(hdc, self.scaled(16), banner_y, banner_w);
             }
         }
         _ = SetTextColor(hdc, theme.text_primary);
@@ -10213,10 +10411,9 @@ const Host = struct {
                 var chip_text_rect = chip_rect;
                 chip_text_rect.left += self.scaled(6);
                 chip_text_rect.right -= launcherChipRightInset(pinned_slot_digit != null, true);
-                _ = DrawTextW(
+                drawTextWz(
                     hdc,
-                    chip_w.ptr,
-                    @intCast(chip_w.len - 1),
+                    chip_w,
                     &chip_text_rect,
                     DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
                 );
@@ -10295,10 +10492,9 @@ const Host = struct {
                     var chip_text_rect = chip_rect;
                     chip_text_rect.left += self.scaled(5);
                     chip_text_rect.right -= launcherChipRightInset(false, target_marker);
-                    _ = DrawTextW(
+                    drawTextWz(
                         hdc,
-                        chip_w.ptr,
-                        @intCast(chip_w.len - 1),
+                        chip_w,
                         &chip_text_rect,
                         DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
                     );
@@ -10338,32 +10534,42 @@ const Host = struct {
 
         if (paint_status) {
             if (self.cached_status_w) |status_w| {
-                _ = TextOutW(hdc, status_x, status_y, status_w.ptr, @intCast(status_w.len - 1));
+                textOutWz(hdc, status_x, status_y, status_w);
             }
         }
         if (paint_status) {
             if (self.cached_detail_w) |detail_w| {
                 _ = SetTextColor(hdc, theme.text_secondary);
-                _ = TextOutW(hdc, status_x, status_y + self.scaled(18), detail_w.ptr, @intCast(detail_w.len - 1));
+                textOutWz(hdc, status_x, status_y + self.scaled(18), detail_w);
             }
         }
         self.chrome_repaint_dirty = false;
     }
 };
 
-fn destroySubclassedWindow(
+fn destroyChildWindow(hwnd_slot: *?HWND) void {
+    const hwnd = hwnd_slot.* orelse return;
+
+    hwnd_slot.* = null;
+    if (IsWindow(hwnd) == 0) return;
+
+    _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+    _ = DestroyWindow(hwnd);
+}
+
+fn destroySubclassedWindowWithPrev(
     hwnd_slot: *?HWND,
-    prev_proc_slot: *?*const anyopaque,
+    prev_proc: ?*const anyopaque,
 ) void {
     const hwnd = hwnd_slot.* orelse return;
-    const prev_proc = prev_proc_slot.*;
 
     // Detach host state before destroying the control. DestroyWindow is
     // synchronous and can reenter our subclass proc during WM_DESTROY /
     // WM_NCDESTROY, so leaving the HWND discoverable via host tabs/buttons
     // risks callbacks touching half-torn state.
     hwnd_slot.* = null;
-    prev_proc_slot.* = null;
+    if (IsWindow(hwnd) == 0) return;
+
     _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
     if (prev_proc) |proc| {
         _ = SetWindowLongPtrW(
@@ -10373,6 +10579,15 @@ fn destroySubclassedWindow(
         );
     }
     _ = DestroyWindow(hwnd);
+}
+
+fn destroySubclassedWindow(
+    hwnd_slot: *?HWND,
+    prev_proc_slot: *?*const anyopaque,
+) void {
+    const prev_proc = prev_proc_slot.*;
+    prev_proc_slot.* = null;
+    destroySubclassedWindowWithPrev(hwnd_slot, prev_proc);
 }
 
 const SurfaceInitOptions = struct {
@@ -10867,10 +11082,9 @@ fn highContrastThemeFromSysColors() ThemeColors {
         .button_active_focus_ring = hi_fg,
         .button_accept_focus_ring = hi_fg,
 
-        // WCAG fix (plan §7.4): unfocused dividers use COLOR_WINDOWFRAME
+        // Unfocused dividers use COLOR_WINDOWFRAME
         // so multi-pane layouts stay visually separated; focused dividers
-        // use COLOR_HIGHLIGHT to preserve the focus cue. Previously both
-        // collapsed to hi_bg, which removed the focused/unfocused contrast.
+        // use COLOR_HIGHLIGHT to preserve the focus cue.
         .pane_divider = win_frame,
         .pane_divider_focused = hi_bg,
 
@@ -11061,6 +11275,23 @@ fn fillSolidRect(hdc: HDC, rect: RECT, color: u32) void {
     _ = FillRect(hdc, &rect, brush);
 }
 
+fn utf16GdiTextLen(text: [:0]const u16) i32 {
+    const max_len: usize = @intCast(std.math.maxInt(i32));
+    return @intCast(@min(text.len, max_len));
+}
+
+fn textOutWz(hdc: HDC, x: i32, y: i32, text: [:0]const u16) void {
+    const len = utf16GdiTextLen(text);
+    if (len == 0) return;
+    _ = TextOutW(hdc, x, y, text.ptr, len);
+}
+
+fn drawTextWz(hdc: HDC, text: [:0]const u16, rect: *RECT, format: UINT) void {
+    const len = utf16GdiTextLen(text);
+    if (len == 0) return;
+    _ = DrawTextW(hdc, text.ptr, len, rect, format);
+}
+
 /// Draw a single-line, left-aligned, vertically-centred, ellipsized
 /// string into the rect. Used by the palette list row painter.
 fn drawPaletteRowText(hdc: HDC, text: []const u8, rect: RECT, color: u32) void {
@@ -11137,18 +11368,8 @@ fn settingsOnClosedThunk(ctx: *anyopaque) void {
 }
 fn settingsNotifySuccessThunk(ctx: *anyopaque, title: []const u8, body: []const u8) void {
     const app: *App = @ptrCast(@alignCast(ctx));
-    // Telemetry: push to the in-app toast stack. The renderer consumes
-    // this when the toast-paint HWND lands; today it logs.
-    app.showToast(title, body, .success) catch |err| {
-        std.log.warn("settings: toast push failed err={}", .{err});
-    };
-
-    // Always show the in-app host banner. This is chrome feedback for
-    // a user-initiated action (the Save button) and it's NOT gated on
-    // `app-notifications.config-reload` — users who disable system /
-    // reload notifications still expect visible confirmation that
-    // their Save landed. Without this line, disabling the config the
-    // thunk returned silently after logging-only.
+    // Always show local chrome feedback for the Save button, even
+    // when system/reload notifications are disabled.
     const alloc = app.core_app.alloc;
     const banner_text = std.fmt.allocPrint(alloc, "{s}{s}{s}", .{
         title,
@@ -11165,20 +11386,17 @@ fn settingsNotifySuccessThunk(ctx: *anyopaque, title: []const u8, body: []const 
         break :blk app.showHostBanner(.app, .info, msg) catch false;
     } else false;
 
-    // System-level WinRT toast + MessageBox fallback. Gated on
-    // `app-notifications.config-reload` since Settings-save triggers
-    // a config reload under the hood; users who disabled reload
-    // notifications don't want a system toast on every Save either.
-    // EXCEPTION: when the banner couldn't render (no host surface),
-    // the user is in settings-only state and expects SOME visible
-    // confirmation of their Save click. Force the modal fallback so
-    // "save succeeded silently" can't happen.
+    // System-level WinRT toast + local fallback. Gated on
+    // `app-notifications.config-reload` because Settings save also
+    // reloads config; users who disabled reload notifications should
+    // not get a system toast on every Save. If no host banner can
+    // render, force the fallback so settings-only saves still show
+    // visible confirmation.
     if (!app.config.@"app-notifications".@"config-reload" and banner_shown) return;
 
-    // `showDesktopNotification` requires sentinel-terminated strings
-    // because it forwards to WinRT. Allocate a sentinel-terminated
-    // copy; on allocation failure, skip the visible path (telemetry
-    // + banner still captured the event).
+    // WinRT notification strings must be sentinel-terminated. On
+    // allocation failure, keep any banner already shown and skip the
+    // system path.
     const title_z = alloc.dupeZ(u8, title) catch return;
     defer alloc.free(title_z);
     const body_z = alloc.dupeZ(u8, body) catch return;
@@ -11186,6 +11404,25 @@ fn settingsNotifySuccessThunk(ctx: *anyopaque, title: []const u8, body: []const 
     app.showDesktopNotification(.app, title_z, body_z) catch |err| {
         std.log.warn("settings: desktop notification failed err={}", .{err});
     };
+}
+
+fn buildToastLaunchForSurface(
+    alloc: Allocator,
+    surface: *Surface,
+) Allocator.Error![]u8 {
+    const tab_id = if (surface.host) |host| blk: {
+        for (host.tabs.items) |*tab| {
+            if (tab.findHandle(surface) != null) break :blk tab.id;
+        }
+        break :blk null;
+    } else null;
+
+    return try win32_toast_activation.buildLaunchArg(alloc, .{
+        .surface_id = surface.core().id,
+        .tab_id = tab_id,
+        .window_id = surface.host_id,
+        .action = .focus,
+    });
 }
 
 /// Accept callback for the `confirm-close-surface` overlay. Fires
@@ -11200,10 +11437,8 @@ fn surfaceConfirmCloseAccept(userdata: ?*anyopaque) void {
 }
 
 /// Accept callback for a deferred paste confirm. Ownership of the
-/// duplicated payload passes to this function — we free it once core
-/// is done ingesting (which is synchronous inside
-/// `completeClipboardRequest`). Matches AGENTS.md:89 "snapshot the
-/// callback state before calling" — here the payload IS the state.
+/// duplicated payload passes here and is released after synchronous
+/// core ingestion.
 fn surfaceConfirmPasteAccept(userdata: ?*anyopaque) void {
     const ud = userdata orelse return;
     const surface: *Surface = @ptrCast(@alignCast(ud));
@@ -11404,77 +11639,51 @@ comptime {
     _ = win32_paste_protection.hasNewline;
     _ = win32_paste_protection.hasShellMetachar;
     _ = win32_paste_protection.hasMixedContent;
-    // Scrollbar geometry (P5.2). Consumed by the renderer's present
-    // path once the GL overlay lands.
+    // Scrollbar geometry helpers.
     _ = win32_scrollbar_geometry.ScrollbarState;
     _ = win32_scrollbar_geometry.trackRect;
     _ = win32_scrollbar_geometry.thumbRect;
     _ = win32_scrollbar_geometry.rowFromCursor;
     _ = win32_scrollbar_geometry.pointOverTrack;
     _ = win32_scrollbar_geometry.pointOverThumb;
-    // Integrated-titlebar NC layout (P5.1). Consumed by the host
-    // wndproc's WM_NCCALCSIZE / WM_NCHITTEST handlers on Win11.
+    // Integrated-titlebar NC layout helpers.
     _ = win32_nc_layout.calcNcClientRect;
     _ = win32_nc_layout.hitTest;
     _ = win32_nc_layout.captionButtonsRect;
     _ = win32_nc_layout.metricsDefault;
-    // Status-bar redesign (P5.7). Consumed by the Host's
-    // `paintChrome` status-bar pass when the new 28 px layout lands.
+    // Status-bar composition helpers.
     _ = win32_status_bar.composeFragments;
     _ = win32_status_bar.truncateToFit;
     _ = win32_status_bar.isDigitRun;
-    // Tab visual polish (P5.8). `CloseState` drives hover close-button
-    // fade; `UnderlineState` animates the focused-tab underline between
-    // tabs. Wire-up lands with the tab-strip paint rework.
+    // Tab visual-state helpers.
     _ = win32_tab_visual.CloseState;
     _ = win32_tab_visual.UnderlineState;
     _ = win32_tab_visual.easeInOutCubic;
     _ = win32_tab_visual.closeHitRect;
-    // Keyboard-focus-ring tracker (P5.9). Per-control subclass routes
-    // WM_KEYDOWN / mouse-input through `onKeyDown` / `onMouseInput`;
-    // WM_PAINT consults `shouldShowRing` + draws `ringRect`.
+    // Keyboard-focus-ring helpers.
     _ = win32_focus_ring.FocusRingTracker;
     _ = win32_focus_ring.ringRect;
     _ = win32_focus_ring.isDrawable;
 }
 
-/// Strip HTML tags for the CF_UNICODETEXT fallback when the core
-/// only supplies a `text/html` payload (e.g. `copy_to_clipboard:html`).
-/// This is a best-effort stripper — sufficient for plain consumers
-/// like Notepad / cmd.exe that would otherwise see raw `<span>` tags.
-/// Anything between `<` and `>` is dropped; everything else survives
-/// verbatim (including entity references — we don't decode them to
-/// avoid allocating a larger output for what's already a plain
-/// fallback). Returns a newly-allocated buffer owned by `alloc`.
-/// Scan the process argv for the first `--config-file=<path>` or
-/// `--config-file <path>` occurrence. Returns a newly-allocated
-/// absolute path owned by `alloc`, or null if no override was
-/// specified. Used by the settings save path to target the
-/// user-chosen config file instead of the per-user default. If
-/// multiple `--config-file` flags were passed, the first wins —
-/// the settings UI can't meaningfully edit multiple files at once,
-/// and picking the first matches how `Config.load` applies them in
-/// order.
-/// Walk argv for a `wgh://activate?…` entry. Returns the parsed
-/// target on hit, null otherwise. Tolerates malformed activation
-/// strings (logs, returns null) — cold-start activation is a
-/// best-effort UX feature, not a correctness channel.
+/// Scan argv for a `wgh://activate?...` entry. Malformed activation
+/// strings are swallowed so they cannot be misrouted as startup args.
 fn scanToastActivationArg(alloc: std.mem.Allocator) ?win32_toast_activation.ActivationTarget {
     const argv = std.process.argsAlloc(alloc) catch return null;
     defer std.process.argsFree(alloc, argv);
-    var i: usize = 1;
-    while (i < argv.len) : (i += 1) {
-        const arg = argv[i];
-        if (std.mem.startsWith(u8, arg, "wgh://")) {
-            return win32_toast_activation.parseLaunchArg(arg) catch |err| blk: {
-                std.log.warn("toast activation arg parse failed arg={s} err={}", .{ arg, err });
-                break :blk null;
-            };
-        }
-    }
-    return null;
+    return win32_toast_activation.scanLaunchArgs(argv[1..]);
 }
 
+fn scanForwardedToastActivation(
+    arguments: ?[]const [:0]const u8,
+) win32_toast_activation.ScanLaunchArgsResult {
+    const argv = arguments orelse return .none;
+    return win32_toast_activation.scanLaunchArgsDetailed(argv);
+}
+
+/// Return the last CLI `--config-file` override as an absolute path.
+/// Settings save targets the last file because later config files
+/// override earlier ones.
 fn cliConfigFileOverride(alloc: std.mem.Allocator) !?[]u8 {
     const argv = std.process.argsAlloc(alloc) catch return null;
     defer std.process.argsFree(alloc, argv);
@@ -11522,18 +11731,6 @@ fn absolutizePath(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
     return try std.fs.path.join(alloc, &.{ cwd, path });
 }
 
-/// Surgical settings-save text patcher. Preserves the target file's
-/// raw text — comments, blank lines, relative path directives, and
-/// fields we don't round-trip through the Config type all stay
-/// byte-identical. Only the GUI-edited field lines are rewritten;
-/// missing edited keys are appended at the end.
-///
-/// Line match: a line is considered a key-assignment for `<name>`
-/// when trimmed-left it starts with `<name>` followed by optional
-/// whitespace + `=`. Lines starting with `#` or `;` are comments
-/// and are never treated as assignments. Duplicate key lines in
-/// the source are all replaced (match-all) since `loadRecursiveFiles`
-/// semantics take the LAST value.
 /// Count the number of leading whitespace (space / tab) bytes.
 fn leadingIndentLen(line: []const u8) usize {
     var i: usize = 0;
@@ -11541,15 +11738,8 @@ fn leadingIndentLen(line: []const u8) usize {
     return i;
 }
 
-/// Extract the trailing inline comment from a `key = value # comment`
-/// line, preserving the `#` / `;` prefix. Returns empty slice when no
-/// comment is present or no `=` is found.
-///
-/// The scan starts AFTER the first `=` so a `#` or `;` that appears
-/// inside the key or surrounding whitespace isn't accidentally treated
-/// as a comment marker. Quoting inside value strings isn't tracked
-/// because config values are plain tokens (no shell-style quoting in
-/// this grammar); the first unquoted `#` / `;` after the `=` wins.
+/// Extract a trailing inline `#` / `;` comment from a key assignment.
+/// The scan starts after `=` to match the config grammar.
 fn trailingCommentOf(line: []const u8) []const u8 {
     const eq = std.mem.indexOfScalar(u8, line, '=') orelse return &.{};
     var i: usize = eq + 1;
@@ -11566,6 +11756,12 @@ fn trailingCommentOf(line: []const u8) []const u8 {
     return &.{};
 }
 
+/// Patch GUI-edited config keys while preserving unchanged source text.
+///
+/// A line matches `<name>` when its trimmed-left form starts with
+/// `<name>` followed by optional whitespace and `=`. Comment lines are
+/// ignored. Duplicate key lines preserve load semantics by rewriting
+/// only the last occurrence; missing edited keys are appended.
 fn patchOrAppendEdits(
     alloc: std.mem.Allocator,
     raw: []const u8,
@@ -11642,15 +11838,8 @@ fn patchOrAppendEdits(
                     if (payload.len > 0 and payload[payload.len - 1] == '\n') {
                         payload = payload[0 .. payload.len - 1];
                     }
-                    // Preserve leading indentation and trailing inline
-                    // comments from the original line. Users frequently
-                    // annotate overrides with `# …` on the same line
-                    // (`font-size = 14  # demo`); replacing the whole
-                    // line silently drops the comment. Split the
-                    // existing line at the first unquoted `#` / `;`
-                    // that comes AFTER the `=` — comments before `=`
-                    // are impossible (that'd make the line a comment
-                    // line, which we already skip).
+                    // Preserve indentation and trailing inline comments
+                    // from the original assignment.
                     const indent_end = leadingIndentLen(line);
                     const leading = line[0..indent_end];
                     const trailing = trailingCommentOf(line);
@@ -11690,6 +11879,9 @@ fn patchOrAppendEdits(
     }
 }
 
+/// Strip HTML tags for the CF_UNICODETEXT fallback when core only
+/// supplies `text/html`. Plain consumers get readable text; entity
+/// references are preserved verbatim.
 fn stripHtmlTags(alloc: std.mem.Allocator, html: []const u8) ![]u8 {
     var buf: std.ArrayList(u8) = .{};
     defer buf.deinit(alloc);
@@ -11698,12 +11890,8 @@ fn stripHtmlTags(alloc: std.mem.Allocator, html: []const u8) ![]u8 {
     while (i < html.len) {
         const c = html[i];
         if (c == '<') {
-            // Seek to the matching `>`; if not found, emit the `<`
-            // as literal content and continue scanning. Earlier code
-            // `break`ed here which dropped the entire remainder of a
-            // malformed fragment — plain-text consumers saw a
-            // truncated paste. Now we best-effort degrade by treating
-            // the unmatched `<` as a literal character.
+            // Unmatched `<` is literal content; dropping the rest would
+            // truncate malformed HTML pastes.
             if (std.mem.indexOfScalarPos(u8, html, i, '>')) |end| {
                 i = end + 1;
                 continue;
@@ -11730,8 +11918,7 @@ test "stripHtmlTags drops tag brackets" {
 
 test "stripHtmlTags handles malformed (unclosed tag)" {
     const testing = std.testing;
-    // Previously `break`ed on unmatched `<`, dropping the remainder.
-    // The best-effort degrade now emits `<` as literal and continues.
+    // Unmatched `<` is preserved as literal content.
     const out = try stripHtmlTags(testing.allocator, "pre<broken");
     defer testing.allocator.free(out);
     try testing.expectEqualStrings("pre<broken", out);
@@ -11739,9 +11926,7 @@ test "stripHtmlTags handles malformed (unclosed tag)" {
 
 test "stripHtmlTags malformed in middle keeps tail" {
     const testing = std.testing;
-    // Regression: unmatched `<` at the start of a fragment must NOT
-    // truncate everything after it. Previously produced "hello "; now
-    // preserves the tail including the stray `<`.
+    // Regression: unmatched `<` must preserve the tail.
     const out = try stripHtmlTags(testing.allocator, "hello <world tail");
     defer testing.allocator.free(out);
     try testing.expectEqualStrings("hello <world tail", out);
@@ -11787,10 +11972,7 @@ test "win32 appendOwnedString skips exact same-value reallocation" {
 }
 
 test "win32 appendOwnedString leaves target untouched on OOM" {
-    // Guard against the pre-refactor UAF where the old pointer was
-    // freed BEFORE allocating the new one: an OOM mid-call would
-    // leave `target.*` pointing at freed memory, which a subsequent
-    // `overlayEditText` / palette sync would read and crash on.
+    // OOM must leave `target.*` pointing at the existing allocation.
     const testing = std.testing;
     var arena: [64]u8 = undefined;
     var fixed: std.heap.FixedBufferAllocator = .init(&arena);
@@ -12424,21 +12606,22 @@ fn preferredProfileIndex(
 
 fn formatProgressStatus(
     alloc: Allocator,
-    value: terminal.osc.Command.ProgressReport,
+    value: win32_taskbar_progress.ProgressReport,
 ) !?[]u8 {
+    const progress = win32_taskbar_progress.clampPercent(value.progress);
     return switch (value.state) {
         .remove => null,
-        .set => if (value.progress) |progress|
-            try std.fmt.allocPrint(alloc, "progress:{d}%", .{progress})
+        .set => if (progress) |value_|
+            try std.fmt.allocPrint(alloc, "progress:{d}%", .{value_})
         else
             try alloc.dupe(u8, "progress"),
-        .@"error" => if (value.progress) |progress|
-            try std.fmt.allocPrint(alloc, "progress error:{d}%", .{progress})
+        .@"error" => if (progress) |value_|
+            try std.fmt.allocPrint(alloc, "progress error:{d}%", .{value_})
         else
             try alloc.dupe(u8, "progress error"),
         .indeterminate => try alloc.dupe(u8, "progress:busy"),
-        .pause => if (value.progress) |progress|
-            try std.fmt.allocPrint(alloc, "progress paused:{d}%", .{progress})
+        .pause => if (progress) |value_|
+            try std.fmt.allocPrint(alloc, "progress paused:{d}%", .{value_})
         else
             try alloc.dupe(u8, "progress paused"),
     };
@@ -14774,8 +14957,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
         },
         // Fired by DWM when the user's accent color changes. Re-resolve
         // the theme so any accent-derived tokens pick up the new value
-        // without requiring a config reload. Additional accent-follow
-        // work lands with the config surface (see §7.3 of the plan).
+        // without requiring a config reload.
         WM_DWMCOLORIZATIONCOLORCHANGED => {
             if (host) |v| {
                 v.app.reconfigureTheme();
@@ -16300,6 +16482,7 @@ pub const Surface = struct {
     scrollbar_paint_cache: ?ScrollbarPaintKey = null,
     pwd: ?[:0]const u8 = null,
     progress_status: ?[:0]const u8 = null,
+    taskbar_progress: ?win32_taskbar_progress.ProgressReport = null,
     inspector_visible: bool = false,
     paint_pending: bool = false,
     live_resize_repaint_deferred: bool = false,
@@ -16307,13 +16490,8 @@ pub const Surface = struct {
     renderer_repaint_retry_pending: std.atomic.Value(bool) = .init(false),
     draw_in_progress: bool = false,
     ime_composing: bool = false,
-    /// Per-surface bounded undo stack (P6.5). Initialised empty in
-    /// `Surface.init` and drained in `deinit`. `undo` / `redo`
-    /// actions push snapshots here before executing destructive
-    /// operations (close_tab, clear_screen, reset, split_create).
-    /// The data structure is infrastructure; per-action snapshot
-    /// capture + replay lands with the action-side P6 pass. Caps
-    /// (16 entries / 8 MB) are enforced by the stack itself.
+    /// Per-surface bounded undo stack. Initialised empty in
+    /// `Surface.init`, drained in `deinit`, and capped by the stack.
     undo_stack: win32_undo.UndoStack = undefined,
     /// Per-pane docked search bar state. The pure state machine
     /// lives in `win32_search_bar.zig`; HWNDs below are the live
@@ -16358,7 +16536,7 @@ pub const Surface = struct {
     /// overlay is pending. Drained by `surfaceConfirmPasteAccept` /
     /// `surfaceConfirmWriteAccept` / the matching cancel callbacks,
     /// and by `Surface.destroyWindow` so a close-while-pending doesn't
-    /// leak. Migration of the last live `MessageBoxW` (AGENTS.md:84).
+    /// leak.
     pending_clipboard_op: ?PendingClipboardOp = null,
 
     fn searchBarButtonHwnd(self: *const Surface, role: SearchBarButtonRole) ?HWND {
@@ -16734,9 +16912,8 @@ pub const Surface = struct {
         // `str` is always owned by `core_app.alloc` — either taken
         // from `readClipboardText` (which returns `[:0]u8`) or a
         // fresh `dupeZ("")` fallback for the osc_52_read empty-clipboard
-        // case. Single-owner + single defer closes the leak Codex
-        // caught: the previous `defer if (text) |v| alloc.free(v)`
-        // didn't cover the fallback allocation.
+        // case. Single-owner + single defer ensures the fallback
+        // allocation is freed too.
         const str: [:0]u8 = (try self.readClipboardText()) orelse switch (state) {
             .paste => return false,
             .osc_52_read => try self.app.core_app.alloc.dupeZ(u8, ""),
@@ -19316,9 +19493,13 @@ pub const Surface = struct {
         const alloc = self.app.core_app.alloc;
         const progress = try formatProgressStatus(alloc, value);
         defer if (progress) |owned| alloc.free(owned);
-        if (optionalOwnedStringEquals(self.progress_status, progress)) return;
-        try appendOwnedString(alloc, &self.progress_status, progress);
-        self.invalidateStatusBarState();
+        if (!optionalOwnedStringEquals(self.progress_status, progress)) {
+            try appendOwnedString(alloc, &self.progress_status, progress);
+            self.invalidateStatusBarState();
+        }
+
+        self.taskbar_progress = if (value.state == .remove) null else value;
+        self.app.syncTaskbarProgressForHost(self.host_id);
     }
 
     fn applyCursor(self: *Surface) bool {
@@ -19359,8 +19540,8 @@ pub const Surface = struct {
     /// accept `surfaceConfirmPasteAccept` completes the paste; on
     /// cancel `surfaceConfirmPasteCancel` frees the payload.
     ///
-    /// Replaces the synchronous `confirmClipboardRead() + MessageBoxW`
-    /// idiom — see AGENTS.md:84 / task #13.
+    /// Non-modal replacement for the old synchronous clipboard
+    /// confirmation path.
     fn requestPasteConfirm(
         self: *Surface,
         request: apprt.ClipboardRequest,
@@ -19378,9 +19559,8 @@ pub const Surface = struct {
         // Single errdefer — if showConfirm fails we free the buffer
         // and leave `pending_clipboard_op` untouched (still null from
         // the defensive clear above). Committing the op BEFORE
-        // showConfirm would produce a double-free via a second
-        // errdefer on success-commit-then-failure (Codex review bug
-        // #3 / #10).
+        // showConfirm would produce a double-free if the operation
+        // committed successfully and a later setup step failed.
         errdefer alloc.free(data_copy);
 
         try host.showConfirm(
@@ -19420,12 +19600,9 @@ pub const Surface = struct {
 
         const owned = try alloc.alloc(OwnedClipboardContent, contents.len);
         var filled: usize = 0;
-        // Outer errdefer frees fully-committed entries `[0..filled)`
-        // plus the backing slice. Per-iteration
-        // `errdefer alloc.free(mime_copy)` covers the partial case
-        // where the mime dup succeeds but the follow-on data dup
-        // fails — without it the mime dup would leak because
-        // `filled` hasn't advanced yet. Codex re-review bug.
+        // Outer errdefer frees committed entries plus the backing slice.
+        // Per-iteration errdefer covers the mime-only partial allocation
+        // before `filled` advances.
         errdefer {
             var i: usize = 0;
             while (i < filled) : (i += 1) {
@@ -20565,6 +20742,324 @@ test "win32 quickSlotFocusKeyAction maps painted quick slot focus keys" {
     try std.testing.expectEqual(QuickSlotFocusKeyAction.last, quickSlotFocusKeyAction(VK_END).?);
     try std.testing.expectEqual(QuickSlotFocusKeyAction.open, quickSlotFocusKeyAction(VK_RETURN).?);
     try std.testing.expect(quickSlotFocusKeyAction(VK_SPACE) == null);
+}
+
+test "win32 taskbar progress mapping preserves state and percent" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const mapped = win32_taskbar_progress.mapProgressReport(.{
+        .state = .pause,
+        .progress = 35,
+    });
+
+    try std.testing.expectEqual(win32_taskbar_progress.TBPF_PAUSED, mapped.flags);
+    try std.testing.expectEqual(@as(u64, 35), mapped.value.?.completed);
+    try std.testing.expectEqual(@as(u64, 100), mapped.value.?.total);
+}
+
+test "win32 taskbar progress mapping removes progress cleanly" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const mapped = win32_taskbar_progress.mapProgressReport(.{
+        .state = .remove,
+    });
+
+    try std.testing.expectEqual(win32_taskbar_progress.TBPF_NOPROGRESS, mapped.flags);
+    try std.testing.expect(mapped.value == null);
+}
+
+test "win32 taskbar progress mapping covers set error and indeterminate" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const normal = win32_taskbar_progress.mapProgressReport(.{
+        .state = .set,
+        .progress = 80,
+    });
+    try std.testing.expectEqual(win32_taskbar_progress.TBPF_NORMAL, normal.flags);
+    try std.testing.expectEqual(@as(u64, 80), normal.value.?.completed);
+    try std.testing.expectEqual(@as(u64, 100), normal.value.?.total);
+
+    const failed = win32_taskbar_progress.mapProgressReport(.{
+        .state = .@"error",
+        .progress = 12,
+    });
+    try std.testing.expectEqual(win32_taskbar_progress.TBPF_ERROR, failed.flags);
+    try std.testing.expectEqual(@as(u64, 12), failed.value.?.completed);
+    try std.testing.expectEqual(@as(u64, 100), failed.value.?.total);
+
+    const busy = win32_taskbar_progress.mapProgressReport(.{
+        .state = .indeterminate,
+    });
+    try std.testing.expectEqual(win32_taskbar_progress.TBPF_INDETERMINATE, busy.flags);
+    try std.testing.expect(busy.value == null);
+}
+
+test "win32 progress status and taskbar mapping clamp percent to shell range" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const report: terminal.osc.Command.ProgressReport = .{
+        .state = .set,
+        .progress = 255,
+    };
+
+    const mapped = win32_taskbar_progress.mapProgressReport(report);
+    try std.testing.expectEqual(@as(u64, 100), mapped.value.?.completed);
+    try std.testing.expectEqual(@as(u64, 100), mapped.value.?.total);
+
+    const status = try formatProgressStatus(std.testing.allocator, report);
+    defer if (status) |owned| std.testing.allocator.free(owned);
+    try std.testing.expectEqualStrings("progress:100%", status.?);
+}
+
+test "win32 activeSurfaceForHost isolates taskbar progress by host and tab" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var app: App = undefined;
+    app.hosts = .empty;
+    defer app.hosts.deinit(std.testing.allocator);
+
+    var host_a: Host = undefined;
+    host_a.id = 11;
+    host_a.tabs = .empty;
+    host_a.active_tab = 0;
+    defer {
+        for (host_a.tabs.items) |*tab| tab.deinit();
+        host_a.tabs.deinit(std.testing.allocator);
+    }
+
+    var host_b: Host = undefined;
+    host_b.id = 22;
+    host_b.tabs = .empty;
+    host_b.active_tab = 0;
+    defer {
+        for (host_b.tabs.items) |*tab| tab.deinit();
+        host_b.tabs.deinit(std.testing.allocator);
+    }
+
+    var host_a_progress: Surface = undefined;
+    host_a_progress.core_surface = undefined;
+    host_a_progress.core_surface.id = 1001;
+    host_a_progress.host = &host_a;
+    host_a_progress.host_id = host_a.id;
+    host_a_progress.taskbar_progress = .{ .state = .set, .progress = 30 };
+
+    var host_a_idle: Surface = undefined;
+    host_a_idle.core_surface = undefined;
+    host_a_idle.core_surface.id = 1002;
+    host_a_idle.host = &host_a;
+    host_a_idle.host_id = host_a.id;
+    host_a_idle.taskbar_progress = null;
+
+    var host_b_progress: Surface = undefined;
+    host_b_progress.core_surface = undefined;
+    host_b_progress.core_surface.id = 2001;
+    host_b_progress.host = &host_b;
+    host_b_progress.host_id = host_b.id;
+    host_b_progress.taskbar_progress = .{ .state = .@"error", .progress = 80 };
+
+    try host_a.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &host_a_progress));
+    try host_a.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &host_a_idle));
+    try host_b.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 3, &host_b_progress));
+    try app.hosts.append(std.testing.allocator, &host_a);
+    try app.hosts.append(std.testing.allocator, &host_b);
+
+    const host_a_report = app.activeSurfaceForHost(host_a.id).?.taskbar_progress.?;
+    try std.testing.expectEqual(win32_taskbar_progress.ProgressState.set, host_a_report.state);
+    try std.testing.expectEqual(@as(?u8, 30), host_a_report.progress);
+
+    const host_b_report = app.activeSurfaceForHost(host_b.id).?.taskbar_progress.?;
+    try std.testing.expectEqual(win32_taskbar_progress.ProgressState.@"error", host_b_report.state);
+    try std.testing.expectEqual(@as(?u8, 80), host_b_report.progress);
+
+    host_a.active_tab = 1;
+    try std.testing.expect(app.activeSurfaceForHost(host_a.id).?.taskbar_progress == null);
+
+    const host_b_after_tab_switch = app.activeSurfaceForHost(host_b.id).?.taskbar_progress.?;
+    try std.testing.expectEqual(win32_taskbar_progress.ProgressState.@"error", host_b_after_tab_switch.state);
+    try std.testing.expectEqual(@as(?u8, 80), host_b_after_tab_switch.progress);
+}
+
+test "win32 resolveToastActivationSurface prefers exact surface id" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var app: App = undefined;
+    app.windows = .empty;
+    app.hosts = .empty;
+    defer app.windows.deinit(std.testing.allocator);
+    defer app.hosts.deinit(std.testing.allocator);
+
+    var primary: Surface = undefined;
+    primary.core_surface = undefined;
+    primary.core_surface.id = 101;
+
+    var exact: Surface = undefined;
+    exact.core_surface = undefined;
+    exact.core_surface.id = 202;
+
+    try app.windows.append(std.testing.allocator, &primary);
+    try app.windows.append(std.testing.allocator, &exact);
+
+    const resolved = app.resolveToastActivationSurface(.{
+        .surface_id = 202,
+        .window_id = 999,
+        .action = .focus,
+    });
+    try std.testing.expectEqual(@as(?*Surface, &exact), resolved);
+}
+
+test "win32 resolveToastActivationSurface falls back to primary surface" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var app: App = undefined;
+    app.windows = .empty;
+    app.hosts = .empty;
+    defer app.windows.deinit(std.testing.allocator);
+    defer app.hosts.deinit(std.testing.allocator);
+
+    var host: Host = undefined;
+    host.id = 77;
+    host.tabs = .empty;
+    host.active_tab = 0;
+    defer {
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var primary: Surface = undefined;
+    primary.core_surface = undefined;
+    primary.core_surface.id = 303;
+    primary.host = &host;
+    primary.host_id = host.id;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &primary));
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &primary);
+
+    const resolved = app.resolveToastActivationSurface(.{
+        .surface_id = 999,
+        .window_id = 999,
+        .action = .focus,
+    });
+    try std.testing.expectEqual(@as(?*Surface, &primary), resolved);
+}
+
+test "win32 resolveToastActivationSurface prefers requested host tab when surface is stale" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var app: App = undefined;
+    app.windows = .empty;
+    app.hosts = .empty;
+    defer app.windows.deinit(std.testing.allocator);
+    defer app.hosts.deinit(std.testing.allocator);
+
+    var host: Host = undefined;
+    host.id = 88;
+    host.tabs = .empty;
+    host.active_tab = 0;
+    defer {
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var tab0_surface: Surface = undefined;
+    tab0_surface.core_surface = undefined;
+    tab0_surface.core_surface.id = 401;
+    tab0_surface.host = &host;
+    tab0_surface.host_id = host.id;
+
+    var tab1_surface: Surface = undefined;
+    tab1_surface.core_surface = undefined;
+    tab1_surface.core_surface.id = 402;
+    tab1_surface.host = &host;
+    tab1_surface.host_id = host.id;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &tab0_surface));
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &tab1_surface));
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &tab0_surface);
+    try app.windows.append(std.testing.allocator, &tab1_surface);
+
+    const resolved = app.resolveToastActivationSurface(.{
+        .surface_id = 999,
+        .tab_id = 2,
+        .window_id = host.id,
+        .action = .focus,
+    });
+    try std.testing.expectEqual(@as(?*Surface, &tab1_surface), resolved);
+}
+
+test "win32 buildToastLaunchForSurface includes host tab id" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var host: Host = undefined;
+    host.id = 91;
+    host.tabs = .empty;
+    host.active_tab = 0;
+    defer {
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface: Surface = undefined;
+    surface.core_surface = undefined;
+    surface.core_surface.id = 555;
+    surface.host = &host;
+    surface.host_id = host.id;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 44, &surface));
+
+    const launch = try buildToastLaunchForSurface(std.testing.allocator, &surface);
+    defer std.testing.allocator.free(launch);
+
+    const parsed = try win32_toast_activation.parseLaunchArg(launch);
+    try std.testing.expectEqual(@as(?u64, 555), parsed.surface_id);
+    try std.testing.expectEqual(@as(?u32, 44), parsed.tab_id);
+    try std.testing.expectEqual(@as(?u32, host.id), parsed.window_id);
+    try std.testing.expectEqual(@as(?win32_toast_activation.Action, .focus), parsed.action);
+}
+
+test "win32 commandFinishPlan enforces threshold and focus policy" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var cfg = try configpkg.Config.default(std.testing.allocator);
+    defer cfg.deinit();
+    cfg.@"notify-on-command-finish" = .unfocused;
+    cfg.@"notify-on-command-finish-action" = .{ .bell = true, .notify = true };
+    cfg.@"notify-on-command-finish-after" = .{ .duration = 5 * std.time.ns_per_s };
+
+    const focused_plan = App.commandFinishPlan(cfg.@"notify-on-command-finish", cfg.@"notify-on-command-finish-action", cfg.@"desktop-notifications", cfg.@"notify-on-command-finish-after", true, .{
+        .duration = 6 * std.time.ns_per_s,
+    });
+    try std.testing.expectEqual(false, focused_plan.bell);
+    try std.testing.expectEqual(false, focused_plan.notify);
+
+    const unfocused_plan = App.commandFinishPlan(cfg.@"notify-on-command-finish", cfg.@"notify-on-command-finish-action", cfg.@"desktop-notifications", cfg.@"notify-on-command-finish-after", false, .{
+        .duration = 6 * std.time.ns_per_s,
+    });
+    try std.testing.expectEqual(true, unfocused_plan.bell);
+    try std.testing.expectEqual(true, unfocused_plan.notify);
+
+    const short_plan = App.commandFinishPlan(cfg.@"notify-on-command-finish", cfg.@"notify-on-command-finish-action", cfg.@"desktop-notifications", cfg.@"notify-on-command-finish-after", false, .{
+        .duration = 4 * std.time.ns_per_s,
+    });
+    try std.testing.expectEqual(false, short_plan.bell);
+    try std.testing.expectEqual(false, short_plan.notify);
+}
+
+test "win32 commandFinishPlan disables desktop notify when desktop notifications are off" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var cfg = try configpkg.Config.default(std.testing.allocator);
+    defer cfg.deinit();
+    cfg.@"notify-on-command-finish" = .always;
+    cfg.@"notify-on-command-finish-action" = .{ .bell = true, .notify = true };
+    cfg.@"desktop-notifications" = false;
+
+    const plan = App.commandFinishPlan(cfg.@"notify-on-command-finish", cfg.@"notify-on-command-finish-action", cfg.@"desktop-notifications", cfg.@"notify-on-command-finish-after", false, .{
+        .duration = 10 * std.time.ns_per_s,
+    });
+    try std.testing.expectEqual(true, plan.bell);
+    try std.testing.expectEqual(false, plan.notify);
 }
 
 test "win32 profileOpenTargetFromModifiers prefers split then window" {
@@ -22204,6 +22699,19 @@ test "win32 overlay edit child rect preserves frame border" {
     try std.testing.expectEqual(@as(i32, 292), child.right);
     try std.testing.expectEqual(@as(i32, 52), child.bottom);
     try std.testing.expect(child.bottom < frame.bottom);
+}
+
+test "win32 GDI text length accepts empty sentinel slices" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const alloc = std.testing.allocator;
+    const empty = try std.unicode.utf8ToUtf16LeAllocZ(alloc, "");
+    defer alloc.free(empty);
+    try std.testing.expectEqual(@as(i32, 0), utf16GdiTextLen(empty));
+
+    const confirm = try std.unicode.utf8ToUtf16LeAllocZ(alloc, "Confirm");
+    defer alloc.free(confirm);
+    try std.testing.expectEqual(@as(i32, 7), utf16GdiTextLen(confirm));
 }
 
 test "win32 command palette hides duplicate accept button" {

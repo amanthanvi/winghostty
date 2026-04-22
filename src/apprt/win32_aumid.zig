@@ -33,8 +33,7 @@
 const std = @import("std");
 const windows = std.os.windows;
 
-const HRESULT = i32;
-const BOOL = windows.BOOL;
+const HRESULT = windows.HRESULT;
 const LPCWSTR = [*:0]const u16;
 const HKEY = *opaque {};
 const REGSAM = u32;
@@ -42,7 +41,6 @@ const DWORD = u32;
 
 const HKEY_CURRENT_USER: HKEY = @ptrFromInt(0x80000001);
 const KEY_WRITE: REGSAM = 0x20006;
-const KEY_READ: REGSAM = 0x20019;
 const REG_OPTION_NON_VOLATILE: DWORD = 0;
 const REG_SZ: DWORD = 1;
 const REG_DWORD: DWORD = 4;

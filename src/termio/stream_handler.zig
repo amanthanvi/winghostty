@@ -1181,14 +1181,8 @@ pub const StreamHandler = struct {
         var arena_alloc: std.heap.ArenaAllocator = .init(self.alloc);
         var stack_alloc = std.heap.stackFallback(1024, arena_alloc.allocator());
         defer arena_alloc.deinit();
-        const raw_path = try uri.path.toRawMaybeAlloc(stack_alloc.get());
-        const path = if (builtin.os.tag == .windows)
-            try configpkg.windows_shell.osc7PathToLocal(
-                stack_alloc.get(),
-                raw_path,
-            )
-        else
-            raw_path;
+        const scratch = stack_alloc.get();
+        const path = try decodeOsc7PathForPwd(scratch, uri);
 
         log.debug("terminal pwd: {s}", .{path});
         try self.terminal.setPwd(path);
@@ -1206,6 +1200,17 @@ pub const StreamHandler = struct {
             try self.windowTitle(path);
             self.seen_title = false;
         }
+    }
+
+    fn decodeOsc7PathForPwd(
+        alloc: Allocator,
+        uri: std.Uri,
+    ) ![]const u8 {
+        const raw_path = try uri.path.toRawMaybeAlloc(alloc);
+        return if (builtin.os.tag == .windows)
+            try configpkg.windows_shell.osc7PathToLocal(alloc, raw_path)
+        else
+            raw_path;
     }
 
     fn colorOperation(
@@ -1556,3 +1561,21 @@ pub const StreamHandler = struct {
         self.surfaceMessageWriter(.{ .progress_report = report });
     }
 };
+
+test "decodeOsc7PathForPwd handles Windows file URI with a single fallback allocator" {
+    const uri = try internal_os.uri.parse("file://localhost/C:/Users/test/project", .{
+        .mac_address = false,
+        .raw_path = false,
+    });
+
+    var arena_alloc = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena_alloc.deinit();
+    var stack_alloc = std.heap.stackFallback(1024, arena_alloc.allocator());
+    const path = try StreamHandler.decodeOsc7PathForPwd(stack_alloc.get(), uri);
+
+    if (builtin.os.tag == .windows) {
+        try std.testing.expectEqualStrings("C:\\Users\\test\\project", path);
+    } else {
+        try std.testing.expectEqualStrings("/C:/Users/test/project", path);
+    }
+}
