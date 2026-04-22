@@ -64,6 +64,7 @@ const IID_IToastNotificationManagerStatics = GUID.parse("{50AC103F-D235-4598-BBE
 const IID_IToastNotificationFactory = GUID.parse("{04124B20-82C6-4229-B109-FD9ED4662B53}");
 const IID_IXmlDocumentIO = GUID.parse("{6CD0E74E-EE65-4489-9EBF-CA43E87BA637}");
 const IID_IToastActivatedHandler = GUID.parse("{AB54DE2D-97D9-5528-B6AD-105AFE156530}");
+const IID_IAgileObject = GUID.parse("{94EA2B94-E9CC-49E0-C0FF-EE64CA8F5B90}");
 
 comptime {
     if (@sizeOf(GUID) != 16) @compileError("GUID size must be 16 bytes");
@@ -404,7 +405,10 @@ const ToastActivationHandler = struct {
     ) callconv(.winapi) HRESULT {
         const self = fromBase(base);
         out.* = null;
-        if (iidEqual(iid, &IID_IUnknown) or iidEqual(iid, &IID_IToastActivatedHandler)) {
+        if (iidEqual(iid, &IID_IUnknown) or
+            iidEqual(iid, &IID_IToastActivatedHandler) or
+            iidEqual(iid, &IID_IAgileObject))
+        {
             out.* = self.base.asRaw();
             _ = self.refcount.fetchAdd(1, .monotonic);
             return S_OK;
@@ -560,6 +564,13 @@ pub const WinrtToast = struct {
         const notification = IToastNotification.fromRaw(notification_raw.?);
         defer _ = notification.release();
 
+        var setting_value: i32 = 0;
+        const setting_hr = self.notifier.vtbl.get_Setting(self.notifier.asRaw(), &setting_value);
+        if (setting_hr >= 0) {
+            const setting = notificationSettingFromInt(setting_value) orelse return ShowError.NotifierDisabled;
+            if (!notifierSettingAllowsDisplay(setting)) return ShowError.NotifierDisabled;
+        }
+
         if (launch) |value| {
             const callback = self.activation_callback orelse return ShowError.ActivationFailed;
             const ctx = self.activation_ctx orelse return ShowError.ActivationFailed;
@@ -573,13 +584,6 @@ pub const WinrtToast = struct {
                 });
                 return ShowError.ActivationFailed;
             }
-        }
-
-        var setting_value: i32 = 0;
-        const setting_hr = self.notifier.vtbl.get_Setting(self.notifier.asRaw(), &setting_value);
-        if (setting_hr >= 0) {
-            const setting = notificationSettingFromInt(setting_value) orelse return ShowError.NotifierDisabled;
-            if (!notifierSettingAllowsDisplay(setting)) return ShowError.NotifierDisabled;
         }
 
         const show_hr = self.notifier.vtbl.Show(self.notifier.asRaw(), notification.asRaw());
@@ -678,6 +682,11 @@ test "WinrtToast activation handler supports QI and invokes launch callback" {
     try std.testing.expect(out != null);
     const queried = ToastActivatedHandlerInterface.fromRaw(out.?);
     try std.testing.expectEqual(@as(u32, 1), queried.vtbl.Release(queried));
+
+    try std.testing.expectEqual(S_OK, handler.base.vtbl.QueryInterface(&handler.base, &IID_IAgileObject, &out));
+    try std.testing.expect(out != null);
+    const agile = ToastActivatedHandlerInterface.fromRaw(out.?);
+    try std.testing.expectEqual(@as(u32, 1), agile.vtbl.Release(agile));
 
     try std.testing.expectEqual(E_NOINTERFACE, handler.base.vtbl.QueryInterface(&handler.base, &IID_IInspectable, &out));
     try std.testing.expect(out == null);

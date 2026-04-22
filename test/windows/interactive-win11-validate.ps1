@@ -55,21 +55,23 @@ function Get-HarnessArguments {
     )
 
     $scriptPath = Join-Path $PSScriptRoot $ScriptName
-    $args = @(
+    $argumentList = @(
+        '-NoLogo'
+        '-NoProfile'
         '-ExecutionPolicy'
         'Bypass'
         '-File'
         $scriptPath
     )
     if ($TimeoutSeconds -gt 0) {
-        $args += @(
+        $argumentList += @(
             '-TimeoutSeconds'
             $TimeoutSeconds.ToString()
         )
     }
-    if ($ResetState -and $IncludeResetState) { $args += '-ResetState' }
+    if ($ResetState -and $IncludeResetState) { $argumentList += '-ResetState' }
 
-    return $args
+    return $argumentList
 }
 
 function Invoke-Harness {
@@ -79,9 +81,9 @@ function Invoke-Harness {
         [switch] $PassResetState
     )
 
-    $args = Get-HarnessArguments -ScriptName $ScriptName -TimeoutSeconds $TimeoutSeconds -IncludeResetState:$PassResetState
+    $argumentList = Get-HarnessArguments -ScriptName $ScriptName -TimeoutSeconds $TimeoutSeconds -IncludeResetState:$PassResetState
 
-    & powershell.exe @args
+    & powershell.exe @argumentList
     if ($LASTEXITCODE -ne 0) {
         throw "$ScriptName failed with exit code $LASTEXITCODE"
     }
@@ -95,11 +97,11 @@ function Start-Harness {
 
     $stdoutPath = Join-Path $suiteLogDir ("{0}.stdout.log" -f $ScriptName)
     $stderrPath = Join-Path $suiteLogDir ("{0}.stderr.log" -f $ScriptName)
-    $args = Get-HarnessArguments -ScriptName $ScriptName -TimeoutSeconds $TimeoutSeconds -IncludeResetState
+    $argumentList = Get-HarnessArguments -ScriptName $ScriptName -TimeoutSeconds $TimeoutSeconds -IncludeResetState
 
     $process = Start-Process `
         -FilePath 'powershell.exe' `
-        -ArgumentList $args `
+        -ArgumentList $argumentList `
         -WorkingDirectory $repoRoot `
         -RedirectStandardOutput $stdoutPath `
         -RedirectStandardError $stderrPath `

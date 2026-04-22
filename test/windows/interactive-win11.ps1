@@ -130,12 +130,13 @@ $existingExe = Join-Path $launchScratch 'ready\zig-out\bin\winghostty.exe'
 $directoryExe = Join-Path $launchScratch 'dir\zig-out\bin\winghostty.exe'
 $staleInputDir = Join-Path $launchScratch 'stale\src'
 $staleInputFile = Join-Path $staleInputDir 'win32.zig'
+$metadataInputDir = Join-Path $launchScratch 'metadata\src'
 $freshInputDir = Join-Path $launchScratch 'fresh\src'
 $freshInputFile = Join-Path $freshInputDir 'win32.zig'
 New-Item -ItemType Directory -Force -Path (Split-Path -Parent $existingExe) | Out-Null
 Set-Content -Path $existingExe -Value 'stub'
 New-Item -ItemType Directory -Force -Path $directoryExe | Out-Null
-New-Item -ItemType Directory -Force -Path $staleInputDir, $freshInputDir | Out-Null
+New-Item -ItemType Directory -Force -Path $staleInputDir, $metadataInputDir, $freshInputDir | Out-Null
 Set-Content -Path $staleInputFile -Value 'newer source'
 Set-Content -Path $freshInputFile -Value 'older source'
 
@@ -143,7 +144,10 @@ $exeInfo = Get-Item -LiteralPath $existingExe
 $olderTime = [DateTime]::UtcNow.AddMinutes(-10)
 $newerTime = [DateTime]::UtcNow.AddMinutes(10)
 $exeInfo.LastWriteTimeUtc = $olderTime
+(Get-Item -LiteralPath $staleInputDir).LastWriteTimeUtc = $newerTime
 (Get-Item -LiteralPath $staleInputFile).LastWriteTimeUtc = $newerTime
+(Get-Item -LiteralPath $metadataInputDir).LastWriteTimeUtc = $newerTime
+(Get-Item -LiteralPath $freshInputDir).LastWriteTimeUtc = $olderTime
 (Get-Item -LiteralPath $freshInputFile).LastWriteTimeUtc = $olderTime
 
 Assert-Equal (
@@ -161,6 +165,10 @@ Assert-Equal (
 Assert-Equal (
     Get-InteractiveWin11LaunchAction -ExePath $existingExe -BuildInputs $staleInputDir
 ) 'build' 'newer source inputs should force rebuild even when the binary exists'
+
+Assert-Equal (
+    Get-InteractiveWin11LaunchAction -ExePath $existingExe -BuildInputs $metadataInputDir
+) 'build' 'newer source directory metadata should force rebuild even without child files'
 
 Assert-Equal (
     Get-InteractiveWin11LaunchAction -ExePath $existingExe -BuildInputs $freshInputDir

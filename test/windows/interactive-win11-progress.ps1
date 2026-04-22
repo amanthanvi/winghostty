@@ -158,22 +158,27 @@ function Mark-State([string]`$path) {
 }
 
 Mark-State '$markerSet'
+# ESC ] 9 ; 4 ; 1 ; 50 BEL: set progress to 50%.
 Send-Bytes ([byte[]](0x1b,0x5d,0x39,0x3b,0x34,0x3b,0x31,0x3b,0x35,0x30,0x07))
 Start-Sleep -Seconds 2
 
 Mark-State '$markerPause'
+# ESC ] 9 ; 4 ; 4 ; 50 BEL: pause progress at 50%.
 Send-Bytes ([byte[]](0x1b,0x5d,0x39,0x3b,0x34,0x3b,0x34,0x3b,0x35,0x30,0x07))
 Start-Sleep -Seconds 2
 
 Mark-State '$markerError'
+# ESC ] 9 ; 4 ; 2 ; 50 BEL: mark progress as error at 50%.
 Send-Bytes ([byte[]](0x1b,0x5d,0x39,0x3b,0x34,0x3b,0x32,0x3b,0x35,0x30,0x07))
 Start-Sleep -Seconds 2
 
 Mark-State '$markerBusy'
+# ESC ] 9 ; 4 ; 3 BEL: switch progress to indeterminate.
 Send-Bytes ([byte[]](0x1b,0x5d,0x39,0x3b,0x34,0x3b,0x33,0x07))
 Start-Sleep -Seconds 2
 
 Mark-State '$markerRemove'
+# ESC ] 9 ; 4 ; 0 ; BEL: clear progress.
 Send-Bytes ([byte[]](0x1b,0x5d,0x39,0x3b,0x34,0x3b,0x30,0x3b,0x07))
 Start-Sleep -Seconds 3
 "@ | Set-Content -LiteralPath $payloadPath -Encoding UTF8

@@ -100,10 +100,10 @@ pub fn mapProgressReport(report: ProgressReport) ProgressMapping {
     return switch (report.state) {
         .remove => .{ .flags = TBPF_NOPROGRESS },
         .indeterminate => .{ .flags = TBPF_INDETERMINATE },
-        .set => .{
+        .set => if (progress) |value| .{
             .flags = TBPF_NORMAL,
-            .value = .{ .completed = progress orelse 0, .total = 100 },
-        },
+            .value = .{ .completed = value, .total = 100 },
+        } else .{ .flags = TBPF_INDETERMINATE },
         .@"error" => .{
             .flags = TBPF_ERROR,
             .value = .{ .completed = progress orelse 0, .total = 100 },
@@ -206,9 +206,9 @@ test "taskbar progress maps determinate states to shell colors and values" {
     );
 }
 
-test "taskbar progress defaults missing progress and clamps overflow" {
+test "taskbar progress treats missing set progress as indeterminate and clamps overflow" {
     try std.testing.expectEqual(
-        ProgressMapping{ .flags = TBPF_NORMAL, .value = .{ .completed = 0, .total = 100 } },
+        ProgressMapping{ .flags = TBPF_INDETERMINATE },
         mapProgressReport(.{ .state = .set }),
     );
     try std.testing.expectEqual(

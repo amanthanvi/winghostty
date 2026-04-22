@@ -185,6 +185,13 @@ function Set-InteractiveWin11Environment {
             'Process'
         )
     }
+    else {
+        [System.Environment]::SetEnvironmentVariable(
+            'GHOSTTY_RESOURCES_DIR',
+            $null,
+            [System.EnvironmentVariableTarget]::Process
+        )
+    }
 
     return $sandboxEnv
 }
@@ -239,9 +246,10 @@ function Invoke-InteractiveWin11Build {
         [Parameter(Mandatory)] [string] $RepoRoot
     )
 
+    $devWindowsCmd = Join-Path $RepoRoot 'scripts\dev-windows.cmd'
     Push-Location $RepoRoot
     try {
-        & zig build -Demit-exe=true
+        & cmd /c $devWindowsCmd zig build -Demit-exe=true
         if ($LASTEXITCODE -ne 0) {
             throw "zig build -Demit-exe=true failed with exit code $LASTEXITCODE"
         }
@@ -294,9 +302,9 @@ function Stop-InteractiveWin11Process {
     )
 
     if (-not $Process.HasExited) {
-        Stop-Process -Id $Process.Id -Force
-        $Process.WaitForExit()
+        Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
     }
+    $Process.WaitForExit()
 }
 
 function Test-InteractiveWin11InputNewerThanBinary {
@@ -328,7 +336,10 @@ function Test-InteractiveWin11InputNewerThanBinary {
             continue
         }
 
-        $newerInput = Get-ChildItem -LiteralPath $resolvedInputPath -Recurse -File -ErrorAction Stop |
+        $newerInput = @(
+            Get-Item -LiteralPath $resolvedInputPath -ErrorAction Stop
+            Get-ChildItem -LiteralPath $resolvedInputPath -Recurse -Force -ErrorAction Stop
+        ) |
             Where-Object { $_.LastWriteTimeUtc -gt $exeTimestamp } |
             Select-Object -First 1
         if ($null -ne $newerInput) {

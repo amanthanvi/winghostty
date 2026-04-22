@@ -106,7 +106,7 @@ pub fn scanLaunchArgs(args: []const []const u8) ?ActivationTarget {
 /// activation argv instead of misrouting it into startup arg parsing.
 pub fn scanLaunchArgsDetailed(args: []const []const u8) ScanLaunchArgsResult {
     for (args) |arg| {
-        if (!std.mem.startsWith(u8, arg, "wgh://")) continue;
+        if (!std.mem.startsWith(u8, arg, scheme)) continue;
         return .{
             .activation = parseLaunchArg(arg) catch return .malformed,
         };
@@ -255,4 +255,15 @@ test "scan launch args detailed reports malformed activation" {
     };
 
     try std.testing.expect(scanLaunchArgsDetailed(&args) == .malformed);
+}
+
+test "scan launch args ignores non-activation wgh urls" {
+    const args = [_][]const u8{
+        "wgh://open?surface=abc",
+        "--working-directory=C:/Users/amant",
+        "wgh://activate?surface=88",
+    };
+
+    const target = scanLaunchArgs(&args).?;
+    try std.testing.expectEqual(@as(?u64, 88), target.surface_id);
 }

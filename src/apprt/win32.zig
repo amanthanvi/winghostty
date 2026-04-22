@@ -2443,6 +2443,7 @@ pub const App = struct {
             },
 
             .new_window => {
+                var forwarded_arguments = value.arguments;
                 switch (scanForwardedToastActivation(value.arguments)) {
                     .none => {},
                     .malformed => {
@@ -2450,8 +2451,9 @@ pub const App = struct {
                         return true;
                     },
                     .activation => |activation| {
-                        _ = self.handleToastActivation(activation);
-                        return true;
+                        if (self.handleToastActivation(activation)) return true;
+                        self.pending_toast_activation = activation;
+                        forwarded_arguments = null;
                     },
                 }
                 var config = try apprt.surface.newConfig(
@@ -2460,7 +2462,7 @@ pub const App = struct {
                     .window,
                 );
                 defer config.deinit();
-                try applyNewWindowArguments(self.core_app.alloc, &config, value.arguments);
+                try applyNewWindowArguments(self.core_app.alloc, &config, forwarded_arguments);
                 _ = try self.createWindowSurface(&config, default_title, .{
                     .clone_state_from = self.findSurfaceForTarget(target),
                 });
@@ -3443,6 +3445,12 @@ pub const App = struct {
             if (surface.core().id == surface_id) return surface;
         }
 
+        for (self.hosts.items) |host| {
+            for (host.tabs.items) |*tab| {
+                if (tab.findSurfaceByCoreId(surface_id)) |surface| return surface;
+            }
+        }
+
         return null;
     }
 
@@ -3687,10 +3695,12 @@ pub const App = struct {
             if (found.tab.focused != handle) found.tab.focused = handle;
             if (!needs_host_sync) {
                 surface.setVisible(true);
+                self.syncTaskbarProgressForHost(surface.host_id);
                 return;
             }
         }
         self.showHostSurface(surface, false);
+        self.syncTaskbarProgressForHost(surface.host_id);
     }
 
     fn noteSurfaceFocused(self: *App, surface: *Surface) bool {
@@ -5055,6 +5065,14 @@ const Tab = struct {
         var it = self.tree.iterator();
         while (it.next()) |entry| {
             if (entry.view == surface) return entry.handle;
+        }
+        return null;
+    }
+
+    fn findSurfaceByCoreId(self: *const Tab, surface_id: u64) ?*Surface {
+        var it = self.tree.iterator();
+        while (it.next()) |entry| {
+            if (entry.view.core().id == surface_id) return entry.view;
         }
         return null;
     }
@@ -11890,15 +11908,11 @@ fn stripHtmlTags(alloc: std.mem.Allocator, html: []const u8) ![]u8 {
     while (i < html.len) {
         const c = html[i];
         if (c == '<') {
-            // Unmatched `<` is literal content; dropping the rest would
-            // truncate malformed HTML pastes.
             if (std.mem.indexOfScalarPos(u8, html, i, '>')) |end| {
                 i = end + 1;
                 continue;
             }
-            try buf.append(alloc, c);
-            i += 1;
-            continue;
+            break;
         }
         try buf.append(alloc, c);
         i += 1;
@@ -11918,18 +11932,16 @@ test "stripHtmlTags drops tag brackets" {
 
 test "stripHtmlTags handles malformed (unclosed tag)" {
     const testing = std.testing;
-    // Unmatched `<` is preserved as literal content.
     const out = try stripHtmlTags(testing.allocator, "pre<broken");
     defer testing.allocator.free(out);
-    try testing.expectEqualStrings("pre<broken", out);
+    try testing.expectEqualStrings("pre", out);
 }
 
-test "stripHtmlTags malformed in middle keeps tail" {
+test "stripHtmlTags malformed in middle truncates fallback" {
     const testing = std.testing;
-    // Regression: unmatched `<` must preserve the tail.
     const out = try stripHtmlTags(testing.allocator, "hello <world tail");
     defer testing.allocator.free(out);
-    try testing.expectEqualStrings("hello <world tail", out);
+    try testing.expectEqualStrings("hello ", out);
 }
 
 test "stripHtmlTags preserves plain text" {
@@ -20905,6 +20917,63 @@ test "win32 resolveToastActivationSurface prefers exact surface id" {
         .action = .focus,
     });
     try std.testing.expectEqual(@as(?*Surface, &exact), resolved);
+}
+
+test "win32 resolveToastActivationSurface finds split pane by exact surface id" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var app: App = undefined;
+    app.windows = .empty;
+    app.hosts = .empty;
+    defer app.windows.deinit(std.testing.allocator);
+    defer app.hosts.deinit(std.testing.allocator);
+
+    var host: Host = undefined;
+    host.id = 66;
+    host.tabs = .empty;
+    host.active_tab = 0;
+    defer {
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var primary: Surface = undefined;
+    primary.core_surface = undefined;
+    primary.core_surface.id = 501;
+    primary.host = &host;
+    primary.host_id = host.id;
+
+    var split: Surface = undefined;
+    split.core_surface = undefined;
+    split.core_surface.id = 502;
+    split.host = &host;
+    split.host_id = host.id;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &primary));
+    const inserted = try SplitTreeSurface.init(std.testing.allocator, &split);
+    defer {
+        var cleanup = inserted;
+        cleanup.deinit();
+    }
+    var prev_tree = host.tabs.items[0].tree;
+    const next_tree = try prev_tree.split(
+        std.testing.allocator,
+        host.tabs.items[0].focused,
+        .right,
+        0.5,
+        &inserted,
+    );
+    host.tabs.items[0].tree = next_tree;
+    prev_tree.deinit();
+
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &primary);
+
+    const resolved = app.resolveToastActivationSurface(.{
+        .surface_id = 502,
+        .action = .focus,
+    });
+    try std.testing.expectEqual(@as(?*Surface, &split), resolved);
 }
 
 test "win32 resolveToastActivationSurface falls back to primary surface" {

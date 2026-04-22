@@ -15,7 +15,7 @@ separate sandbox roots.
 
 Run with:
 
-```
+```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\interactive-win11-validate.ps1 -ResetState
 ```
 
@@ -31,7 +31,7 @@ observed in stderr.
 
 Run with:
 
-```
+```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\interactive-win11-smoke.ps1 -ResetState -TimeoutSeconds 10
 ```
 
@@ -52,7 +52,7 @@ command-finished path fired.
 
 Run with:
 
-```
+```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\interactive-win11-command-finish.ps1 -ResetState -TimeoutSeconds 12
 ```
 
@@ -82,7 +82,7 @@ content.
 
 Run with:
 
-```
+```powershell
 powershell.exe -ExecutionPolicy Bypass -File .\interactive-win11-progress.ps1 -ResetState -TimeoutSeconds 20
 ```
 
@@ -95,7 +95,7 @@ environment applied.
 
 Run with:
 
-```
+```powershell
 powershell.exe -ExecutionPolicy Bypass -File ..\..\scripts\interactive-win11.ps1 -ResetState
 ```
 
@@ -109,7 +109,7 @@ runtime is properly initialized.
 
 First build ghostty.dll, then compile the test:
 
-```
+```powershell
 zig build -Dapp-runtime=none -Demit-exe=false
 zig cc test_dll_init.c -o test_dll_init.exe -target native-native-msvc
 ```
@@ -118,13 +118,13 @@ zig cc test_dll_init.c -o test_dll_init.exe -target native-native-msvc
 
 From this directory:
 
-```
+```powershell
 copy ..\..\zig-out\lib\ghostty.dll . && test_dll_init.exe
 ```
 
 Expected output (after the CRT fix):
 
-```
+```text
 ghostty_info: <version string>
 ```
 
