@@ -1824,6 +1824,7 @@ pub fn updateConfig(
             log.warn("failed to clear progress after disabling progress-style err={}", .{err});
         };
     }
+    // Re-enable resync waits for the next OSC 9;4 report; disabled reports are not buffered.
 
     // If our mouse is hidden but we disabled mouse hiding, then show it again.
     if (!self.config.mouse_hide_while_typing and self.mouse.hidden) {

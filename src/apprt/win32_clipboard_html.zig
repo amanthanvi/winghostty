@@ -79,15 +79,23 @@ pub fn wrapFragment(alloc: Allocator, html: []const u8) Allocator.Error![]u8 {
     return buf;
 }
 
+fn headerRegionEnd(output: []const u8) usize {
+    if (std.mem.indexOf(u8, output, "\r\n\r\n")) |idx| return idx;
+    if (std.mem.indexOf(u8, output, "\n\n")) |idx| return idx;
+    if (std.mem.indexOf(u8, output, "<html")) |idx| return idx;
+    return output.len;
+}
+
 pub fn headerOffset(output: []const u8, comptime key: []const u8) ?usize {
     const needle = key ++ ":";
-    const start = std.mem.indexOf(u8, output, needle) orelse return null;
+    const header = output[0..headerRegionEnd(output)];
+    const start = std.mem.indexOf(u8, header, needle) orelse return null;
     var p: usize = start + needle.len;
-    while (p < output.len and (output[p] == ' ' or output[p] == '\t')) : (p += 1) {}
+    while (p < header.len and (header[p] == ' ' or header[p] == '\t')) : (p += 1) {}
     const digit_start = p;
-    while (p < output.len and output[p] >= '0' and output[p] <= '9') : (p += 1) {}
+    while (p < header.len and header[p] >= '0' and header[p] <= '9') : (p += 1) {}
     if (p == digit_start) return null;
-    return std.fmt.parseInt(usize, output[digit_start..p], 10) catch null;
+    return std.fmt.parseInt(usize, header[digit_start..p], 10) catch null;
 }
 
 pub fn fragmentRange(output: []const u8) ?FragmentRange {
@@ -188,4 +196,14 @@ test "fragmentRange parses lenient CF_HTML fragment offsets" {
     const range = fragmentRange(raw).?;
     try std.testing.expectEqual(@as(usize, 5), range.start);
     try std.testing.expectEqual(@as(usize, 10), range.end);
+}
+
+test "headerOffset ignores keys outside the CF_HTML header" {
+    const raw =
+        "Version:0.9\r\n" ++
+        "StartFragment:0000000017\r\n" ++
+        "\r\n" ++
+        "<p>StartFragment:9999999999</p>";
+    try std.testing.expectEqual(@as(?usize, 17), headerOffset(raw, "StartFragment"));
+    try std.testing.expect(headerOffset(raw, "EndFragment") == null);
 }

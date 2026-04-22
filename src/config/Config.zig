@@ -103,6 +103,7 @@ pub fn Value(comptime key: Key) type {
 
         const fields = std.meta.fields(Config);
         for (fields) |field| {
+            if (!@hasField(Key, field.name)) continue;
             if (@field(Key, field.name) == key) {
                 break :field field;
             }
@@ -4397,6 +4398,7 @@ pub fn changed(self: *const Config, new: *const Config, comptime key: Key) bool 
     const field = comptime field: {
         const fields = std.meta.fields(Config);
         for (fields) |field| {
+            if (!@hasField(Key, field.name)) continue;
             if (@field(Key, field.name) == key) {
                 break :field field;
             }
@@ -4417,13 +4419,14 @@ pub const ChangeIterator = struct {
     i: usize = 0,
 
     pub fn next(self: *ChangeIterator) ?Key {
-        const fields = comptime std.meta.fields(Key);
+        const fields = comptime std.meta.fields(Config);
         while (self.i < fields.len) {
             switch (self.i) {
                 inline 0...(fields.len - 1) => |i| {
                     const field = fields[i];
-                    const key = @field(Key, field.name);
                     self.i += 1;
+                    if (!@hasField(Key, field.name)) continue;
+                    const key = @field(Key, field.name);
                     if (self.old.changed(self.new, key)) return key;
                 },
 

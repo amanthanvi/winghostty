@@ -1,6 +1,9 @@
 @echo off
 setlocal
 
+rem Seeds the dependency subset used by the Windows build. Generated
+rem build.zig.zon metadata may still list inactive platform packages.
+
 set "_SYSTEM_DRIVE=%SystemDrive%"
 if "%_SYSTEM_DRIVE%"=="" set "_SYSTEM_DRIVE=C:"
 set "_USER_HOME=%USERPROFILE%"

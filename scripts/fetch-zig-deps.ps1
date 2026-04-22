@@ -1,5 +1,8 @@
 $ErrorActionPreference = "Stop"
 
+# Seeds the dependency subset used by the Windows build. Generated
+# build.zig.zon metadata may still list inactive platform packages.
+
 $systemDrive = if ($env:SystemDrive) { $env:SystemDrive } else { "C:" }
 $userHome = if ($env:USERPROFILE) {
     $env:USERPROFILE

@@ -567,7 +567,10 @@ pub const WinrtToast = struct {
         var setting_value: i32 = 0;
         const setting_hr = self.notifier.vtbl.get_Setting(self.notifier.asRaw(), &setting_value);
         if (setting_hr >= 0) {
-            const setting = notificationSettingFromInt(setting_value) orelse return ShowError.NotifierDisabled;
+            const setting = notificationSettingFromInt(setting_value) orelse {
+                std.log.warn("winrt toast: unrecognized notifier setting={d}; falling back", .{setting_value});
+                return ShowError.NotifierDisabled;
+            };
             if (!notifierSettingAllowsDisplay(setting)) return ShowError.NotifierDisabled;
         }
 

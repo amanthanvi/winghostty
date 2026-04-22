@@ -214,7 +214,7 @@ zig build -Demit-exe=true
 Output: `zig-out\bin\winghostty.exe`.
 
 If Zig cannot reach `deps.files.ghostty.org` directly in your environment,
-seed the dependency cache first:
+seed the Windows build dependency cache first:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/fetch-zig-deps.ps1

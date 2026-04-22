@@ -1621,6 +1621,7 @@ pub const App = struct {
     /// unavailable, in which case progress continues to render only in
     /// the window title/status text.
     taskbar_progress: ?win32_taskbar_progress.TaskbarProgress = null,
+    toast_activation_post_pending: std.atomic.Value(bool) = .init(false),
     /// Absolute path supplied via `--config-file <path>` on the CLI.
     /// Resolved ONCE against the startup cwd during `App.init` — that's
     /// important because `run()` later calls `sanitizeCurrentDirectory()`,
@@ -1841,7 +1842,10 @@ pub const App = struct {
             if (msg.message == WM_WINHOSTTY_TOAST_ACTIVATION) {
                 const activation: *win32_toast_activation.ActivationTarget = @ptrFromInt(@as(usize, @bitCast(msg.lParam)));
                 defer std.heap.page_allocator.destroy(activation);
-                _ = self.handleToastActivation(activation.*);
+                defer self.toast_activation_post_pending.store(false, .release);
+                if (!self.handleToastActivation(activation.*)) {
+                    self.pending_toast_activation = activation.*;
+                }
                 try self.core_app.tick(self);
                 if (!self.running and self.windows.items.len == 0) break;
                 continue;
@@ -3570,7 +3574,9 @@ pub const App = struct {
         const state_name = if (report) |value| @tagName(value.state) else "remove";
         std.log.debug("taskbar progress sync host_id={d} state={s}", .{ host_id, state_name });
         taskbar.apply(hwnd, report) catch |err| {
-            std.log.warn("taskbar progress sync failed host_id={d} err={}", .{ host_id, err });
+            std.log.warn("taskbar progress sync failed host_id={d} err={}; disabling native taskbar progress", .{ host_id, err });
+            taskbar.deinit();
+            self.taskbar_progress = null;
         };
     }
 
@@ -3612,9 +3618,9 @@ pub const App = struct {
     }
 
     fn handleToastActivation(self: *App, activation: win32_toast_activation.ActivationTarget) bool {
-        if (activation.action) |action| {
-            if (action != .focus) return false;
-        }
+        if (activation.action) |action| switch (action) {
+            .focus => {},
+        };
 
         const surface = self.resolveToastActivationSurface(activation) orelse return false;
         surface.present();
@@ -4835,8 +4841,14 @@ fn winrtToastActivationCallback(ctx: *anyopaque, launch: []const u8) void {
         return;
     };
 
+    if (self.toast_activation_post_pending.swap(true, .acq_rel)) {
+        std.log.warn("dropping winrt toast activation while another activation is queued", .{});
+        return;
+    }
+
     const activation = std.heap.page_allocator.create(win32_toast_activation.ActivationTarget) catch |err| {
         std.log.warn("dropping winrt toast activation allocation failed err={}", .{err});
+        self.toast_activation_post_pending.store(false, .release);
         return;
     };
     activation.* = parsed;
@@ -4851,6 +4863,7 @@ fn winrtToastActivationCallback(ctx: *anyopaque, launch: []const u8) void {
             windows.kernel32.GetLastError(),
         });
         std.heap.page_allocator.destroy(activation);
+        self.toast_activation_post_pending.store(false, .release);
     }
 }
 
