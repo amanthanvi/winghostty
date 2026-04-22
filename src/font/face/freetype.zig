@@ -17,7 +17,7 @@ const Glyph = font.Glyph;
 const Library = font.Library;
 const opentype = @import("../opentype.zig");
 const quirks = @import("../../quirks.zig");
-const config = @import("../../config.zig");
+const config = @import("../../config/Config.zig");
 
 const F26Dot6 = opentype.sfnt.F26Dot6;
 
@@ -111,7 +111,7 @@ pub const Face = struct {
             .load_flags = opts.freetype_load_flags,
             .size = opts.size,
         };
-        result.quirks_disable_default_font_features = quirks.disableDefaultFontFeatures(&result);
+        result.quirks_disable_default_font_features = quirks.disableDefaultFontFeatures();
 
         // In debug mode, we output information about available variation axes,
         // if they exist.

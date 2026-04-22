@@ -1,6 +1,6 @@
 const std = @import("std");
 const args = @import("args.zig");
-const Action = @import("ghostty.zig").Action;
+const actionpkg = @import("action.zig");
 const Config = @import("../config/Config.zig");
 const configpkg = @import("../config.zig");
 const themepkg = @import("../config/theme.zig");
@@ -35,7 +35,7 @@ pub const Options = struct {
     /// Enables "-h" and "--help" to work.
     pub fn help(self: Options) !void {
         _ = self;
-        return Action.help_error;
+        return actionpkg.help_error;
     }
 };
 

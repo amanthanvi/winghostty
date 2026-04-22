@@ -1,7 +1,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const args = @import("args.zig");
-const Action = @import("ghostty.zig").Action;
+const actionpkg = @import("action.zig");
 const Config = @import("../config.zig").Config;
 const crash = @import("../crash/main.zig");
 
@@ -13,7 +13,7 @@ pub const Options = struct {
     /// Enables "-h" and "--help" to work.
     pub fn help(self: Options) !void {
         _ = self;
-        return Action.help_error;
+        return actionpkg.help_error;
     }
 };
 

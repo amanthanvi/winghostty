@@ -4,7 +4,7 @@ const assert = @import("../quirks.zig").inlineAssert;
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 
-const cli = @import("../cli.zig");
+const cli_diags = @import("../cli/diagnostics.zig");
 const internal_os = @import("../os/main.zig");
 const formatterpkg = @import("formatter.zig");
 
@@ -141,7 +141,7 @@ pub const Path = union(enum) {
         /// path.
         base: []const u8,
         /// Errors will be added to the list of diagnostics if they occur.
-        diags: *cli.DiagnosticList,
+        diags: *cli_diags.DiagnosticList,
     ) !void {
         assert(std.fs.path.isAbsolute(base));
 
@@ -428,7 +428,7 @@ pub const RepeatablePath = struct {
         self: *RepeatablePath,
         alloc: Allocator,
         base: []const u8,
-        diags: *cli.DiagnosticList,
+        diags: *cli_diags.DiagnosticList,
     ) !void {
         for (self.value.items) |*path| {
             try path.expand(alloc, base, diags);

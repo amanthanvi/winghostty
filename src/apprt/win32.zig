@@ -6,7 +6,7 @@ const apprt = @import("../apprt.zig");
 const build_config = @import("../build_config.zig");
 const CoreApp = @import("../App.zig");
 const CoreSurface = @import("../Surface.zig");
-const cli = @import("../cli.zig");
+const cli_args = @import("../cli/args.zig");
 const configpkg = @import("../config.zig");
 const config_edit = @import("../config/edit.zig");
 const windows_shell = @import("../config/windows_shell.zig");
@@ -43,6 +43,7 @@ const win32_nc_layout = @import("win32_nc_layout.zig");
 const win32_status_bar = @import("win32_status_bar.zig");
 const win32_tab_visual = @import("win32_tab_visual.zig");
 const win32_focus_ring = @import("win32_focus_ring.zig");
+const win32_types = @import("win32_types.zig");
 
 // Re-export types from theme module
 const ThemeColors = win32_theme.ThemeColors;
@@ -71,29 +72,29 @@ const windows = std.os.windows;
 
 pub const resourcesDir = internal_os.resourcesDir;
 
-const ATOM = u16;
-const LPCWSTR = [*:0]const u16;
-const HBRUSH = ?*anyopaque;
-const HCURSOR = ?*anyopaque;
-const HDC = ?*anyopaque;
-const HGLRC = ?*anyopaque;
-const HGDIOBJ = ?*anyopaque;
-const HMODULE = ?*anyopaque;
-const HMENU = ?*anyopaque;
-const HICON = ?*anyopaque;
-const LPARAM = isize;
-const WPARAM = usize;
-const LRESULT = isize;
-const LONG_PTR = isize;
-const UINT = u32;
-const UINT_PTR = usize;
-const DWORD = u32;
-const WORD = u16;
-const BYTE = u8;
-const BOOL = windows.BOOL;
-const HWND = windows.HWND;
-const HINSTANCE = windows.HINSTANCE;
-const INTRESOURCE = ?*const anyopaque;
+const ATOM = win32_types.ATOM;
+const LPCWSTR = win32_types.LPCWSTR;
+const HBRUSH = win32_types.HBRUSH;
+const HCURSOR = win32_types.HCURSOR;
+const HDC = win32_types.HDC;
+const HGLRC = win32_types.HGLRC;
+const HGDIOBJ = win32_types.HGDIOBJ;
+const HMODULE = win32_types.HMODULE;
+const HMENU = win32_types.HMENU;
+const HICON = win32_types.HICON;
+const LPARAM = win32_types.LPARAM;
+const WPARAM = win32_types.WPARAM;
+const LRESULT = win32_types.LRESULT;
+const LONG_PTR = win32_types.LONG_PTR;
+const UINT = win32_types.UINT;
+const UINT_PTR = win32_types.UINT_PTR;
+const DWORD = win32_types.DWORD;
+const WORD = win32_types.WORD;
+const BYTE = win32_types.BYTE;
+const BOOL = win32_types.BOOL;
+const HWND = win32_types.HWND;
+const HINSTANCE = win32_types.HINSTANCE;
+const INTRESOURCE = win32_types.INTRESOURCE;
 
 const CS_OWNDC = 0x0020;
 const CW_USEDEFAULT = @as(i32, @bitCast(@as(u32, 0x80000000)));
@@ -415,7 +416,7 @@ const SEARCH_CLOSE_ID: usize = 2108;
 const MF_POPUP: UINT = 0x00000010;
 const MF_CHECKED: UINT = 0x00000008;
 
-const WNDPROC = *const fn (HWND, UINT, WPARAM, LPARAM) callconv(.winapi) LRESULT;
+const WNDPROC = win32_types.WNDPROC;
 const SHORT = i16;
 
 const VK_BACK = 0x08;
@@ -494,17 +495,8 @@ const ipc_wire_version: u32 = 1;
 const ipc_ack_success: u8 = 0;
 const ipc_ack_failure: u8 = 1;
 
-const POINT = extern struct {
-    x: i32,
-    y: i32,
-};
-
-const RECT = extern struct {
-    left: i32,
-    top: i32,
-    right: i32,
-    bottom: i32,
-};
+const POINT = win32_types.POINT;
+const RECT = win32_types.RECT;
 
 const PIXELFORMATDESCRIPTOR = extern struct {
     nSize: WORD,
@@ -545,14 +537,7 @@ const MSG = extern struct {
     lPrivate: u32,
 };
 
-const PAINTSTRUCT = extern struct {
-    hdc: HDC,
-    fErase: BOOL,
-    rcPaint: RECT,
-    fRestore: BOOL,
-    fIncUpdate: BOOL,
-    rgbReserved: [32]u8,
-};
+const PAINTSTRUCT = win32_types.PAINTSTRUCT;
 
 const DRAWITEMSTRUCT = extern struct {
     CtlType: UINT,
@@ -588,35 +573,8 @@ const NCCALCSIZE_PARAMS = extern struct {
     lppos: *WINDOWPOS,
 };
 
-const WNDCLASSEXW = extern struct {
-    cbSize: u32,
-    style: u32,
-    lpfnWndProc: WNDPROC,
-    cbClsExtra: i32,
-    cbWndExtra: i32,
-    hInstance: HINSTANCE,
-    hIcon: HICON,
-    hCursor: HCURSOR,
-    hbrBackground: HBRUSH,
-    lpszMenuName: ?LPCWSTR,
-    lpszClassName: LPCWSTR,
-    hIconSm: HICON,
-};
-
-const CREATESTRUCTW = extern struct {
-    lpCreateParams: ?*anyopaque,
-    hInstance: HINSTANCE,
-    hMenu: HMENU,
-    hwndParent: HWND,
-    cy: i32,
-    cx: i32,
-    y: i32,
-    x: i32,
-    style: i32,
-    lpszName: LPCWSTR,
-    lpszClass: LPCWSTR,
-    dwExStyle: u32,
-};
+const WNDCLASSEXW = win32_types.WNDCLASSEXW;
+const CREATESTRUCTW = win32_types.CREATESTRUCTW;
 
 const MONITORINFO = extern struct {
     cbSize: u32,
@@ -1416,7 +1374,7 @@ fn normalizeForwardedStartupArg(
 }
 
 fn collectStartupForwardArguments(alloc: Allocator) !?[]const [:0]const u8 {
-    var iter = try cli.args.argsIterator(alloc);
+    var iter = try cli_args.argsIterator(alloc);
     defer iter.deinit();
 
     var argv: std.ArrayList([:0]const u8) = .empty;

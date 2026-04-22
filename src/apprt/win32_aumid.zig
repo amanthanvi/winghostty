@@ -32,12 +32,13 @@
 
 const std = @import("std");
 const windows = std.os.windows;
+const win32_types = @import("win32_types.zig");
 
 const HRESULT = windows.HRESULT;
-const LPCWSTR = [*:0]const u16;
+const LPCWSTR = win32_types.LPCWSTR;
 const HKEY = *opaque {};
 const REGSAM = u32;
-const DWORD = u32;
+const DWORD = win32_types.DWORD;
 
 const HKEY_CURRENT_USER: HKEY = @ptrFromInt(0x80000001);
 const KEY_WRITE: REGSAM = 0x20006;

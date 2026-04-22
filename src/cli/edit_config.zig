@@ -4,7 +4,7 @@ const windows = std.os.windows;
 const assert = @import("../quirks.zig").inlineAssert;
 const args = @import("args.zig");
 const Allocator = std.mem.Allocator;
-const Action = @import("ghostty.zig").Action;
+const actionpkg = @import("action.zig");
 const configpkg = @import("../config.zig");
 const internal_os = @import("../os/main.zig");
 const Config = configpkg.Config;
@@ -17,7 +17,7 @@ pub const Options = struct {
     /// Enables `-h` and `--help` to work.
     pub fn help(self: Options) !void {
         _ = self;
-        return Action.help_error;
+        return actionpkg.help_error;
     }
 };
 

@@ -16,17 +16,18 @@ const Allocator = std.mem.Allocator;
 const windows = std.os.windows;
 const drop = @import("win32_surface_drop.zig");
 const ole_types = @import("win32_ole.zig");
+const win32_types = @import("win32_types.zig");
 
 const log = std.log.scoped(.win32_drop_target);
 
 // ── Win32 type aliases ─────────────────────────────────────────────────
 
 const HRESULT = windows.HRESULT;
-const HWND = windows.HWND;
+const HWND = win32_types.HWND;
 const GUID = windows.GUID;
-const BOOL = windows.BOOL;
+const BOOL = win32_types.BOOL;
 const DWORD = ole_types.DWORD;
-const UINT = u32;
+const UINT = win32_types.UINT;
 const ULONG = ole_types.ULONG;
 const WORD = ole_types.WORD;
 

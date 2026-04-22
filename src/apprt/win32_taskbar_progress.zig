@@ -1,10 +1,13 @@
 const std = @import("std");
 const windows = std.os.windows;
 const progress_report = @import("../progress_report.zig");
+const win32_types = @import("win32_types.zig");
 
 const HRESULT = windows.HRESULT;
 const GUID = windows.GUID;
-const DWORD = u32;
+const BOOL = win32_types.BOOL;
+const DWORD = win32_types.DWORD;
+const HWND = win32_types.HWND;
 const ULONGLONG = u64;
 
 const CLSCTX_INPROC_SERVER: DWORD = 0x1;
@@ -38,13 +41,13 @@ const ITaskbarList3Vtbl = extern struct {
     AddRef: *const fn (*anyopaque) callconv(.winapi) u32,
     Release: *const fn (*anyopaque) callconv(.winapi) u32,
     HrInit: *const fn (*anyopaque) callconv(.winapi) HRESULT,
-    AddTab: *const fn (*anyopaque, windows.HWND) callconv(.winapi) HRESULT,
-    DeleteTab: *const fn (*anyopaque, windows.HWND) callconv(.winapi) HRESULT,
-    ActivateTab: *const fn (*anyopaque, windows.HWND) callconv(.winapi) HRESULT,
-    SetActiveAlt: *const fn (*anyopaque, windows.HWND) callconv(.winapi) HRESULT,
-    MarkFullscreenWindow: *const fn (*anyopaque, windows.HWND, windows.BOOL) callconv(.winapi) HRESULT,
-    SetProgressValue: *const fn (*anyopaque, windows.HWND, ULONGLONG, ULONGLONG) callconv(.winapi) HRESULT,
-    SetProgressState: *const fn (*anyopaque, windows.HWND, DWORD) callconv(.winapi) HRESULT,
+    AddTab: *const fn (*anyopaque, HWND) callconv(.winapi) HRESULT,
+    DeleteTab: *const fn (*anyopaque, HWND) callconv(.winapi) HRESULT,
+    ActivateTab: *const fn (*anyopaque, HWND) callconv(.winapi) HRESULT,
+    SetActiveAlt: *const fn (*anyopaque, HWND) callconv(.winapi) HRESULT,
+    MarkFullscreenWindow: *const fn (*anyopaque, HWND, BOOL) callconv(.winapi) HRESULT,
+    SetProgressValue: *const fn (*anyopaque, HWND, ULONGLONG, ULONGLONG) callconv(.winapi) HRESULT,
+    SetProgressState: *const fn (*anyopaque, HWND, DWORD) callconv(.winapi) HRESULT,
 };
 
 const ITaskbarList3 = extern struct {
@@ -66,11 +69,11 @@ const ITaskbarList3 = extern struct {
         return self.vtbl.HrInit(self.asRaw());
     }
 
-    fn setProgressState(self: *ITaskbarList3, hwnd: windows.HWND, flags: TBPFLAG) HRESULT {
+    fn setProgressState(self: *ITaskbarList3, hwnd: HWND, flags: TBPFLAG) HRESULT {
         return self.vtbl.SetProgressState(self.asRaw(), hwnd, @intFromEnum(flags));
     }
 
-    fn setProgressValue(self: *ITaskbarList3, hwnd: windows.HWND, completed: ULONGLONG, total: ULONGLONG) HRESULT {
+    fn setProgressValue(self: *ITaskbarList3, hwnd: HWND, completed: ULONGLONG, total: ULONGLONG) HRESULT {
         return self.vtbl.SetProgressValue(self.asRaw(), hwnd, completed, total);
     }
 };
@@ -153,7 +156,7 @@ pub const TaskbarProgress = struct {
         self.* = undefined;
     }
 
-    pub fn apply(self: *TaskbarProgress, hwnd: windows.HWND, report: ?ProgressReport) ApplyError!void {
+    pub fn apply(self: *TaskbarProgress, hwnd: HWND, report: ?ProgressReport) ApplyError!void {
         const mapping = if (report) |value| mapProgressReport(value) else ProgressMapping{ .flags = TBPF_NOPROGRESS };
 
         const state_hr = self.taskbar.setProgressState(hwnd, mapping.flags);

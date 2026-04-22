@@ -6,45 +6,14 @@ const Parser = @This();
 
 const std = @import("std");
 const testing = std.testing;
+const parser_types = @import("parser_types.zig");
 const table = @import("parse_table.zig").table;
 const osc = @import("osc.zig");
 
 const log = std.log.scoped(.parser);
 
-/// States for the state machine
-pub const State = enum {
-    ground,
-    escape,
-    escape_intermediate,
-    csi_entry,
-    csi_intermediate,
-    csi_param,
-    csi_ignore,
-    dcs_entry,
-    dcs_param,
-    dcs_intermediate,
-    dcs_passthrough,
-    dcs_ignore,
-    osc_string,
-    sos_pm_apc_string,
-};
-
-/// Transition action is an action that can be taken during a state
-/// transition. This is more of an internal action, not one used by
-/// end users, typically.
-pub const TransitionAction = enum {
-    none,
-    ignore,
-    print,
-    execute,
-    collect,
-    param,
-    esc_dispatch,
-    csi_dispatch,
-    put,
-    osc_put,
-    apc_put,
-};
+pub const State = parser_types.State;
+pub const TransitionAction = parser_types.TransitionAction;
 
 /// Action is the action that a caller of the parser is expected to
 /// take as a result of some input character.

@@ -10,9 +10,8 @@
 //! If a caller is using a custom allocator, they have the expertise to
 //! allocate these types manually using their custom allocator.
 
-// Get our default allocator at comptime since it is known.
-const default = @import("../allocator.zig").default;
-const alloc = default(null);
+// Get our fallback allocator at comptime since it is known.
+const alloc = @import("default.zig").fallback();
 
 pub const Opaque = *anyopaque;
 

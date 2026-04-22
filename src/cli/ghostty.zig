@@ -97,7 +97,7 @@ pub const Action = enum {
     }
 
     /// This should be returned by actions that want to print the help text.
-    pub const help_error = error.ActionHelpRequested;
+    pub const help_error = actionpkg.help_error;
 
     /// Run the action. This returns the exit code to exit with.
     pub fn run(self: Action, alloc: Allocator) !u8 {

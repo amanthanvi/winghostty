@@ -20,26 +20,24 @@
 
 const std = @import("std");
 const windows = std.os.windows;
-const configpkg = @import("../config.zig");
-const geometry = @import("win32_geometry.zig");
-const Config = configpkg.Config;
+const Config = @import("../config/Config.zig");
+const win32_types = @import("win32_types.zig");
 
-/// Minimal set of Win32 types + externs we need here. Duplicated from
-/// `win32.zig` to keep this module free of an `*App` type dependency
-/// that would force a cycle. Keeping them local is cheaper than
-/// threading every extern through a shared module just yet.
-const HWND = windows.HWND;
-const HINSTANCE = windows.HINSTANCE;
-const LPCWSTR = [*:0]const u16;
-const UINT = u32;
-const LRESULT = isize;
-const WPARAM = usize;
-const LPARAM = isize;
-const BOOL = windows.BOOL;
-const LONG_PTR = isize;
-const ATOM = u16;
-const COLORREF = u32;
-const RECT = geometry.Rect;
+/// Minimal set of Win32 aliases + externs we need here. Shared ABI structs
+/// live in `win32_types.zig` so this module stays free of an `*App` type
+/// dependency without duplicating layout-sensitive declarations.
+const HWND = win32_types.HWND;
+const HINSTANCE = win32_types.HINSTANCE;
+const LPCWSTR = win32_types.LPCWSTR;
+const UINT = win32_types.UINT;
+const LRESULT = win32_types.LRESULT;
+const WPARAM = win32_types.WPARAM;
+const LPARAM = win32_types.LPARAM;
+const BOOL = win32_types.BOOL;
+const LONG_PTR = win32_types.LONG_PTR;
+const ATOM = win32_types.ATOM;
+const COLORREF = win32_types.COLORREF;
+const RECT = win32_types.RECT;
 
 const WS_OVERLAPPEDWINDOW: u32 = 0x00CF0000;
 const WS_MAXIMIZEBOX: u32 = 0x00010000;
@@ -198,44 +196,9 @@ const DT_VCENTER: UINT = 0x4;
 const DT_SINGLELINE: UINT = 0x20;
 const DT_NOPREFIX: UINT = 0x800;
 
-const PAINTSTRUCT = extern struct {
-    hdc: ?*anyopaque,
-    fErase: BOOL,
-    rcPaint: RECT,
-    fRestore: BOOL,
-    fIncUpdate: BOOL,
-    rgbReserved: [32]u8,
-};
-
-const CREATESTRUCTW = extern struct {
-    lpCreateParams: ?*anyopaque,
-    hInstance: HINSTANCE,
-    hMenu: ?*anyopaque,
-    hwndParent: ?HWND,
-    cy: i32,
-    cx: i32,
-    y: i32,
-    x: i32,
-    style: i32,
-    lpszName: ?LPCWSTR,
-    lpszClass: ?LPCWSTR,
-    dwExStyle: u32,
-};
-
-const WNDCLASSEXW = extern struct {
-    cbSize: u32,
-    style: u32,
-    lpfnWndProc: *const fn (HWND, UINT, WPARAM, LPARAM) callconv(.winapi) LRESULT,
-    cbClsExtra: i32,
-    cbWndExtra: i32,
-    hInstance: HINSTANCE,
-    hIcon: ?*anyopaque,
-    hCursor: ?*anyopaque,
-    hbrBackground: ?*anyopaque,
-    lpszMenuName: ?LPCWSTR,
-    lpszClassName: LPCWSTR,
-    hIconSm: ?*anyopaque,
-};
+const PAINTSTRUCT = win32_types.PAINTSTRUCT;
+const CREATESTRUCTW = win32_types.CREATESTRUCTW;
+const WNDCLASSEXW = win32_types.WNDCLASSEXW;
 
 const class_name = std.unicode.utf8ToUtf16LeStringLiteral("winghostty.win32.settings");
 

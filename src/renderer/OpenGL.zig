@@ -12,8 +12,8 @@ const shadertoy = if (build_config.custom_shaders)
 else
     @import("shadertoy_stub.zig");
 const apprt = @import("../apprt.zig");
-const font = @import("../font/main.zig");
-const configpkg = @import("../config.zig");
+const Atlas = @import("../font/Atlas.zig");
+const Config = @import("../config/Config.zig");
 const rendererpkg = @import("../renderer.zig");
 const Renderer = rendererpkg.GenericRenderer(OpenGL);
 
@@ -48,7 +48,7 @@ pub const MIN_VERSION_MINOR = 3;
 alloc: std.mem.Allocator,
 
 /// Alpha blending mode
-blending: configpkg.Config.AlphaBlending,
+blending: Config.AlphaBlending,
 
 /// The most recently presented target, in case we need to present it again.
 last_target: ?Target = null,
@@ -59,9 +59,8 @@ vsync_enabled: bool,
 swap_interval_configured: bool = false,
 swap_interval_supported: bool = false,
 
-/// NOTE: This is an error{}!OpenGL instead of just OpenGL for parity with
-///       Metal, since it needs to be fallible so does this, even though it
-///       can't actually fail.
+/// NOTE: This is fallible to satisfy the renderer init interface, even though
+///       OpenGL setup here cannot currently fail.
 pub fn init(alloc: Allocator, opts: rendererpkg.Options) error{}!OpenGL {
     return .{
         .alloc = alloc,
@@ -479,7 +478,7 @@ pub inline fn imageTextureOptions(
 /// Initializes a Texture suitable for the provided font atlas.
 pub fn initAtlasTexture(
     self: *const OpenGL,
-    atlas: *const font.Atlas,
+    atlas: *const Atlas,
 ) Texture.Error!Texture {
     _ = self;
     const format: gl.Texture.Format, const internal_format: gl.Texture.InternalFormat =

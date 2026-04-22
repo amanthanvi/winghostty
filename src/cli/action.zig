@@ -10,6 +10,9 @@ pub const DetectError = error{
     InvalidAction,
 };
 
+/// Shared sentinel error used by CLI actions to request their help text.
+pub const help_error = error.ActionHelpRequested;
+
 /// Detect the action from CLI args.
 pub fn detectArgs(comptime E: type, alloc: Allocator) !?E {
     var iter = try std.process.argsWithAllocator(alloc);

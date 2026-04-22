@@ -1,7 +1,7 @@
 const std = @import("std");
 const args = @import("args.zig");
 const Allocator = std.mem.Allocator;
-const Action = @import("ghostty.zig").Action;
+const actionpkg = @import("action.zig");
 const help_strings = @import("help_strings");
 const Config = @import("../config/Config.zig");
 const ConfigKey = @import("../config/key.zig").Key;
@@ -26,7 +26,7 @@ pub const Options = struct {
     /// Enables `-h` and `--help` to work.
     pub fn help(self: Options) !void {
         _ = self;
-        return Action.help_error;
+        return actionpkg.help_error;
     }
 };
 
@@ -65,7 +65,7 @@ pub fn run(alloc: Allocator) !u8 {
         } else if (std.mem.eql(u8, arg, "--no-pager")) {
             no_pager = true;
         } else if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
-            return Action.help_error;
+            return actionpkg.help_error;
         } else if (!std.mem.startsWith(u8, arg, "-")) {
             positional = try alloc.dupe(u8, arg);
         }

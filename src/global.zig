@@ -1,7 +1,9 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const build_config = @import("build_config.zig");
-const cli = @import("cli.zig");
+const cli_action = @import("cli/action.zig");
+const cli_args = @import("cli/args.zig");
+const cli_ghostty = @import("cli/ghostty.zig");
 const internal_os = @import("os/main.zig");
 const fontconfig = if (build_config.font_backend.hasFontconfig())
     @import("fontconfig")
@@ -36,7 +38,7 @@ pub const GlobalState = struct {
 
     gpa: ?GPA,
     alloc: std.mem.Allocator,
-    action: ?cli.ghostty.Action,
+    action: ?cli_ghostty.Action,
     logging: Logging,
     rlimits: ResourceLimits = .{},
 
@@ -94,8 +96,8 @@ pub const GlobalState = struct {
             unreachable;
 
         // We first try to parse any action that we may be executing.
-        self.action = try cli.action.detectArgs(
-            cli.ghostty.Action,
+        self.action = try cli_action.detectArgs(
+            cli_ghostty.Action,
             self.alloc,
         );
 
@@ -108,7 +110,7 @@ pub const GlobalState = struct {
         // consumes CLI args before logging is initialized.
         if ((try internal_os.getenv(self.alloc, "GHOSTTY_LOG"))) |v| {
             defer v.deinit(self.alloc);
-            self.logging = cli.args.parsePackedStruct(Logging, v.value) catch .{};
+            self.logging = cli_args.parsePackedStruct(Logging, v.value) catch .{};
         }
 
         // Setup our signal handlers before logging

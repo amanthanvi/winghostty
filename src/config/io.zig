@@ -4,7 +4,7 @@ const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const string = @import("string.zig");
 const formatterpkg = @import("formatter.zig");
-const cli = @import("../cli.zig");
+const cli_args = @import("../cli/args.zig");
 
 /// ReadableIO is some kind of IO source that is readable.
 ///
@@ -36,7 +36,7 @@ pub const ReadableIO = union(enum) {
         }
 
         // Next, parse the tagged union using normal rules.
-        self.* = cli.args.parseTaggedUnion(
+        self.* = cli_args.parseTaggedUnion(
             Self,
             alloc,
             input,

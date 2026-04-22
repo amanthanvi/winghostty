@@ -14,6 +14,7 @@ const Allocator = std.mem.Allocator;
 const windows = std.os.windows;
 const ole_types = @import("win32_ole.zig");
 const tab_drag = @import("win32_tab_drag.zig");
+const win32_types = @import("win32_types.zig");
 
 const log = std.log.scoped(.win32_tab_drag_ole);
 
@@ -21,11 +22,11 @@ const log = std.log.scoped(.win32_tab_drag_ole);
 
 const HRESULT = windows.HRESULT;
 const GUID = windows.GUID;
-const BOOL = windows.BOOL;
+const BOOL = win32_types.BOOL;
 const DWORD = ole_types.DWORD;
 const ULONG = ole_types.ULONG;
-const WORD = u16;
-const UINT = u32;
+const WORD = ole_types.WORD;
+const UINT = win32_types.UINT;
 
 const S_OK: HRESULT = 0;
 const S_FALSE: HRESULT = 1;

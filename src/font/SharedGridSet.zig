@@ -26,8 +26,8 @@ const DesiredSize = font.face.DesiredSize;
 const Face = font.Face;
 const SharedGrid = font.SharedGrid;
 const discovery = font.discovery;
-const configpkg = @import("../config.zig");
-const Config = configpkg.Config;
+const configpkg = @import("../config/Config.zig");
+const Config = configpkg;
 
 const log = std.log.scoped(.font_shared_grid_set);
 

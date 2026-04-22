@@ -4,7 +4,7 @@ const assert = @import("../quirks.zig").inlineAssert;
 const Allocator = mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const diags = @import("diagnostics.zig");
-const internal_os = @import("../os/main.zig");
+const os_args = @import("../os/args.zig");
 const Diagnostic = diags.Diagnostic;
 const DiagnosticList = diags.DiagnosticList;
 const CommaSplitter = @import("CommaSplitter.zig");
@@ -1363,8 +1363,8 @@ pub fn ArgsIterator(comptime Iterator: type) type {
 }
 
 /// Create an args iterator for the process args. This will skip argv0.
-pub fn argsIterator(alloc_gpa: Allocator) internal_os.args.ArgIterator.InitError!ArgsIterator(internal_os.args.ArgIterator) {
-    var iter = try internal_os.args.iterator(alloc_gpa);
+pub fn argsIterator(alloc_gpa: Allocator) os_args.ArgIterator.InitError!ArgsIterator(os_args.ArgIterator) {
+    var iter = try os_args.iterator(alloc_gpa);
     errdefer iter.deinit();
     _ = iter.next(); // skip argv0
     return .{ .iterator = iter };

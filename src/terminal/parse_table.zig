@@ -10,9 +10,9 @@
 //!
 
 const std = @import("std");
-const parser = @import("Parser.zig");
-const State = parser.State;
-const Action = parser.TransitionAction;
+const parser_types = @import("parser_types.zig");
+const State = parser_types.State;
+const Action = parser_types.TransitionAction;
 
 /// The state transition table. The type is [u8][State]Transition but
 /// comptime-generated to be exactly-sized.

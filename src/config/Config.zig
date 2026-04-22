@@ -16,12 +16,12 @@ const build_config = @import("../build_config.zig");
 const assert = @import("../quirks.zig").inlineAssert;
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
-const global_state = &@import("../global.zig").state;
 const deepEqual = @import("../datastruct/comparison.zig").deepEqual;
 const fontpkg = @import("../font/main.zig");
 const inputpkg = @import("../input.zig");
 const internal_os = @import("../os/main.zig");
-const cli = @import("../cli.zig");
+const cli_args = @import("../cli/args.zig");
+const cli_diags = @import("../cli/diagnostics.zig");
 
 const conditional = @import("conditional.zig");
 const Conditional = conditional.Conditional;
@@ -29,7 +29,6 @@ const file_load = @import("file_load.zig");
 const formatterpkg = @import("formatter.zig");
 const themepkg = @import("theme.zig");
 const url = @import("url.zig");
-pub const Key = @import("key.zig").Key;
 const MetricModifier = fontpkg.Metrics.Modifier;
 const help_strings = @import("help_strings");
 pub const Command = @import("command.zig").Command;
@@ -43,6 +42,15 @@ const KeyRemapSet = @import("../input/key_mods.zig").RemapSet;
 pub const WindowPaddingBalance = @import("../renderer/size.zig").PaddingBalance;
 const string = @import("string.zig");
 
+const cli = struct {
+    const args = cli_args;
+    const CompatibilityHandler = cli_args.CompatibilityHandler;
+    const compatibilityRenamed = cli_args.compatibilityRenamed;
+    const Diagnostic = cli_diags.Diagnostic;
+    const DiagnosticList = cli_diags.DiagnosticList;
+    const Location = cli_diags.Location;
+};
+
 // We do this instead of importing all of terminal/main.zig to
 // limit the dependency graph. This is important because some things
 // like the `ghostty-build-data` binary depend on the Config but don't
@@ -55,6 +63,54 @@ const terminal = struct {
 };
 
 const log = std.log.scoped(.config);
+
+/// Key is an enum of all the available configuration keys. This is used
+/// when paired with diff to determine what fields have changed in a config,
+/// amongst other things.
+pub const Key = key: {
+    const field_infos = std.meta.fields(Config);
+    var enumFields: [field_infos.len]std.builtin.Type.EnumField = undefined;
+    var i: usize = 0;
+    for (field_infos) |field| {
+        // Ignore fields starting with "_" since they're internal and
+        // not copied ever.
+        if (field.name[0] == '_') continue;
+
+        enumFields[i] = .{
+            .name = field.name,
+            .value = i,
+        };
+        i += 1;
+    }
+
+    var decls = [_]std.builtin.Type.Declaration{};
+    break :key @Type(.{
+        .@"enum" = .{
+            .tag_type = std.math.IntFittingRange(0, field_infos.len - 1),
+            .fields = enumFields[0..i],
+            .decls = &decls,
+            .is_exhaustive = true,
+        },
+    });
+};
+
+/// Returns the value type for a key.
+pub fn Value(comptime key: Key) type {
+    const field = comptime field: {
+        @setEvalBranchQuota(100_000);
+
+        const fields = std.meta.fields(Config);
+        for (fields) |field| {
+            if (@field(Key, field.name) == key) {
+                break :field field;
+            }
+        }
+
+        unreachable;
+    };
+
+    return field.type;
+}
 
 /// Used on Unixes for some defaults.
 const c = @cImport({
@@ -8519,7 +8575,7 @@ pub const QuickTerminalSize = struct {
 
         pub const Size = extern struct {
             tag: Tag,
-            value: Value,
+            value: C.Size.Value,
 
             /// c_int because it needs to be extern compatible
             pub const Tag = enum(c_int) { none, percentage, pixels };

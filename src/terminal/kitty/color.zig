@@ -1,7 +1,6 @@
 const std = @import("std");
-const terminal = @import("../main.zig");
-const RGB = terminal.color.RGB;
-const Terminator = terminal.osc.Terminator;
+const RGB = @import("../color.zig").RGB;
+const Terminator = @import("../osc/terminator.zig").Terminator;
 
 pub const OSC = struct {
     pub const Request = union(enum) {

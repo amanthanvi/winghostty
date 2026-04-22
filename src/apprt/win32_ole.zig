@@ -2,13 +2,14 @@
 
 const std = @import("std");
 const windows = std.os.windows;
+const win32_types = @import("win32_types.zig");
 
 pub const HRESULT = windows.HRESULT;
 pub const GUID = windows.GUID;
-pub const BOOL = windows.BOOL;
-pub const DWORD = u32;
+pub const BOOL = win32_types.BOOL;
+pub const DWORD = win32_types.DWORD;
 pub const ULONG = u32;
-pub const WORD = u16;
+pub const WORD = win32_types.WORD;
 
 pub const FORMATETC = extern struct {
     cfFormat: WORD,

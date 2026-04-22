@@ -17,7 +17,7 @@ const Collection = @This();
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const config = @import("../config.zig");
+const config = @import("../config/Config.zig");
 const comparison = @import("../datastruct/comparison.zig");
 const font = @import("main.zig");
 const options = font.options;
