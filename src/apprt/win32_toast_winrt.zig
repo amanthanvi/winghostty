@@ -572,8 +572,14 @@ pub const WinrtToast = struct {
         }
 
         if (launch) |value| {
-            const callback = self.activation_callback orelse return ShowError.ActivationFailed;
-            const ctx = self.activation_ctx orelse return ShowError.ActivationFailed;
+            const callback = self.activation_callback orelse {
+                std.log.warn("winrt toast activation callback missing for launch toast", .{});
+                return ShowError.ActivationFailed;
+            };
+            const ctx = self.activation_ctx orelse {
+                std.log.warn("winrt toast activation context missing for launch toast", .{});
+                return ShowError.ActivationFailed;
+            };
             const handler = ToastActivationHandler.create(value, callback, ctx) catch return ShowError.OutOfMemory;
             var token: i64 = 0;
             const add_hr = notification.vtbl.add_Activated(notification.asRaw(), &handler.base, &token);

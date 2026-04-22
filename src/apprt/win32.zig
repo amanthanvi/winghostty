@@ -327,6 +327,7 @@ const DWMSBT_MAINWINDOW: u32 = 2;
 /// Win11 22H2+ (build ≥ 22621); older Win11 (≥ 22000) accepts
 /// `DWMSBT_MAINWINDOW` but not this variant.
 const DWMSBT_TABBEDWINDOW: u32 = 4;
+const OS_BUILD_WIN11_21H2: u32 = 22000;
 const OS_BUILD_WIN11_22H2: u32 = 22621;
 const DC_BRUSH: i32 = 18;
 const DC_PEN: i32 = 19;
@@ -821,6 +822,10 @@ fn probeWindowsBuild() u32 {
     const rc = RtlGetVersion(&info);
     if (rc < 0) return 0;
     return info.dwBuildNumber;
+}
+
+fn integratedTitlebarEnabledForBuild(build: u32) bool {
+    return build >= OS_BUILD_WIN11_21H2;
 }
 
 /// Atomic replace of an existing file. Used by the settings save path
@@ -1758,11 +1763,8 @@ pub const App = struct {
             std.log.warn("powershell integration install path resolve failed err={}", .{err});
         }
 
-        // Windows version probe. Integrated titlebar remains disabled
-        // here so Win32 consistently uses the stock non-client caption
-        // and button path.
         self.os_build = probeWindowsBuild();
-        self.use_integrated_titlebar = false;
+        self.use_integrated_titlebar = integratedTitlebarEnabledForBuild(self.os_build);
         log.info("win32 os_build={d} integrated_titlebar={}", .{
             self.os_build,
             self.use_integrated_titlebar,
@@ -19929,6 +19931,15 @@ test "win32 titlebar colors honor ghostty overrides" {
 
     try std.testing.expectEqual(rgb(1, 2, 3), titlebarCaptionColor(&theme, &config));
     try std.testing.expectEqual(rgb(4, 5, 6), titlebarTextColor(&theme, &config));
+}
+
+test "win32 integrated titlebar gates on Windows 11 builds" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!integratedTitlebarEnabledForBuild(0));
+    try std.testing.expect(!integratedTitlebarEnabledForBuild(OS_BUILD_WIN11_21H2 - 1));
+    try std.testing.expect(integratedTitlebarEnabledForBuild(OS_BUILD_WIN11_21H2));
+    try std.testing.expect(integratedTitlebarEnabledForBuild(OS_BUILD_WIN11_22H2));
 }
 
 test "win32 cursorPosFromLParam decodes signed coordinates" {

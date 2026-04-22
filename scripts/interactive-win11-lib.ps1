@@ -397,7 +397,36 @@ function Reset-InteractiveWin11Sandbox {
         throw "Refusing to reset sandbox outside ${sandboxBase}: $target"
     }
 
-    if (Test-Path -LiteralPath $target -ErrorAction Stop) {
-        Remove-Item -LiteralPath $target -Recurse -Force -ErrorAction Stop
+    for ($attempt = 0; $attempt -lt 3; $attempt++) {
+        if (-not (Test-Path -LiteralPath $target -ErrorAction Stop)) {
+            return
+        }
+
+        try {
+            # Remove-Item -Recurse can race on Zig cache sentinel files
+            # named ._.; Directory.Delete handles those paths reliably.
+            [System.IO.Directory]::Delete($target, $true)
+            return
+        }
+        catch {
+            if (-not (Test-Path -LiteralPath $target)) {
+                return
+            }
+            Start-Sleep -Milliseconds (100 * ($attempt + 1))
+        }
+    }
+
+    $pendingName = '.delete-pending-{0}-{1}' -f (
+        [System.IO.Path]::GetFileName($target),
+        [System.Guid]::NewGuid().ToString('N')
+    )
+    $pending = Join-Path $sandboxBase $pendingName
+    Move-Item -LiteralPath $target -Destination $pending -Force -ErrorAction Stop
+
+    try {
+        [System.IO.Directory]::Delete($pending, $true)
+    }
+    catch {
+        Write-Warning "Moved stale sandbox to ${pending}; deferred cleanup failed: $($_.Exception.Message)"
     }
 }

@@ -20,8 +20,9 @@ powershell.exe -ExecutionPolicy Bypass -File .\interactive-win11-validate.ps1 -R
 ```
 
 Pass `-Rebuild` to force one upfront `zig build -Demit-exe=true` before
-the suite starts. The child harnesses then reuse that binary instead of
-trying to rebuild in parallel.
+the suite starts. The suite also does that upfront build automatically
+when tracked inputs are newer than `zig-out\bin\winghostty.exe`, so child
+harnesses reuse one fresh binary instead of rebuilding in parallel.
 
 ## interactive-win11-smoke.ps1
 

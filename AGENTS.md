@@ -40,6 +40,8 @@ This fork has removed the upstream `macos/` Xcode app and the
 
 ## Self-Correction Log
 
+- 2026-04-22: Interactive Win11 composite validation must perform one upfront build whenever tracked inputs are newer than `zig-out\bin\winghostty.exe`, not only for explicit `-Rebuild`; otherwise parallel child harnesses can race rebuilding the same Zig cache.
+- 2026-04-22: PowerShell `Remove-Item -Recurse` and even .NET recursive delete can fail on stale Zig package-cache sentinel paths during Win11 sandbox reset. Keep the sandbox path guard, then quarantine stubborn sandboxes out of the active path and best-effort delete them.
 - 2026-04-22: Packaged Win32 toast identity needs the installer-created shortcuts to set the same `AppUserModelID` as runtime (`com.ghostty.winghostty`). Runtime `SetCurrentProcessExplicitAppUserModelID` and registry metadata are not enough for packaged shortcut identity; keep `dist/windows/winghostty.iss` `[Icons]` entries in sync.
 - 2026-04-22: Zig sentinel slices exclude the trailing sentinel from `.len`; never pass `len - 1` to Win32 `TextOutW` / `DrawTextW` for `[:0]u16` UI caches. Empty overlay strings then underflow in Safe builds, and non-empty strings lose their final character.
 - 2026-04-21: Interactive Win11 bootstrap helpers must not `exit (Invoke-...)` around child harness runs; PowerShell captures child stdout in expression position and hides the PASS sentinel used by the composite validator. Report exit code through an out/ref parameter so stdout streams normally.

@@ -9,6 +9,8 @@ $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $suiteLogDir = Join-Path $env:TEMP ("winghostty-interactive-win11-suite-{0}" -f $PID)
 New-Item -ItemType Directory -Force -Path $suiteLogDir | Out-Null
 $devWindowsCmd = Join-Path $repoRoot 'scripts\dev-windows.cmd'
+$libPath = Join-Path $repoRoot 'scripts\interactive-win11-lib.ps1'
+. $libPath
 
 class InteractiveWin11HarnessRun {
     [string] $Script
@@ -44,6 +46,16 @@ function Invoke-SuiteBuild {
     }
     finally {
         Pop-Location
+    }
+}
+
+function Invoke-SuiteBuildIfNeeded {
+    $exePath = Get-InteractiveWin11ExePath -RepoRoot $repoRoot
+    $buildInputs = Get-InteractiveWin11DefaultBuildInputs -RepoRoot $repoRoot
+    $launchAction = Get-InteractiveWin11LaunchAction -ExePath $exePath -Rebuild:$Rebuild -BuildInputs $buildInputs
+
+    if ($launchAction -eq 'build') {
+        Invoke-SuiteBuild
     }
 }
 
@@ -127,11 +139,8 @@ function Get-HarnessSummary {
     return $lines[-1]
 }
 
-if ($Rebuild) {
-    Invoke-SuiteBuild
-}
-
 Invoke-Harness -ScriptName 'interactive-win11.ps1'
+Invoke-SuiteBuildIfNeeded
 Invoke-Harness -ScriptName 'interactive-win11-smoke.ps1' -TimeoutSeconds 10 -PassResetState
 
 [InteractiveWin11HarnessRun[]] $parallelRuns = @(
