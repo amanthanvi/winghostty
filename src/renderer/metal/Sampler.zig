@@ -6,7 +6,6 @@ const Allocator = std.mem.Allocator;
 const objc = @import("objc");
 
 const mtl = @import("api.zig");
-const Metal = @import("../Metal.zig");
 
 const log = std.log.scoped(.metal);
 

@@ -26,6 +26,11 @@ const header_template =
 const prefix = "<html><body>\r\n<!--StartFragment-->";
 const suffix = "<!--EndFragment-->\r\n</body></html>";
 
+pub const FragmentRange = struct {
+    start: usize,
+    end: usize,
+};
+
 /// Wrap an HTML fragment in the CF_HTML clipboard envelope.
 ///
 /// Returns a freshly-allocated byte slice owned by `alloc` containing
@@ -74,18 +79,21 @@ pub fn wrapFragment(alloc: Allocator, html: []const u8) Allocator.Error![]u8 {
     return buf;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers for tests
-// ---------------------------------------------------------------------------
-
-fn parseOffset(output: []const u8, comptime key: []const u8) ?usize {
+pub fn headerOffset(output: []const u8, comptime key: []const u8) ?usize {
     const needle = key ++ ":";
     const start = std.mem.indexOf(u8, output, needle) orelse return null;
-    const val_start = start + needle.len;
-    const val_end = std.mem.indexOfPos(u8, output, val_start, "\r\n") orelse return null;
-    const digits = output[val_start..val_end];
-    if (digits.len != 10) return null;
-    return std.fmt.parseInt(usize, digits, 10) catch null;
+    var p: usize = start + needle.len;
+    while (p < output.len and (output[p] == ' ' or output[p] == '\t')) : (p += 1) {}
+    const digit_start = p;
+    while (p < output.len and output[p] >= '0' and output[p] <= '9') : (p += 1) {}
+    if (p == digit_start) return null;
+    return std.fmt.parseInt(usize, output[digit_start..p], 10) catch null;
+}
+
+pub fn fragmentRange(output: []const u8) ?FragmentRange {
+    const start = headerOffset(output, "StartFragment") orelse return null;
+    const end = headerOffset(output, "EndFragment") orelse return null;
+    return .{ .start = start, .end = end };
 }
 
 // ---------------------------------------------------------------------------
@@ -113,10 +121,10 @@ test "wrapFragment offsets point at the correct byte positions" {
     const out = try wrapFragment(alloc, fragment);
     defer alloc.free(out);
 
-    const sh = parseOffset(out, "StartHTML").?;
-    const eh = parseOffset(out, "EndHTML").?;
-    const sf = parseOffset(out, "StartFragment").?;
-    const ef = parseOffset(out, "EndFragment").?;
+    const sh = headerOffset(out, "StartHTML").?;
+    const eh = headerOffset(out, "EndHTML").?;
+    const sf = headerOffset(out, "StartFragment").?;
+    const ef = headerOffset(out, "EndFragment").?;
 
     // StartHTML -> "<html>"
     try std.testing.expect(std.mem.startsWith(u8, out[sh..], "<html>"));
@@ -139,8 +147,8 @@ test "wrapFragment preserves the fragment bytes verbatim" {
     const out = try wrapFragment(alloc, fragment);
     defer alloc.free(out);
 
-    const sf = parseOffset(out, "StartFragment").?;
-    const ef = parseOffset(out, "EndFragment").?;
+    const sf = headerOffset(out, "StartFragment").?;
+    const ef = headerOffset(out, "EndFragment").?;
     try std.testing.expectEqualStrings(fragment, out[sf..ef]);
 }
 
@@ -149,13 +157,13 @@ test "wrapFragment handles empty fragment" {
     const out = try wrapFragment(alloc, "");
     defer alloc.free(out);
 
-    const sf = parseOffset(out, "StartFragment").?;
-    const ef = parseOffset(out, "EndFragment").?;
+    const sf = headerOffset(out, "StartFragment").?;
+    const ef = headerOffset(out, "EndFragment").?;
     try std.testing.expectEqual(sf, ef);
 
     // Still valid structure.
-    const sh = parseOffset(out, "StartHTML").?;
-    const eh = parseOffset(out, "EndHTML").?;
+    const sh = headerOffset(out, "StartHTML").?;
+    const eh = headerOffset(out, "EndHTML").?;
     try std.testing.expect(std.mem.startsWith(u8, out[sh..], "<html>"));
     try std.testing.expect(eh == out.len);
 }
@@ -166,7 +174,18 @@ test "wrapFragment handles unicode fragment" {
     const out = try wrapFragment(alloc, fragment);
     defer alloc.free(out);
 
-    const sf = parseOffset(out, "StartFragment").?;
-    const ef = parseOffset(out, "EndFragment").?;
+    const sf = headerOffset(out, "StartFragment").?;
+    const ef = headerOffset(out, "EndFragment").?;
     try std.testing.expectEqualStrings(fragment, out[sf..ef]);
+}
+
+test "fragmentRange parses lenient CF_HTML fragment offsets" {
+    const raw =
+        "Version:0.9\r\n" ++
+        "StartFragment:  5\r\n" ++
+        "EndFragment:\t10\r\n" ++
+        "hello world";
+    const range = fragmentRange(raw).?;
+    try std.testing.expectEqual(@as(usize, 5), range.start);
+    try std.testing.expectEqual(@as(usize, 10), range.end);
 }

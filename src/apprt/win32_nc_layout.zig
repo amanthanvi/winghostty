@@ -22,6 +22,7 @@
 //! testable with synthetic values.
 
 const std = @import("std");
+const geometry = @import("win32_geometry.zig");
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -45,30 +46,8 @@ pub const HitTest = enum(i32) {
     close = 20,
 };
 
-pub const Rect = extern struct {
-    left: i32,
-    top: i32,
-    right: i32,
-    bottom: i32,
-
-    pub fn width(self: Rect) i32 {
-        return self.right - self.left;
-    }
-
-    pub fn height(self: Rect) i32 {
-        return self.bottom - self.top;
-    }
-
-    pub fn contains(self: Rect, x: i32, y: i32) bool {
-        return x >= self.left and x < self.right and
-            y >= self.top and y < self.bottom;
-    }
-};
-
-pub const Point = extern struct {
-    x: i32,
-    y: i32,
-};
+pub const Rect = geometry.Rect;
+pub const Point = geometry.Point;
 
 pub const WindowState = enum {
     normal,

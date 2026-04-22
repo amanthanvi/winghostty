@@ -16,6 +16,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const log = std.log.scoped(.win32_powershell_install);
 
 // ── Embedded script + comptime hash ─────────────────────────────────
 
@@ -76,14 +77,26 @@ pub fn installIfStale(alloc: Allocator, path: []const u8) InstallResult {
     if (readAndHash(alloc, path)) |on_disk_hash| {
         if (std.mem.eql(u8, &on_disk_hash, &integration_script_sha256)) return .skipped;
     }
-    return writeAtomically(path) catch .failed;
+    return writeAtomically(path) catch |err| {
+        log.warn("powershell integration install failed path={s} err={}", .{ path, err });
+        return .failed;
+    };
 }
 
 fn readAndHash(alloc: Allocator, path: []const u8) ?[32]u8 {
     const contents = blk: {
-        const file = std.fs.openFileAbsolute(path, .{}) catch return null;
+        const file = std.fs.openFileAbsolute(path, .{}) catch |err| switch (err) {
+            error.FileNotFound => return null,
+            else => {
+                log.debug("powershell integration hash read skipped path={s} err={}", .{ path, err });
+                return null;
+            },
+        };
         defer file.close();
-        break :blk file.readToEndAlloc(alloc, 1024 * 1024) catch return null;
+        break :blk file.readToEndAlloc(alloc, 1024 * 1024) catch |err| {
+            log.debug("powershell integration hash read failed path={s} err={}", .{ path, err });
+            return null;
+        };
     };
     defer alloc.free(contents);
     var hash: [32]u8 = undefined;
@@ -112,14 +125,19 @@ fn writeAtomically(path: []const u8) !InstallResult {
 
 fn atomicWriteViaTemp(dir: std.fs.Dir, basename: []const u8) bool {
     const tmp = ".integration.ps1.tmp";
-    const f = dir.createFile(tmp, .{ .truncate = true }) catch return false;
-    f.writeAll(integration_script) catch {
+    const f = dir.createFile(tmp, .{ .truncate = true }) catch |err| {
+        log.debug("powershell integration temp create failed name={s} err={}", .{ tmp, err });
+        return false;
+    };
+    f.writeAll(integration_script) catch |err| {
+        log.debug("powershell integration temp write failed name={s} err={}", .{ tmp, err });
         f.close();
         dir.deleteFile(tmp) catch {};
         return false;
     };
     f.close();
-    dir.rename(tmp, basename) catch {
+    dir.rename(tmp, basename) catch |err| {
+        log.debug("powershell integration temp rename failed name={s} target={s} err={}", .{ tmp, basename, err });
         dir.deleteFile(tmp) catch {};
         return false;
     };
@@ -249,8 +267,22 @@ fn hasAttachedFlagValue(arg: []const u8) bool {
     return token.has_attached_value;
 }
 
-fn isExactFlagName(name: []const u8, full: []const u8, aliases: []const []const u8) bool {
-    if (std.ascii.eqlIgnoreCase(name, full)) return true;
+const FlagMatchMode = enum { exact, prefix };
+
+fn flagNameMatches(
+    name: []const u8,
+    full: []const u8,
+    aliases: []const []const u8,
+    mode: FlagMatchMode,
+    min_prefix_len: usize,
+) bool {
+    switch (mode) {
+        .exact => if (std.ascii.eqlIgnoreCase(name, full)) return true,
+        .prefix => if (name.len >= min_prefix_len and name.len <= full.len) {
+            if (std.ascii.eqlIgnoreCase(name, full[0..name.len])) return true;
+        },
+    }
+
     for (aliases) |alias| {
         if (std.ascii.eqlIgnoreCase(name, alias)) return true;
     }
@@ -258,41 +290,33 @@ fn isExactFlagName(name: []const u8, full: []const u8, aliases: []const []const 
     return false;
 }
 
-fn isExactFlag(arg: []const u8, full: []const u8, aliases: []const []const u8) bool {
+fn flagMatches(
+    arg: []const u8,
+    full: []const u8,
+    aliases: []const []const u8,
+    mode: FlagMatchMode,
+    min_prefix_len: usize,
+) bool {
     const token = parseFlagToken(arg) orelse return false;
-    return isExactFlagName(token.name, full, aliases);
+    return flagNameMatches(token.name, full, aliases, mode, min_prefix_len);
 }
 
-fn isPrefixedFlagName(name: []const u8, full: []const u8, alias: ?[]const u8) bool {
-    if (name.len <= full.len) {
-        if (std.ascii.eqlIgnoreCase(name, full[0..name.len])) return true;
-    }
-    if (alias) |value| {
-        if (std.ascii.eqlIgnoreCase(name, value)) return true;
-    }
-
-    return false;
-}
-
-fn isPrefixedFlagNameMin(name: []const u8, full: []const u8, min_prefix_len: usize, alias: ?[]const u8) bool {
-    if (name.len >= min_prefix_len and name.len <= full.len) {
-        if (std.ascii.eqlIgnoreCase(name, full[0..name.len])) return true;
-    }
-    if (alias) |value| {
-        if (std.ascii.eqlIgnoreCase(name, value)) return true;
-    }
-
-    return false;
+fn isExactFlag(arg: []const u8, full: []const u8, aliases: []const []const u8) bool {
+    return flagMatches(arg, full, aliases, .exact, 0);
 }
 
 fn isPrefixedFlag(arg: []const u8, full: []const u8, alias: ?[]const u8) bool {
-    const token = parseFlagToken(arg) orelse return false;
-    return isPrefixedFlagName(token.name, full, alias);
+    return if (alias) |value|
+        flagMatches(arg, full, &.{value}, .prefix, 0)
+    else
+        flagMatches(arg, full, &.{}, .prefix, 0);
 }
 
 fn isPrefixedFlagMin(arg: []const u8, full: []const u8, min_prefix_len: usize, alias: ?[]const u8) bool {
-    const token = parseFlagToken(arg) orelse return false;
-    return isPrefixedFlagNameMin(token.name, full, min_prefix_len, alias);
+    return if (alias) |value|
+        flagMatches(arg, full, &.{value}, .prefix, min_prefix_len)
+    else
+        flagMatches(arg, full, &.{}, .prefix, min_prefix_len);
 }
 
 fn isCommandFlag(arg: []const u8) bool {

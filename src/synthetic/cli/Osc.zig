@@ -3,7 +3,7 @@ const Osc = @This();
 const std = @import("std");
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
-const synthetic = @import("../main.zig");
+const SyntheticOsc = @import("../Osc.zig");
 
 const log = std.log.scoped(.@"terminal-stream-bench");
 
@@ -38,7 +38,7 @@ pub fn destroy(self: *Osc, alloc: Allocator) void {
 }
 
 pub fn run(self: *Osc, writer: *std.Io.Writer, rand: std.Random) !void {
-    var gen: synthetic.Osc = .{
+    var gen: SyntheticOsc = .{
         .rand = rand,
         .p_valid = self.opts.@"p-valid",
     };

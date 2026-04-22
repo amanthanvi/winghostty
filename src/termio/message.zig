@@ -85,7 +85,7 @@ pub const Message = union(enum) {
     /// Return a write request for the given data. This will use
     /// write_small if it fits or write_alloc otherwise. This should NOT
     /// be used for stable pointers which can be manually set to write_stable.
-    pub fn writeReq(alloc: Allocator, data: anytype) !Message {
+    pub fn writeReq(alloc: Allocator, data: []const u8) !Message {
         return switch (try WriteReq.init(alloc, data)) {
             .stable => unreachable,
             .small => |v| Message{ .write_small = v },

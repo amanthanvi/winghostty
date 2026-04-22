@@ -12,6 +12,7 @@
 const std = @import("std");
 const Allocator = std.mem.Allocator;
 const windows = std.os.windows;
+const ole_types = @import("win32_ole.zig");
 const tab_drag = @import("win32_tab_drag.zig");
 
 const log = std.log.scoped(.win32_tab_drag_ole);
@@ -21,8 +22,8 @@ const log = std.log.scoped(.win32_tab_drag_ole);
 const HRESULT = windows.HRESULT;
 const GUID = windows.GUID;
 const BOOL = windows.BOOL;
-const DWORD = u32;
-const ULONG = u32;
+const DWORD = ole_types.DWORD;
+const ULONG = ole_types.ULONG;
 const WORD = u16;
 const UINT = u32;
 
@@ -70,22 +71,8 @@ const IID_IEnumFORMATETC = GUID.parse("{00000103-0000-0000-C000-000000000046}");
 
 // ── FORMATETC / STGMEDIUM ──────────────────────────────────────────────
 
-const FORMATETC = extern struct {
-    cfFormat: WORD,
-    ptd: ?*anyopaque,
-    dwAspect: DWORD,
-    lindex: i32,
-    tymed: DWORD,
-};
-
-const STGMEDIUM = extern struct {
-    tymed: DWORD,
-    u: extern union {
-        hGlobal: ?*anyopaque,
-        raw: ?*anyopaque,
-    },
-    pUnkForRelease: ?*anyopaque,
-};
+const FORMATETC = ole_types.FORMATETC;
+const STGMEDIUM = ole_types.STGMEDIUM;
 
 // ── Payload type alias ─────────────────────────────────────────────────
 
@@ -115,13 +102,8 @@ const IDropSourceObj = extern struct {
     vtbl: *const IDropSourceVtbl,
 };
 
-const IDataObjectObj = extern struct {
-    vtbl: *const IDataObjectVtbl,
-};
-
-const IEnumFORMATETCObj = extern struct {
-    vtbl: *const IEnumFORMATETCVtbl,
-};
+const IDataObjectObj = ole_types.IDataObject;
+const IEnumFORMATETCObj = ole_types.IEnumFORMATETC;
 
 // ── V-table layouts ────────────────────────────────────────────────────
 
@@ -135,34 +117,8 @@ const IDropSourceVtbl = extern struct {
     GiveFeedback: *const fn (*IDropSourceObj, DWORD) callconv(.winapi) HRESULT,
 };
 
-const IDataObjectVtbl = extern struct {
-    // IUnknown (3)
-    QueryInterface: *const fn (*IDataObjectObj, *const GUID, *?*anyopaque) callconv(.winapi) HRESULT,
-    AddRef: *const fn (*IDataObjectObj) callconv(.winapi) ULONG,
-    Release: *const fn (*IDataObjectObj) callconv(.winapi) ULONG,
-    // IDataObject (9)
-    GetData: *const fn (*IDataObjectObj, *const FORMATETC, *STGMEDIUM) callconv(.winapi) HRESULT,
-    GetDataHere: *const fn (*IDataObjectObj, *const FORMATETC, *STGMEDIUM) callconv(.winapi) HRESULT,
-    QueryGetData: *const fn (*IDataObjectObj, *const FORMATETC) callconv(.winapi) HRESULT,
-    GetCanonicalFormatEtc: *const fn (*IDataObjectObj, *const FORMATETC, *FORMATETC) callconv(.winapi) HRESULT,
-    SetData: *const fn (*IDataObjectObj, *const FORMATETC, *STGMEDIUM, BOOL) callconv(.winapi) HRESULT,
-    EnumFormatEtc: *const fn (*IDataObjectObj, DWORD, *?*IEnumFORMATETCObj) callconv(.winapi) HRESULT,
-    DAdvise: *const fn (*IDataObjectObj, *const FORMATETC, DWORD, ?*anyopaque, *DWORD) callconv(.winapi) HRESULT,
-    DUnadvise: *const fn (*IDataObjectObj, DWORD) callconv(.winapi) HRESULT,
-    EnumDAdvise: *const fn (*IDataObjectObj, *?*anyopaque) callconv(.winapi) HRESULT,
-};
-
-const IEnumFORMATETCVtbl = extern struct {
-    // IUnknown (3)
-    QueryInterface: *const fn (*IEnumFORMATETCObj, *const GUID, *?*anyopaque) callconv(.winapi) HRESULT,
-    AddRef: *const fn (*IEnumFORMATETCObj) callconv(.winapi) ULONG,
-    Release: *const fn (*IEnumFORMATETCObj) callconv(.winapi) ULONG,
-    // IEnumFORMATETC (4)
-    Next: *const fn (*IEnumFORMATETCObj, ULONG, [*]FORMATETC, ?*ULONG) callconv(.winapi) HRESULT,
-    Skip: *const fn (*IEnumFORMATETCObj, ULONG) callconv(.winapi) HRESULT,
-    Reset: *const fn (*IEnumFORMATETCObj) callconv(.winapi) HRESULT,
-    Clone: *const fn (*IEnumFORMATETCObj, *?*IEnumFORMATETCObj) callconv(.winapi) HRESULT,
-};
+const IDataObjectVtbl = ole_types.IDataObjectVtbl;
+const IEnumFORMATETCVtbl = ole_types.IEnumFORMATETCVtbl;
 
 // ── Comptime v-table layout assertions ─────────────────────────────────
 
@@ -173,24 +129,6 @@ comptime {
         @compileError(std.fmt.comptimePrint(
             "IDropSourceVtbl size mismatch: got {d}, expected {d}",
             .{ @sizeOf(IDropSourceVtbl), ds_expected },
-        ));
-    }
-
-    // IDataObject: 3 IUnknown + 9 methods = 12 slots.
-    const do_expected = 12 * @sizeOf(*anyopaque);
-    if (@sizeOf(IDataObjectVtbl) != do_expected) {
-        @compileError(std.fmt.comptimePrint(
-            "IDataObjectVtbl size mismatch: got {d}, expected {d}",
-            .{ @sizeOf(IDataObjectVtbl), do_expected },
-        ));
-    }
-
-    // IEnumFORMATETC: 3 IUnknown + 4 methods = 7 slots.
-    const ef_expected = 7 * @sizeOf(*anyopaque);
-    if (@sizeOf(IEnumFORMATETCVtbl) != ef_expected) {
-        @compileError(std.fmt.comptimePrint(
-            "IEnumFORMATETCVtbl size mismatch: got {d}, expected {d}",
-            .{ @sizeOf(IEnumFORMATETCVtbl), ef_expected },
         ));
     }
 }

@@ -1,12 +1,10 @@
-//! Native Win32 settings window (P3 scaffold).
+//! Native Win32 settings window.
 //!
-//! First-pass surface: singleton top-level HWND owned by `App`. The
-//! action rerouting (`open_config` → `SettingsWindow.open`) is live,
-//! but the content pane is a placeholder while the section catalogue,
-//! custom controls, diff preview, and atomic save path land in
-//! subsequent passes. `App` invokes this module via a thin handle so
-//! the module doesn't need to know `Host`, `Surface`, or the other
-//! win32 apprt internals.
+//! Singleton top-level HWND owned by `App`. The `open_config` action
+//! routes here; the Advanced section keeps the text-editor escape hatch
+//! for config keys that do not have native controls. `App` invokes this
+//! module via a thin handle so the module doesn't need to know `Host`,
+//! `Surface`, or the other win32 apprt internals.
 //!
 //! Lifecycle:
 //!   * `SettingsWindow.open(app)` — creates the HWND if absent,
@@ -16,14 +14,14 @@
 //!   * `SettingsWindow.destroy(self)` — called from App.terminate;
 //!     `DestroyWindow` + free the struct.
 //!
-//! Config draft (the `pending` shallow clone for diff / Apply / Cancel)
-//! and all the per-field controls arrive with later passes. Per
-//! AGENTS.md:49, the shallow-clone invariant matters here: the clone
-//! MUST NOT deinit an inherited `command` override.
+//! The editable draft is a shallow-cloned `Config` saved atomically
+//! through `AppHandle.saveAndReload`. Per AGENTS.md:49, the clone MUST
+//! NOT deinit an inherited `command` override.
 
 const std = @import("std");
 const windows = std.os.windows;
 const configpkg = @import("../config.zig");
+const geometry = @import("win32_geometry.zig");
 const Config = configpkg.Config;
 
 /// Minimal set of Win32 types + externs we need here. Duplicated from
@@ -41,7 +39,7 @@ const BOOL = windows.BOOL;
 const LONG_PTR = isize;
 const ATOM = u16;
 const COLORREF = u32;
-const RECT = extern struct { left: i32, top: i32, right: i32, bottom: i32 };
+const RECT = geometry.Rect;
 
 const WS_OVERLAPPEDWINDOW: u32 = 0x00CF0000;
 const WS_MAXIMIZEBOX: u32 = 0x00010000;
@@ -723,9 +721,8 @@ pub const SettingsWindow = struct {
     /// background-blur is a union (false / true / { radius: u8 }). The
     /// GUI exposes only the boolean path — true/false. A user who has
     /// set a numeric radius in their config file will see the checkbox
-    /// as checked, and unchecking then saving clobbers the radius back
-    /// to the plain `true` variant. Inline note in the paint path
-    /// should eventually surface this.
+    /// as checked; toggling it writes a boolean variant and discards
+    /// the radius precision.
     fn syncBgBlurFromCheckbox(self: *SettingsWindow) void {
         if (self.suppress_edit_events) return;
         const p = &(self.pending orelse return);
@@ -934,8 +931,8 @@ pub const SettingsWindow = struct {
             null,
         );
         // "Save" button — always visible; writes `pending` to disk
-        // and fires a hard reload. Error surfaces via std.log.warn
-        // for now; inline banner is P3 polish.
+        // and fires a hard reload. Save errors are logged and the draft
+        // remains in memory for retry.
         const btn_save_label = std.unicode.utf8ToUtf16LeStringLiteral("Save");
         self.btn_save = CreateWindowExW(
             0,
@@ -1460,7 +1457,7 @@ fn paint(hwnd: HWND, owner: *SettingsWindow) void {
     _ = SetBkMode(hdc, TRANSPARENT);
     _ = SetTextColor(hdc, fg);
 
-    // Content pane: header + placeholder body describing the section.
+    // Content pane: header + section summary.
     const pane_left = left_rail_width + side_pad;
     const pane_right = rect.right - side_pad;
     const pane_top = section_btn_top_pad;
@@ -1482,7 +1479,7 @@ fn paint(hwnd: HWND, owner: *SettingsWindow) void {
         DT_LEFT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX,
     );
 
-    // Placeholder body below the header (section summary in 1 line).
+    // Section summary below the header.
     var body_buf_w: [256]u16 = undefined;
     const body_w = utf8ToW(&body_buf_w, owner.active_section.placeholderText());
     var body_rect: RECT = .{

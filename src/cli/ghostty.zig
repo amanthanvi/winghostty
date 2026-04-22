@@ -64,7 +64,7 @@ pub const Action = enum {
     // Show which font face Ghostty loads a codepoint from.
     @"show-face",
 
-    // List, (eventually) view, and (eventually) send crash reports.
+    // List local crash reports.
     @"crash-report",
 
     // Boo!
@@ -106,9 +106,7 @@ pub const Action = enum {
             // to find this action in the help strings and output that.
             help_error => err: {
                 inline for (@typeInfo(Action).@"enum".fields) |field| {
-                    // Future note: for now we just output the help text directly
-                    // to stdout. In the future we can style this much prettier
-                    // for all commands by just changing this one place.
+                    // All action help text is emitted through this shared path.
 
                     if (std.mem.eql(u8, field.name, @tagName(self))) {
                         var buffer: [1024]u8 = undefined;

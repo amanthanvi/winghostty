@@ -160,6 +160,7 @@ const WM_NCCREATE = 0x0081;
 const WM_NCCALCSIZE = 0x0083;
 const WM_NCHITTEST = 0x0084;
 const WM_NCMOUSEMOVE = 0x00A0;
+const WM_NCLBUTTONDOWN = 0x00A1;
 const WM_NCLBUTTONUP = 0x00A2;
 const WM_NCMOUSELEAVE = 0x02A2;
 const WM_SYSCOMMAND = 0x0112;
@@ -226,7 +227,6 @@ const RDW_UPDATENOW: UINT = 0x0100;
 const RDW_FRAME: UINT = 0x0400;
 const MONITOR_DEFAULTTONEAREST = 0x00000002;
 const MONITOR_DEFAULTTOPRIMARY = 0x00000001;
-const HRESULT = windows.HRESULT;
 const COLOR_WINDOW = 5;
 const CF_UNICODETEXT = 13;
 /// CF_HTML: registered clipboard format name is the literal string
@@ -299,6 +299,7 @@ const host_overlay_accept_width: i32 = default_metrics.overlay_accept_width;
 const host_overlay_cancel_width: i32 = default_metrics.overlay_cancel_width;
 const host_tab_small_button_width: i32 = default_metrics.tab_small_button_width;
 const host_tab_overflow_button_width: i32 = default_metrics.tab_overflow_button_width;
+const host_titlebar_action_button_size: i32 = 32;
 const host_tab_label_max_len: usize = default_metrics.tab_label_max_len;
 const host_tab_min_button_width: i32 = default_metrics.tab_min_width;
 /// Non-owning view over the palette's command lists. Points into
@@ -764,25 +765,6 @@ extern "user32" fn UnregisterHotKey(hWnd: ?HWND, id: i32) callconv(.winapi) BOOL
 extern "user32" fn UpdateWindow(hWnd: HWND) callconv(.winapi) BOOL;
 extern "user32" fn KillTimer(hWnd: ?HWND, uIDEvent: UINT_PTR) callconv(.winapi) BOOL;
 extern "kernel32" fn GetModuleHandleW(lpModuleName: ?LPCWSTR) callconv(.winapi) HINSTANCE;
-const HTHEME = ?*anyopaque;
-const WINDOW_THEME_CLASS = std.unicode.utf8ToUtf16LeStringLiteral("WINDOW");
-const WP_MINBUTTON: i32 = 15;
-const WP_MAXBUTTON: i32 = 17;
-const WP_CLOSEBUTTON: i32 = 18;
-const WP_RESTOREBUTTON: i32 = 21;
-const CBS_NORMAL: i32 = 1;
-const CBS_HOT: i32 = 2;
-extern "uxtheme" fn OpenThemeData(hwnd: HWND, pszClassList: [*:0]const u16) callconv(.winapi) HTHEME;
-extern "uxtheme" fn CloseThemeData(theme: HTHEME) callconv(.winapi) HRESULT;
-extern "uxtheme" fn DrawThemeBackground(
-    theme: HTHEME,
-    hdc: HDC,
-    iPartId: i32,
-    iStateId: i32,
-    pRect: *const RECT,
-    pClipRect: ?*const RECT,
-) callconv(.winapi) HRESULT;
-
 /// Main-thread COM apartment for in-process STA clients (settings path
 /// picker, WinRT toast factory, OLE drag-drop targets). `S_FALSE` and
 /// `RPC_E_CHANGED_MODE` are success values per the MS contract — they
@@ -977,6 +959,14 @@ const host_overlay_tab_title_label_utf8 = "Tab title:";
 const host_overlay_command_palette_label = std.unicode.utf8ToUtf16LeStringLiteral("Command:");
 const host_tab_new_button_label = std.unicode.utf8ToUtf16LeStringLiteral("+");
 const host_tab_dropdown_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{25BE}"); // dropdown chevron
+const titlebar_icon_font_fluent = std.unicode.utf8ToUtf16LeStringLiteral("Segoe Fluent Icons");
+const titlebar_icon_font_mdl2 = std.unicode.utf8ToUtf16LeStringLiteral("Segoe MDL2 Assets");
+const titlebar_glyph_minimize = std.unicode.utf8ToUtf16LeStringLiteral("\u{E921}");
+const titlebar_glyph_maximize = std.unicode.utf8ToUtf16LeStringLiteral("\u{E922}");
+const titlebar_glyph_restore = std.unicode.utf8ToUtf16LeStringLiteral("\u{E923}");
+const titlebar_glyph_close = std.unicode.utf8ToUtf16LeStringLiteral("\u{E8BB}");
+const titlebar_glyph_new_tab = std.unicode.utf8ToUtf16LeStringLiteral("\u{E710}");
+const titlebar_glyph_dropdown = std.unicode.utf8ToUtf16LeStringLiteral("\u{E70D}");
 const host_banner_inspector_inactive = "Inspector hidden. Terminal view is active.";
 const search_results_idle = "Type to search";
 const search_results_pending = "Searching";
@@ -3405,6 +3395,7 @@ pub const App = struct {
         host.current_dpi = GetDpiForWindow(hwnd);
         if (host.current_dpi == 0) host.current_dpi = 96;
         host.chrome_font = host.createChromeFont();
+        host.recreateTitlebarIconFonts();
         errdefer _ = DestroyWindow(hwnd);
 
         try self.hosts.append(self.core_app.alloc, host);
@@ -4915,6 +4906,166 @@ const SearchStatus = struct {
 /// Which caption button (integrated titlebar) the cursor is hovering.
 const CaptionButton = enum { none, minimize, maximize, close };
 
+const TitlebarButtonRole = enum {
+    none,
+    minimize,
+    maximize,
+    close,
+    new_tab,
+    dropdown,
+};
+
+const TitlebarGlyphKind = enum {
+    minimize,
+    maximize,
+    restore,
+    close,
+    new_tab,
+    dropdown,
+};
+
+const titlebar_hover_fade_ms: u16 = 150;
+
+const TitlebarHoverFade = struct {
+    active: bool = false,
+    started_ms: u64 = 0,
+    duration_ms: u16 = 0,
+
+    fn start(self: *TitlebarHoverFade, now_ms: u64, duration_ms: u16) void {
+        self.* = .{
+            .active = duration_ms > 0,
+            .started_ms = now_ms,
+            .duration_ms = duration_ms,
+        };
+    }
+
+    fn alphaAt(self: TitlebarHoverFade, now_ms: u64) f32 {
+        if (!self.active or self.duration_ms == 0) return 0.0;
+        if (now_ms <= self.started_ms) return 1.0;
+        const elapsed = now_ms - self.started_ms;
+        if (elapsed >= self.duration_ms) return 0.0;
+        const t = @as(f32, @floatFromInt(elapsed)) / @as(f32, @floatFromInt(self.duration_ms));
+        return 1.0 - std.math.clamp(t, 0.0, 1.0);
+    }
+
+    fn animating(self: TitlebarHoverFade, now_ms: u64) bool {
+        if (!self.active or self.duration_ms == 0) return false;
+        if (now_ms <= self.started_ms) return true;
+        return now_ms - self.started_ms < self.duration_ms;
+    }
+};
+
+const TitlebarButtonVisual = struct {
+    bg: ?u32 = null,
+    glyph: u32,
+};
+
+fn titlebarGlyphCodepoint(kind: TitlebarGlyphKind) u16 {
+    return switch (kind) {
+        .minimize => 0xE921,
+        .maximize => 0xE922,
+        .restore => 0xE923,
+        .close => 0xE8BB,
+        .new_tab => 0xE710,
+        .dropdown => 0xE70D,
+    };
+}
+
+fn titlebarGlyphText(kind: TitlebarGlyphKind) [*:0]const u16 {
+    return switch (kind) {
+        .minimize => titlebar_glyph_minimize,
+        .maximize => titlebar_glyph_maximize,
+        .restore => titlebar_glyph_restore,
+        .close => titlebar_glyph_close,
+        .new_tab => titlebar_glyph_new_tab,
+        .dropdown => titlebar_glyph_dropdown,
+    };
+}
+
+fn titlebarFallbackIcon(kind: TitlebarGlyphKind) win32_icons.Kind {
+    return switch (kind) {
+        .minimize => .minimize,
+        .maximize => .maximize,
+        .restore => .restore,
+        .close => .close,
+        .new_tab => .plus,
+        .dropdown => .arrow_down,
+    };
+}
+
+fn titlebarRoleFromCaption(button: CaptionButton) TitlebarButtonRole {
+    return switch (button) {
+        .none => .none,
+        .minimize => .minimize,
+        .maximize => .maximize,
+        .close => .close,
+    };
+}
+
+fn titlebarCaptionFromHitTest(ht: i32) CaptionButton {
+    return switch (ht) {
+        HTMINBUTTON => .minimize,
+        HTMAXBUTTON => .maximize,
+        HTCLOSE => .close,
+        else => .none,
+    };
+}
+
+fn captionButtonSysCommand(ht: i32, is_zoomed: bool) ?WPARAM {
+    return switch (ht) {
+        HTMINBUTTON => SC_MINIMIZE,
+        HTMAXBUTTON => if (is_zoomed) SC_RESTORE else SC_MAXIMIZE,
+        else => null,
+    };
+}
+
+fn titlebarSubtleFill(parent_bg: u32, is_dark: bool, pressed: bool) u32 {
+    const overlay = if (is_dark) rgb(0xFF, 0xFF, 0xFF) else rgb(0x00, 0x00, 0x00);
+    const alpha: f32 = if (pressed) 0.04 else 0.06;
+    return blendColorRGB(parent_bg, overlay, alpha);
+}
+
+fn titlebarButtonVisual(
+    theme: *const ThemeColors,
+    role: TitlebarButtonRole,
+    parent_bg: u32,
+    hover_alpha: f32,
+    pressed: bool,
+    high_contrast: bool,
+) TitlebarButtonVisual {
+    const active = pressed or hover_alpha > 0.0;
+    if (high_contrast) {
+        return .{
+            .bg = if (active) theme.button_active_bg else null,
+            .glyph = if (active) theme.button_active_fg else theme.text_primary,
+        };
+    }
+
+    const idle_glyph = switch (role) {
+        .new_tab, .dropdown => theme.button_chrome_fg,
+        else => theme.text_primary,
+    };
+    if (!active) return .{ .bg = null, .glyph = idle_glyph };
+
+    const target_bg = switch (role) {
+        .close => rgb(0xC4, 0x2B, 0x1C),
+        .minimize, .maximize, .new_tab, .dropdown => titlebarSubtleFill(parent_bg, theme.is_dark, pressed),
+        .none => parent_bg,
+    };
+    const target_glyph = switch (role) {
+        .close => if (pressed) blendColorRGB(target_bg, rgb(0xFF, 0xFF, 0xFF), 0.70) else rgb(0xFF, 0xFF, 0xFF),
+        .minimize, .maximize => theme.text_primary,
+        .new_tab, .dropdown => theme.text_primary,
+        .none => idle_glyph,
+    };
+
+    const alpha: f32 = if (pressed) 1.0 else std.math.clamp(hover_alpha, 0.0, 1.0);
+    return .{
+        .bg = blendColorRGB(parent_bg, target_bg, alpha),
+        .glyph = blendColorRGB(idle_glyph, target_glyph, alpha),
+    };
+}
+
 /// Deep-copy of one `apprt.ClipboardContent` entry so it can survive an
 /// async confirm-overlay roundtrip. Freed via `PendingClipboardOp.deinit`.
 const OwnedClipboardContent = struct {
@@ -5188,6 +5339,8 @@ const Host = struct {
     current_dpi: u32 = 96,
     pending_dpi_update: bool = false,
     chrome_font: ?*anyopaque = null, // HFONT, owned
+    titlebar_caption_icon_font: ?*anyopaque = null, // HFONT, owned
+    titlebar_action_icon_font: ?*anyopaque = null, // HFONT, owned
 
     // Cached chrome paint strings — rebuilt only when their per-zone
     // dirty bits are set, so WM_PAINT can skip unrelated UTF-16 churn.
@@ -5237,10 +5390,13 @@ const Host = struct {
     /// `App.use_integrated_titlebar` — stays `.none` on Win10 / any
     /// build < 22000.
     caption_hover: CaptionButton = .none,
+    caption_pressed: CaptionButton = .none,
     /// Registered for WM_NCMOUSELEAVE via `TrackMouseEvent(TME_NONCLIENT
     /// | TME_LEAVE)` so we can clear `caption_hover` when the cursor
     /// exits the non-client area. Only re-armed when it becomes false.
     caption_track_armed: bool = false,
+    titlebar_hover_fade: TitlebarHoverFade = .{},
+    titlebar_hover_fade_role: TitlebarButtonRole = .none,
     /// Fade-OUT state for the tab the user JUST left, so rapid
     /// A → B hover transitions animate BOTH tabs concurrently
     /// (A fades out 1 → 0 while B fades in 0 → 1) instead of A
@@ -5374,6 +5530,15 @@ const Host = struct {
                 _ = InvalidateRect(prev_hwnd, null, 0);
             } else {
                 self.tab_close_prev_hwnd = null;
+            }
+        }
+        if (self.titlebar_hover_fade_role != .none) {
+            const role = self.titlebar_hover_fade_role;
+            self.invalidateTitlebarButtonRole(role);
+            if (!self.titlebar_hover_fade.animating(now)) {
+                self.titlebar_hover_fade = .{};
+                self.titlebar_hover_fade_role = .none;
+                self.invalidateTitlebarButtonRole(role);
             }
         }
         if (!still_alive) self.killTweenTimer();
@@ -5535,17 +5700,7 @@ const Host = struct {
 
         // wParam is the hit-test code returned by our WM_NCHITTEST.
         const ht: i32 = @intCast(@as(i64, @bitCast(wParam)));
-        const new_hover: CaptionButton = switch (ht) {
-            HTCLOSE => .close,
-            HTMAXBUTTON => .maximize,
-            HTMINBUTTON => .minimize,
-            else => .none,
-        };
-
-        if (self.caption_hover != new_hover) {
-            self.caption_hover = new_hover;
-            self.repaintTopChrome();
-        }
+        self.setCaptionHover(titlebarCaptionFromHitTest(ht));
 
         // Arm a one-shot WM_NCMOUSELEAVE so we can clear the hover
         // when the cursor exits the non-client area. Without this the
@@ -5567,10 +5722,8 @@ const Host = struct {
 
     fn handleNcMouseLeave(self: *Host) void {
         self.caption_track_armed = false;
-        if (self.caption_hover != .none) {
-            self.caption_hover = .none;
-            self.repaintTopChrome();
-        }
+        self.setCaptionHover(.none);
+        self.clearCaptionPressed();
     }
 
     /// Non-owning view over the palette command lists. Lifetime is tied
@@ -5928,6 +6081,8 @@ const Host = struct {
         if (self.overlay_brush) |brush| _ = DeleteObject(brush);
         if (self.edit_brush) |brush| _ = DeleteObject(brush);
         if (self.chrome_font) |font| _ = DeleteObject(font);
+        if (self.titlebar_caption_icon_font) |font| _ = DeleteObject(font);
+        if (self.titlebar_action_icon_font) |font| _ = DeleteObject(font);
         for (self.tabs.items) |*tab| tab.deinit();
         self.tabs.deinit(self.app.core_app.alloc);
         self.* = undefined;
@@ -6402,12 +6557,79 @@ const Host = struct {
         return self.hovered_button_hwnd != null and child == self.hovered_button_hwnd.?;
     }
 
+    fn titlebarActionButtonRole(self: *Host, child: HWND) TitlebarButtonRole {
+        if (!self.app.use_integrated_titlebar) return .none;
+        if (self.new_tab_hwnd != null and child == self.new_tab_hwnd.?) return .new_tab;
+        if (self.overflow_hwnd != null and child == self.overflow_hwnd.?) return .dropdown;
+        return .none;
+    }
+
+    fn titlebarHoverFadeDuration(self: *Host) u16 {
+        _ = self;
+        if (!clientAnimationsEnabled() or isHighContrastActive()) return 0;
+        return titlebar_hover_fade_ms;
+    }
+
+    fn invalidateTitlebarButtonRole(self: *Host, role: TitlebarButtonRole) void {
+        switch (role) {
+            .minimize, .maximize, .close => self.repaintTopChrome(),
+            .new_tab => {
+                if (self.new_tab_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
+            },
+            .dropdown => {
+                if (self.overflow_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
+            },
+            .none => {},
+        }
+    }
+
+    fn startTitlebarHoverFade(self: *Host, role: TitlebarButtonRole) void {
+        if (role == .none) return;
+        const duration = self.titlebarHoverFadeDuration();
+        if (duration == 0) {
+            self.titlebar_hover_fade = .{};
+            self.titlebar_hover_fade_role = .none;
+            self.invalidateTitlebarButtonRole(role);
+            return;
+        }
+
+        self.titlebar_hover_fade.start(GetTickCount64(), duration);
+        self.titlebar_hover_fade_role = role;
+        self.invalidateTitlebarButtonRole(role);
+        _ = self.addTween(0.0, 1.0, duration, .{ 0.0, 0.0, 1.0, 1.0 });
+    }
+
+    fn titlebarHoverAlpha(self: *Host, role: TitlebarButtonRole, hovered: bool, now_ms: u64) f32 {
+        if (hovered) return 1.0;
+        if (self.titlebar_hover_fade_role == role) {
+            return self.titlebar_hover_fade.alphaAt(now_ms);
+        }
+        return 0.0;
+    }
+
+    fn setCaptionHover(self: *Host, next: CaptionButton) void {
+        if (self.caption_hover == next) return;
+        const previous_role = titlebarRoleFromCaption(self.caption_hover);
+        self.caption_hover = next;
+        if (previous_role != .none) self.startTitlebarHoverFade(previous_role);
+        self.repaintTopChrome();
+    }
+
+    fn clearCaptionPressed(self: *Host) void {
+        if (self.caption_pressed == .none) return;
+        self.caption_pressed = .none;
+        self.repaintTopChrome();
+    }
+
     fn setHoveredButton(self: *Host, child: ?HWND) void {
         if (self.hovered_button_hwnd == child) return;
         const previous = self.hovered_button_hwnd;
         self.hovered_button_hwnd = child;
         if (previous) |hwnd| _ = InvalidateRect(hwnd, null, 0);
         if (child) |hwnd| _ = InvalidateRect(hwnd, null, 0);
+
+        const previous_titlebar_role = if (previous) |h| self.titlebarActionButtonRole(h) else .none;
+        if (previous_titlebar_role != .none) self.startTitlebarHoverFade(previous_titlebar_role);
 
         // Tab close-button fade: when the hovered button transitions
         // into / out of a TAB button, drive CloseState + kick the
@@ -7290,9 +7512,37 @@ const Host = struct {
         return CreateFontIndirectW(&lf);
     }
 
+    fn createTitlebarIconFont(self: *Host, logical_px: i32) ?*anyopaque {
+        return self.createTitlebarIconFontForFace(titlebar_icon_font_fluent, logical_px) orelse
+            self.createTitlebarIconFontForFace(titlebar_icon_font_mdl2, logical_px);
+    }
+
+    fn createTitlebarIconFontForFace(
+        self: *Host,
+        face: [*:0]const u16,
+        logical_px: i32,
+    ) ?*anyopaque {
+        var lf: LOGFONTW = .{};
+        lf.lfHeight = -self.scaled(logical_px);
+        lf.lfWeight = FW_NORMAL;
+        lf.lfQuality = CLEARTYPE_QUALITY;
+        const name = std.mem.span(face);
+        const copy_len = @min(name.len, LF_FACESIZE - 1);
+        @memcpy(lf.lfFaceName[0..copy_len], name[0..copy_len]);
+        return CreateFontIndirectW(&lf);
+    }
+
+    fn recreateTitlebarIconFonts(self: *Host) void {
+        if (self.titlebar_caption_icon_font) |old| _ = DeleteObject(old);
+        if (self.titlebar_action_icon_font) |old| _ = DeleteObject(old);
+        self.titlebar_caption_icon_font = self.createTitlebarIconFont(10);
+        self.titlebar_action_icon_font = self.createTitlebarIconFont(12);
+    }
+
     fn recreateChromeFont(self: *Host) void {
         if (self.chrome_font) |old| _ = DeleteObject(old);
         self.chrome_font = self.createChromeFont();
+        self.recreateTitlebarIconFonts();
         // Send WM_SETFONT to child controls
         if (self.chrome_font) |font| {
             if (self.overlay_edit_hwnd) |edit| _ = SendMessageW(edit, WM_SETFONT, @intFromPtr(font), 1);
@@ -7934,6 +8184,53 @@ const Host = struct {
         return surface.searchBarButtonActive(role);
     }
 
+    fn drawTitlebarActionButton(
+        self: *Host,
+        draw: *const DRAWITEMSTRUCT,
+        role: TitlebarButtonRole,
+        disabled: bool,
+        pressed: bool,
+        focused: bool,
+        hovered: bool,
+    ) void {
+        const theme = &self.app.resolved_theme;
+        const parent_bg = theme.chrome_bg;
+        const is_hc = isHighContrastActive();
+        fillSolidRect(draw.hDC, draw.rcItem, parent_bg);
+
+        var visual = titlebarButtonVisual(
+            theme,
+            role,
+            parent_bg,
+            self.titlebarHoverAlpha(role, hovered, GetTickCount64()),
+            pressed,
+            is_hc,
+        );
+        if (disabled) {
+            visual = .{ .bg = null, .glyph = theme.text_disabled };
+        }
+
+        if (visual.bg) |bg| {
+            drawRoundedRect(draw.hDC, draw.rcItem, bg, bg, self.scaled(4));
+        }
+        if (focused and !disabled) {
+            drawRoundedRect(
+                draw.hDC,
+                rectInset(draw.rcItem, self.scaled(2), self.scaled(2)),
+                visual.bg orelse parent_bg,
+                theme.button_focus_ring,
+                self.scaled(3),
+            );
+        }
+
+        const glyph: TitlebarGlyphKind = switch (role) {
+            .new_tab => .new_tab,
+            .dropdown => .dropdown,
+            else => return,
+        };
+        self.drawTitlebarGlyph(draw.hDC, draw.rcItem, glyph, visual.glyph, false);
+    }
+
     fn drawButton(self: *Host, draw: *const DRAWITEMSTRUCT) void {
         if (draw.CtlType != ODT_BUTTON) return;
         self.ensureThemeBrushes() catch return;
@@ -7963,6 +8260,18 @@ const Host = struct {
                 focused,
                 hovered,
                 active,
+            );
+            return;
+        }
+        const titlebar_role = self.titlebarActionButtonRole(draw.hwndItem);
+        if (titlebar_role != .none) {
+            self.drawTitlebarActionButton(
+                draw,
+                titlebar_role,
+                disabled,
+                pressed,
+                focused,
+                hovered,
             );
             return;
         }
@@ -8433,6 +8742,9 @@ const Host = struct {
     }
 
     fn rightButtonsWidth(self: *const Host) i32 {
+        if (self.app.use_integrated_titlebar) {
+            return self.scaled(host_titlebar_action_button_size) * 2 + self.scaled(12);
+        }
         return self.scaled(host_tab_small_button_width) + // new tab (+)
             self.scaled(host_tab_overflow_button_width) + // dropdown chevron (▾)
             self.scaled(12); // gap + margins
@@ -9133,25 +9445,38 @@ const Host = struct {
         // Right-side cluster: [+][▾] — new tab and dropdown chevron.
         // Shift left by the caption-buttons reservation (0 on Win10)
         // so the chevron doesn't land under the close button.
-        var button_x = width - self.scaled(8) - caption_buttons_w;
+        const titlebar_actions = self.app.use_integrated_titlebar;
+        const action_size = self.scaled(host_titlebar_action_button_size);
+        const action_y = @max(0, @divTrunc(self.tabBarHeight() - action_size, 2));
+        var button_x = width - self.scaled(if (titlebar_actions) 4 else 8) - caption_buttons_w;
         if (self.overflow_hwnd) |button_hwnd| {
-            const overflow_width = self.scaled(host_tab_overflow_button_width);
+            const overflow_width = if (titlebar_actions) action_size else self.scaled(host_tab_overflow_button_width);
             button_x -= overflow_width;
             changed.* = applyChildRect(
                 button_hwnd,
                 &self.overflow_placement,
-                childRect(button_x, button_y, overflow_width, button_height),
+                childRect(
+                    button_x,
+                    if (titlebar_actions) action_y else button_y,
+                    overflow_width,
+                    if (titlebar_actions) action_size else button_height,
+                ),
             ) or changed.*;
             changed.* = applyChildVisibility(button_hwnd, &self.overflow_placement, true) or changed.*;
         }
         button_x -= self.scaled(4);
         if (self.new_tab_hwnd) |button_hwnd| {
-            const new_tab_width = self.scaled(host_tab_small_button_width);
+            const new_tab_width = if (titlebar_actions) action_size else self.scaled(host_tab_small_button_width);
             button_x -= new_tab_width;
             changed.* = applyChildRect(
                 button_hwnd,
                 &self.new_tab_placement,
-                childRect(button_x, button_y, new_tab_width, button_height),
+                childRect(
+                    button_x,
+                    if (titlebar_actions) action_y else button_y,
+                    new_tab_width,
+                    if (titlebar_actions) action_size else button_height,
+                ),
             ) or changed.*;
             changed.* = applyChildVisibility(button_hwnd, &self.new_tab_placement, true) or changed.*;
         }
@@ -9435,24 +9760,84 @@ const Host = struct {
         }
     }
 
-    fn drawNativeCaptionButton(
+    /// Paint the 3 caption buttons (min / max-or-restore / close) at
+    /// the top-right of the tab row. Called from `paintChrome` only
+    /// when `App.use_integrated_titlebar` is true.
+    fn drawTitlebarGlyph(
         self: *Host,
         hdc: HDC,
         rect: RECT,
-        part_id: i32,
-        hovered: bool,
-    ) bool {
-        const hwnd = self.hwnd orelse return false;
-        const theme_handle = OpenThemeData(hwnd, WINDOW_THEME_CLASS) orelse return false;
-        defer _ = CloseThemeData(theme_handle);
-        const state_id: i32 = if (hovered) CBS_HOT else CBS_NORMAL;
-        return DrawThemeBackground(theme_handle, hdc, part_id, state_id, &rect, null) >= 0;
+        kind: TitlebarGlyphKind,
+        color: u32,
+        caption_button: bool,
+    ) void {
+        const hdc_nn: *anyopaque = hdc orelse return;
+        const font = if (caption_button)
+            self.titlebar_caption_icon_font
+        else
+            self.titlebar_action_icon_font;
+        const glyph_size = self.scaled(if (caption_button) 10 else 12);
+        var glyph_rect = centeredRect(rect, glyph_size, glyph_size);
+
+        if (font) |font_handle| {
+            if (SelectObject(hdc, font_handle)) |old_font| {
+                defer _ = SelectObject(hdc, old_font);
+                _ = SetBkMode(hdc, TRANSPARENT);
+                _ = SetTextColor(hdc, color);
+                if (DrawTextW(
+                    hdc,
+                    titlebarGlyphText(kind),
+                    1,
+                    &glyph_rect,
+                    DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
+                ) != 0) {
+                    return;
+                }
+            }
+        }
+
+        win32_icons.drawIcon(
+            titlebarFallbackIcon(kind),
+            hdc_nn,
+            .{
+                .left = glyph_rect.left,
+                .top = glyph_rect.top,
+                .right = glyph_rect.right,
+                .bottom = glyph_rect.bottom,
+            },
+            color,
+            true,
+        );
     }
 
-    /// Paint the 3 caption buttons (min / max-or-restore / close) at
-    /// the top-right of the tab row. Called from `paintChrome` only
-    /// when `App.use_integrated_titlebar` is true. Prefer the native
-    /// UxTheme path so glyphs and hover treatments match Windows.
+    fn paintCaptionButton(
+        self: *Host,
+        hdc: HDC,
+        rect: RECT,
+        role: TitlebarButtonRole,
+        glyph: TitlebarGlyphKind,
+        now_ms: u64,
+        high_contrast: bool,
+        theme: *const win32_theme.ThemeColors,
+    ) void {
+        const caption = switch (role) {
+            .minimize => CaptionButton.minimize,
+            .maximize => CaptionButton.maximize,
+            .close => CaptionButton.close,
+            else => CaptionButton.none,
+        };
+        const visual = titlebarButtonVisual(
+            theme,
+            role,
+            theme.chrome_bg,
+            self.titlebarHoverAlpha(role, self.caption_hover == caption, now_ms),
+            self.caption_pressed == caption,
+            high_contrast,
+        );
+        if (visual.bg) |bg| fillSolidRect(hdc, rect, bg);
+        self.drawTitlebarGlyph(hdc, rect, glyph, visual.glyph, true);
+    }
+
     fn paintCaptionButtons(
         self: *Host,
         hdc: HDC,
@@ -9462,9 +9847,6 @@ const Host = struct {
         const cb_w = self.scaled(host_caption_button_w);
         const cb_h = self.scaled(host_caption_button_h);
         if (cb_w <= 0 or cb_h <= 0) return;
-        // Caller already unwrapped BeginPaint; `drawIcon` takes a
-        // non-nullable `*anyopaque` so we coerce once here.
-        const hdc_nn: *anyopaque = hdc orelse return;
 
         const maximized = if (self.hwnd) |h| IsZoomed(h) != 0 else false;
         const right = client_rect.right;
@@ -9488,70 +9870,19 @@ const Host = struct {
             .bottom = cb_h,
         };
 
-        if (self.drawNativeCaptionButton(hdc, min_rect, WP_MINBUTTON, self.caption_hover == .minimize) and
-            self.drawNativeCaptionButton(
-                hdc,
-                max_rect,
-                if (maximized) WP_RESTOREBUTTON else WP_MAXBUTTON,
-                self.caption_hover == .maximize,
-            ) and
-            self.drawNativeCaptionButton(hdc, close_rect, WP_CLOSEBUTTON, self.caption_hover == .close))
-        {
-            return;
-        }
-
-        // Hover colours.
-        const close_hover_bg = rgb(0xC4, 0x2B, 0x1C);
-        const subtle_hover_bg = if (theme.is_dark)
-            adjustColor(theme.chrome_bg, 28, 28, 28)
-        else
-            adjustColor(theme.chrome_bg, -16, -16, -16);
-
-        const close_glyph_color = if (self.caption_hover == .close) rgb(0xFF, 0xFF, 0xFF) else theme.text_primary;
-        const min_glyph_color = theme.text_primary;
-        const max_glyph_color = theme.text_primary;
         const is_hc = isHighContrastActive();
-
-        const min_icon_rect: win32_icons.Rect = .{
-            .left = min_rect.left,
-            .top = min_rect.top,
-            .right = min_rect.right,
-            .bottom = min_rect.bottom,
-        };
-        const max_icon_rect: win32_icons.Rect = .{
-            .left = max_rect.left,
-            .top = max_rect.top,
-            .right = max_rect.right,
-            .bottom = max_rect.bottom,
-        };
-        const close_icon_rect: win32_icons.Rect = .{
-            .left = close_rect.left,
-            .top = close_rect.top,
-            .right = close_rect.right,
-            .bottom = close_rect.bottom,
-        };
-
-        // Min button.
-        if (self.caption_hover == .minimize) {
-            fillSolidRect(hdc, min_rect, subtle_hover_bg);
-        }
-        win32_icons.drawIcon(.minimize, hdc_nn, min_icon_rect, min_glyph_color, is_hc);
-
-        // Max / restore button.
-        if (self.caption_hover == .maximize) {
-            fillSolidRect(hdc, max_rect, subtle_hover_bg);
-        }
-        if (maximized) {
-            win32_icons.drawIcon(.restore, hdc_nn, max_icon_rect, max_glyph_color, is_hc);
-        } else {
-            win32_icons.drawIcon(.maximize, hdc_nn, max_icon_rect, max_glyph_color, is_hc);
-        }
-
-        // Close button.
-        if (self.caption_hover == .close) {
-            fillSolidRect(hdc, close_rect, close_hover_bg);
-        }
-        win32_icons.drawIcon(.close, hdc_nn, close_icon_rect, close_glyph_color, is_hc);
+        const now = GetTickCount64();
+        self.paintCaptionButton(hdc, min_rect, .minimize, .minimize, now, is_hc, theme);
+        self.paintCaptionButton(
+            hdc,
+            max_rect,
+            .maximize,
+            if (maximized) .restore else .maximize,
+            now,
+            is_hc,
+            theme,
+        );
+        self.paintCaptionButton(hdc, close_rect, .close, .close, now, is_hc, theme);
     }
 
     fn paintChrome(self: *Host) void {
@@ -9647,42 +9978,43 @@ const Host = struct {
                 else
                     adjustColor(theme.accent, 18, 18, 18),
             );
-            const cluster_left = @max(self.scaled(8), client_rect.right - self.rightButtonsWidth() - self.scaled(4));
-            const cluster_rect = RECT{
-                .left = cluster_left,
-                .top = self.scaled(4),
-                .right = client_rect.right - self.scaled(6),
-                .bottom = tab_h - self.scaled(4),
-            };
-            if (cluster_rect.right > cluster_rect.left and cluster_rect.bottom > cluster_rect.top) {
-                drawRoundedRect(
-                    hdc,
-                    cluster_rect,
-                    if (theme.is_dark)
-                        adjustColor(theme.chrome_bg, 8, 8, 10)
-                    else
-                        adjustColor(theme.chrome_bg, 6, 6, 6),
-                    if (theme.is_dark)
-                        adjustColor(theme.chrome_border, 10, 10, 12)
-                    else
-                        adjustColor(theme.chrome_border, -16, -16, -16),
-                    self.scaled(6),
-                );
-                if (cluster_left > self.scaled(14)) {
-                    fillSolidRect(hdc, .{
-                        .left = cluster_left - 1,
-                        .top = self.scaled(8),
-                        .right = cluster_left,
-                        .bottom = tab_h - self.scaled(8),
-                    }, theme.chrome_border);
+            if (!self.app.use_integrated_titlebar) {
+                const cluster_left = @max(self.scaled(8), client_rect.right - self.rightButtonsWidth() - self.scaled(4));
+                const cluster_rect = RECT{
+                    .left = cluster_left,
+                    .top = self.scaled(4),
+                    .right = client_rect.right - self.scaled(6),
+                    .bottom = tab_h - self.scaled(4),
+                };
+                if (cluster_rect.right > cluster_rect.left and cluster_rect.bottom > cluster_rect.top) {
+                    drawRoundedRect(
+                        hdc,
+                        cluster_rect,
+                        if (theme.is_dark)
+                            adjustColor(theme.chrome_bg, 8, 8, 10)
+                        else
+                            adjustColor(theme.chrome_bg, 6, 6, 6),
+                        if (theme.is_dark)
+                            adjustColor(theme.chrome_border, 10, 10, 12)
+                        else
+                            adjustColor(theme.chrome_border, -16, -16, -16),
+                        self.scaled(6),
+                    );
+                    if (cluster_left > self.scaled(14)) {
+                        fillSolidRect(hdc, .{
+                            .left = cluster_left - 1,
+                            .top = self.scaled(8),
+                            .right = cluster_left,
+                            .bottom = tab_h - self.scaled(8),
+                        }, theme.chrome_border);
+                    }
                 }
             }
             // Caption buttons (integrated titlebar only). Painted on
             // the parent HWND at the rightmost edge of the tab row;
-            // hit-tested via `win32_nc_layout.hitTest` + dispatched by
-            // DefWindowProc's WM_NCLBUTTONUP → WM_SYSCOMMAND path.
-            // Glyphs come from `win32_icons.drawIcon` so we don't have
-            // to select a Segoe Fluent Icons font.
+            // hit-tested via `win32_nc_layout.hitTest` and dispatched
+            // from our NC mouse handlers so Snap Layout hover remains
+            // intact while the visuals stay app-owned.
             if (self.app.use_integrated_titlebar) {
                 self.paintCaptionButtons(hdc, client_rect, theme);
             }
@@ -10863,6 +11195,14 @@ fn childRect(x: i32, y: i32, width: i32, height: i32) RECT {
         .right = x + width,
         .bottom = y + height,
     };
+}
+
+fn centeredRect(rect: RECT, width: i32, height: i32) RECT {
+    const outer_w = rect.right - rect.left;
+    const outer_h = rect.bottom - rect.top;
+    const left = rect.left + @divTrunc(outer_w - width, 2);
+    const top = rect.top + @divTrunc(outer_h - height, 2);
+    return childRect(left, top, width, height);
 }
 
 fn overlayEditFrameRect(
@@ -14909,35 +15249,42 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
-        // Integrated-titlebar caption-button click dispatch. When the
-        // integrated-titlebar path is active, WM_NCCALCSIZE has zeroed
-        // the non-client top margin — DWM no longer "owns" the caption
-        // buttons, so DefWindowProc's WM_NCLBUTTONUP → WM_SYSCOMMAND
-        // translation doesn't fire for HTMINBUTTON / HTMAXBUTTON in
-        // some Windows builds. Close still works because DWM intercepts
-        // HTCLOSE earlier in the message path. Explicitly send
-        // WM_SYSCOMMAND(SC_*) on mouseup over the correct hit-test
-        // code so min / max / restore fire reliably.
+        // Integrated-titlebar caption-button click dispatch. The
+        // custom NC frame still returns HTMINBUTTON / HTMAXBUTTON for
+        // shell affordances such as Snap Layout hover, but it cannot
+        // rely on DefWindowProc owning the full caption-button mouse
+        // loop once WM_NCCALCSIZE has removed the top NC margin.
+        WM_NCLBUTTONDOWN => {
+            if (host) |v| {
+                if (v.app.use_integrated_titlebar) {
+                    const ht: i32 = @intCast(@as(i64, @bitCast(wParam)));
+                    v.caption_pressed = titlebarCaptionFromHitTest(ht);
+                    if (v.caption_pressed != .none) v.repaintTopChrome();
+                    if (captionButtonSysCommand(ht, IsZoomed(hwnd) != 0)) |cmd| {
+                        v.clearCaptionPressed();
+                        _ = SendMessageW(hwnd, WM_SYSCOMMAND, cmd, lParam);
+                        return 0;
+                    }
+                    if (ht == HTCLOSE) return 0;
+                }
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
         WM_NCLBUTTONUP => {
             if (host) |v| {
                 if (v.app.use_integrated_titlebar) {
                     const ht: i32 = @intCast(@as(i64, @bitCast(wParam)));
+                    if (captionButtonSysCommand(ht, IsZoomed(hwnd) != 0) != null) {
+                        v.clearCaptionPressed();
+                        return 0;
+                    }
                     switch (ht) {
-                        HTMINBUTTON => {
-                            _ = SendMessageW(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, lParam);
-                            return 0;
-                        },
-                        HTMAXBUTTON => {
-                            const is_zoomed = IsZoomed(hwnd) != 0;
-                            const cmd: WPARAM = if (is_zoomed) SC_RESTORE else SC_MAXIMIZE;
-                            _ = SendMessageW(hwnd, WM_SYSCOMMAND, cmd, lParam);
-                            return 0;
-                        },
                         HTCLOSE => {
+                            v.clearCaptionPressed();
                             _ = SendMessageW(hwnd, WM_SYSCOMMAND, SC_CLOSE, lParam);
                             return 0;
                         },
-                        else => {},
+                        else => v.clearCaptionPressed(),
                     }
                 }
             }
@@ -15290,8 +15637,9 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     // state here so the next NC re-entry re-arms
                     // `TrackMouseEvent` and hover paint stays correct.
                     v.caption_track_armed = false;
-                    if (v.caption_hover != .none) {
+                    if (v.caption_hover != .none or v.caption_pressed != .none) {
                         v.caption_hover = .none;
+                        v.caption_pressed = .none;
                         v.repaintTopChrome();
                     }
                 }
@@ -23172,6 +23520,74 @@ test "win32 tab button mouse-up only closes when released in close zone" {
         TabButtonMouseUpAction.none,
         tabButtonMouseUpAction(null, false, 40, 100, 3),
     );
+}
+
+test "win32 captionButtonSysCommand maps integrated titlebar buttons" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(@as(?WPARAM, SC_MINIMIZE), captionButtonSysCommand(HTMINBUTTON, false));
+    try std.testing.expectEqual(@as(?WPARAM, SC_MINIMIZE), captionButtonSysCommand(HTMINBUTTON, true));
+    try std.testing.expectEqual(@as(?WPARAM, SC_MAXIMIZE), captionButtonSysCommand(HTMAXBUTTON, false));
+    try std.testing.expectEqual(@as(?WPARAM, SC_RESTORE), captionButtonSysCommand(HTMAXBUTTON, true));
+}
+
+test "win32 captionButtonSysCommand ignores non minimize/maximize hit tests" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(@as(?WPARAM, null), captionButtonSysCommand(HTCLIENT, false));
+    try std.testing.expectEqual(@as(?WPARAM, null), captionButtonSysCommand(HTCAPTION, false));
+    try std.testing.expectEqual(@as(?WPARAM, null), captionButtonSysCommand(HTCLOSE, false));
+}
+
+test "win32 titlebar glyph mapping uses Win11 glyph codepoints" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(@as(u16, 0xE921), titlebarGlyphCodepoint(.minimize));
+    try std.testing.expectEqual(@as(u16, 0xE922), titlebarGlyphCodepoint(.maximize));
+    try std.testing.expectEqual(@as(u16, 0xE923), titlebarGlyphCodepoint(.restore));
+    try std.testing.expectEqual(@as(u16, 0xE8BB), titlebarGlyphCodepoint(.close));
+    try std.testing.expectEqual(@as(u16, 0xE710), titlebarGlyphCodepoint(.new_tab));
+    try std.testing.expectEqual(@as(u16, 0xE70D), titlebarGlyphCodepoint(.dropdown));
+}
+
+test "win32 titlebar hover fade decays linearly and snaps at zero duration" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var fade: TitlebarHoverFade = .{};
+    fade.start(1_000, titlebar_hover_fade_ms);
+    try std.testing.expectApproxEqAbs(@as(f32, 1.0), fade.alphaAt(1_000), 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.5), fade.alphaAt(1_075), 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0), fade.alphaAt(1_150), 0.001);
+    try std.testing.expect(!fade.animating(1_150));
+
+    fade.start(2_000, 0);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0), fade.alphaAt(2_000), 0.001);
+    try std.testing.expect(!fade.animating(2_000));
+}
+
+test "win32 titlebar visual helper returns native idle hover and high contrast states" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const theme = darkTheme();
+    const idle_caption = titlebarButtonVisual(&theme, .minimize, theme.chrome_bg, 0.0, false, false);
+    try std.testing.expect(idle_caption.bg == null);
+    try std.testing.expectEqual(theme.text_primary, idle_caption.glyph);
+
+    const idle_action = titlebarButtonVisual(&theme, .new_tab, theme.chrome_bg, 0.0, false, false);
+    try std.testing.expect(idle_action.bg == null);
+    try std.testing.expectEqual(theme.button_chrome_fg, idle_action.glyph);
+
+    const max_hover = titlebarButtonVisual(&theme, .maximize, theme.chrome_bg, 1.0, false, false);
+    try std.testing.expect(max_hover.bg != null);
+    try std.testing.expect(max_hover.bg.? != theme.chrome_bg);
+
+    const close_hover = titlebarButtonVisual(&theme, .close, theme.chrome_bg, 1.0, false, false);
+    try std.testing.expectEqual(rgb(0xC4, 0x2B, 0x1C), close_hover.bg.?);
+    try std.testing.expectEqual(rgb(0xFF, 0xFF, 0xFF), close_hover.glyph);
+
+    const hc_close = titlebarButtonVisual(&theme, .close, theme.chrome_bg, 1.0, false, true);
+    try std.testing.expectEqual(theme.button_active_bg, hc_close.bg.?);
+    try std.testing.expectEqual(theme.button_active_fg, hc_close.glyph);
 }
 
 test "win32 desiredMoveIndex wraps tab order" {

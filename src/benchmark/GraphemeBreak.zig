@@ -20,7 +20,7 @@ opts: Options,
 data_f: ?std.fs.File = null,
 
 pub const Options = struct {
-    /// The type of codepoint width calculation to use.
+    /// The type of grapheme break calculation to use.
     mode: Mode = .table,
 
     /// The data to read as a filepath. If this is "-" then
@@ -41,7 +41,7 @@ pub const Mode = enum {
     table,
 };
 
-/// Create a new terminal stream handler for the given arguments.
+/// Create a new grapheme-break benchmark for the given arguments.
 pub fn create(
     alloc: Allocator,
     opts: Options,
@@ -70,8 +70,7 @@ pub fn benchmark(self: *GraphemeBreak) Benchmark {
 fn setup(ptr: *anyopaque) Benchmark.Error!void {
     const self: *GraphemeBreak = @ptrCast(@alignCast(ptr));
 
-    // Open our data file to prepare for reading. We can do more
-    // validation here eventually.
+    // Open our data file to prepare for reading.
     assert(self.data_f == null);
     self.data_f = options.dataFile(self.opts.data) catch |err| {
         log.warn("error opening data file err={}", .{err});

@@ -4,7 +4,6 @@ const objc = @import("objc");
 const macos = @import("macos");
 
 const mtl = @import("api.zig");
-const Metal = @import("../Metal.zig");
 
 const log = std.log.scoped(.metal);
 

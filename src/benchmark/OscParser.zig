@@ -26,7 +26,7 @@ pub const Options = struct {
     data: ?[]const u8 = null,
 };
 
-/// Create a new terminal stream handler for the given arguments.
+/// Create a new OSC parser benchmark for the given arguments.
 pub fn create(
     alloc: Allocator,
     opts: Options,
@@ -57,8 +57,7 @@ pub fn benchmark(self: *OscParser) Benchmark {
 fn setup(ptr: *anyopaque) Benchmark.Error!void {
     const self: *OscParser = @ptrCast(@alignCast(ptr));
 
-    // Open our data file to prepare for reading. We can do more
-    // validation here eventually.
+    // Open our data file to prepare for reading.
     assert(self.data_f == null);
     self.data_f = options.dataFile(self.opts.data) catch |err| {
         log.warn("error opening data file err={}", .{err});

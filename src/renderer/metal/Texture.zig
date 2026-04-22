@@ -7,7 +7,6 @@ const assert = @import("../../quirks.zig").inlineAssert;
 const objc = @import("objc");
 
 const mtl = @import("api.zig");
-const Metal = @import("../Metal.zig");
 
 const log = std.log.scoped(.metal);
 

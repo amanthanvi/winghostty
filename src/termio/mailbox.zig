@@ -15,17 +15,6 @@ const Queue = BlockingQueue(termio.Message, 64);
 
 /// The location to where write-related messages are sent.
 pub const Mailbox = union(enum) {
-    // /// Write messages to an unbounded list backed by an allocator.
-    // /// This is useful for single-threaded applications where you're not
-    // /// afraid of running out of memory. You should be careful that you're
-    // /// processing this in a timely manner though since some heavy workloads
-    // /// will produce a LOT of messages.
-    // ///
-    // /// At the time of authoring this, the primary use case for this is
-    // /// testing more than anything, but it probably will have a use case
-    // /// in libghostty eventually.
-    // unbounded: std.ArrayList(termio.Message),
-
     /// Write messages to a SPSC queue for multi-threaded applications.
     spsc: struct {
         queue: *Queue,

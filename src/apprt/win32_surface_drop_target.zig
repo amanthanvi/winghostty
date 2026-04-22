@@ -15,6 +15,7 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const windows = std.os.windows;
 const drop = @import("win32_surface_drop.zig");
+const ole_types = @import("win32_ole.zig");
 
 const log = std.log.scoped(.win32_drop_target);
 
@@ -24,10 +25,10 @@ const HRESULT = windows.HRESULT;
 const HWND = windows.HWND;
 const GUID = windows.GUID;
 const BOOL = windows.BOOL;
-const DWORD = u32;
+const DWORD = ole_types.DWORD;
 const UINT = u32;
-const ULONG = u32;
-const WORD = u16;
+const ULONG = ole_types.ULONG;
+const WORD = ole_types.WORD;
 
 const S_OK: HRESULT = 0;
 const E_NOINTERFACE: HRESULT = @bitCast(@as(u32, 0x80004002));
@@ -65,67 +66,13 @@ const IID_IUnknown = GUID.parse("{00000000-0000-0000-C000-000000000046}");
 const IID_IDropTarget = GUID.parse("{00000122-0000-0000-C000-000000000046}");
 const IID_IEnumFORMATETC = GUID.parse("{00000103-0000-0000-C000-000000000046}");
 
-// ── POINTL ─────────────────────────────────────────────────────────────
+// ── OLE shared types ───────────────────────────────────────────────────
 
-const POINTL = extern struct {
-    x: i32,
-    y: i32,
-};
-
-// ── FORMATETC / STGMEDIUM ──────────────────────────────────────────────
-
-const FORMATETC = extern struct {
-    cfFormat: WORD,
-    ptd: ?*anyopaque, // DVTARGETDEVICE*
-    dwAspect: DWORD,
-    lindex: i32,
-    tymed: DWORD,
-};
-
-const STGMEDIUM = extern struct {
-    tymed: DWORD,
-    u: extern union {
-        hGlobal: ?*anyopaque,
-        raw: ?*anyopaque,
-    },
-    pUnkForRelease: ?*anyopaque,
-};
-
-// ── Minimal IDataObject v-table (consumer side) ────────────────────────
-
-const IDataObjectVtbl = extern struct {
-    // IUnknown
-    QueryInterface: *const fn (*IDataObject, *const GUID, *?*anyopaque) callconv(.winapi) HRESULT,
-    AddRef: *const fn (*IDataObject) callconv(.winapi) ULONG,
-    Release: *const fn (*IDataObject) callconv(.winapi) ULONG,
-    // IDataObject
-    GetData: *const fn (*IDataObject, *const FORMATETC, *STGMEDIUM) callconv(.winapi) HRESULT,
-    GetDataHere: *const fn (*IDataObject, *const FORMATETC, *STGMEDIUM) callconv(.winapi) HRESULT,
-    QueryGetData: *const fn (*IDataObject, *const FORMATETC) callconv(.winapi) HRESULT,
-    GetCanonicalFormatEtc: *const fn (*IDataObject, *const FORMATETC, *FORMATETC) callconv(.winapi) HRESULT,
-    SetData: *const fn (*IDataObject, *const FORMATETC, *STGMEDIUM, BOOL) callconv(.winapi) HRESULT,
-    EnumFormatEtc: *const fn (*IDataObject, DWORD, *?*IEnumFORMATETC) callconv(.winapi) HRESULT,
-};
-
-const IDataObject = extern struct {
-    vtbl: *const IDataObjectVtbl,
-};
-
-// ── Minimal IEnumFORMATETC v-table (consumer side) ─────────────────────
-
-const IEnumFORMATETCVtbl = extern struct {
-    QueryInterface: *const fn (*IEnumFORMATETC, *const GUID, *?*anyopaque) callconv(.winapi) HRESULT,
-    AddRef: *const fn (*IEnumFORMATETC) callconv(.winapi) ULONG,
-    Release: *const fn (*IEnumFORMATETC) callconv(.winapi) ULONG,
-    Next: *const fn (*IEnumFORMATETC, ULONG, [*]FORMATETC, ?*ULONG) callconv(.winapi) HRESULT,
-    Skip: *const fn (*IEnumFORMATETC, ULONG) callconv(.winapi) HRESULT,
-    Reset: *const fn (*IEnumFORMATETC) callconv(.winapi) HRESULT,
-    Clone: *const fn (*IEnumFORMATETC, *?*IEnumFORMATETC) callconv(.winapi) HRESULT,
-};
-
-const IEnumFORMATETC = extern struct {
-    vtbl: *const IEnumFORMATETCVtbl,
-};
+const POINTL = @import("win32_geometry.zig").PointL;
+const FORMATETC = ole_types.FORMATETC;
+const STGMEDIUM = ole_types.STGMEDIUM;
+const IDataObject = ole_types.IDataObject;
+const IEnumFORMATETC = ole_types.IEnumFORMATETC;
 
 // ── IDropTarget v-table layout ─────────────────────────────────────────
 

@@ -17,12 +17,9 @@ pub const Options = struct {
     }
 };
 
-/// The `crash-report` command is used to inspect and send crash reports.
+/// The `crash-report` command lists locally stored crash reports.
 ///
 /// When executed without any arguments, this will list existing crash reports.
-///
-/// This command currently only supports listing crash reports. Viewing
-/// and sending crash reports is unimplemented and will be added in the future.
 pub fn run(alloc_gpa: Allocator) !u8 {
     // Use an arena for the whole command to avoid manual memory management.
     var arena = std.heap.ArenaAllocator.init(alloc_gpa);

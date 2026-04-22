@@ -1,5 +1,4 @@
 const std = @import("std");
-const assert = @import("../quirks.zig").inlineAssert;
 const Allocator = std.mem.Allocator;
 
 /// Creates a union that can be used to accommodate data that fit within an array,
@@ -40,37 +39,28 @@ pub fn MessageData(comptime Elem: type, comptime small_size: comptime_int) type 
         /// will allocate and put into alloc.
         ///
         /// This can't and will never detect stable pointers.
-        pub fn init(alloc: Allocator, data: anytype) !Self {
-            switch (@typeInfo(@TypeOf(data))) {
-                .pointer => |info| {
-                    assert(info.size == .slice);
-                    assert(info.child == Elem);
-
-                    // If it fits in our small request, do that.
-                    if (data.len <= Small.Max) {
-                        var buf: Small.Array = undefined;
-                        @memcpy(buf[0..data.len], data);
-                        return Self{
-                            .small = .{
-                                .data = buf,
-                                .len = @intCast(data.len),
-                            },
-                        };
-                    }
-
-                    // Otherwise, allocate
-                    const buf = try alloc.dupe(Elem, data);
-                    errdefer alloc.free(buf);
-                    return Self{
-                        .alloc = .{
-                            .alloc = alloc,
-                            .data = buf,
-                        },
-                    };
-                },
-
-                else => unreachable,
+        pub fn init(alloc: Allocator, data: []const Elem) !Self {
+            // If it fits in our small request, do that.
+            if (data.len <= Small.Max) {
+                var buf: Small.Array = undefined;
+                @memcpy(buf[0..data.len], data);
+                return Self{
+                    .small = .{
+                        .data = buf,
+                        .len = @intCast(data.len),
+                    },
+                };
             }
+
+            // Otherwise, allocate.
+            const buf = try alloc.dupe(Elem, data);
+            errdefer alloc.free(buf);
+            return Self{
+                .alloc = .{
+                    .alloc = alloc,
+                    .data = buf,
+                },
+            };
         }
 
         pub fn deinit(self: Self) void {

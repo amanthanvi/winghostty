@@ -50,7 +50,7 @@ pub const Mode = enum {
     table,
 };
 
-/// Create a new terminal stream handler for the given arguments.
+/// Create a new codepoint-width benchmark for the given arguments.
 pub fn create(
     alloc: Allocator,
     opts: Options,
@@ -81,8 +81,7 @@ pub fn benchmark(self: *CodepointWidth) Benchmark {
 fn setup(ptr: *anyopaque) Benchmark.Error!void {
     const self: *CodepointWidth = @ptrCast(@alignCast(ptr));
 
-    // Open our data file to prepare for reading. We can do more
-    // validation here eventually.
+    // Open our data file to prepare for reading.
     assert(self.data_f == null);
     self.data_f = options.dataFile(self.opts.data) catch |err| {
         log.warn("error opening data file err={}", .{err});

@@ -390,8 +390,8 @@ pub const Viewer = struct {
                 return self.enterCommandQueue(
                     arena.allocator(),
                     &.{ .tmux_version, .list_windows },
-                ) catch {
-                    log.warn("failed to queue command, becoming defunct", .{});
+                ) catch |err| {
+                    log.warn("failed to queue command, becoming defunct err={}", .{err});
                     return self.defunct();
                 };
             },
@@ -449,8 +449,8 @@ pub const Viewer = struct {
                     &actions,
                     content,
                     tag == .block_err,
-                ) catch {
-                    log.warn("failed to process command output, becoming defunct", .{});
+                ) catch |err| {
+                    log.warn("failed to process command output, becoming defunct err={}", .{err});
                     return self.defunct();
                 };
 
@@ -476,8 +476,8 @@ pub const Viewer = struct {
                 self.sessionChanged(
                     &actions,
                     info.id,
-                ) catch {
-                    log.warn("failed to handle session change, becoming defunct", .{});
+                ) catch |err| {
+                    log.warn("failed to handle session change, becoming defunct err={}", .{err});
                     return self.defunct();
                 };
 
@@ -491,17 +491,17 @@ pub const Viewer = struct {
                 &actions,
                 info.window_id,
                 info.layout,
-            ) catch {
+            ) catch |err| {
                 // Note: in the future, we can probably handle a failure
                 // here with a fallback to remove this one window, list
                 // windows again, and try again.
-                log.warn("failed to handle layout change, becoming defunct", .{});
+                log.warn("failed to handle layout change, becoming defunct err={}", .{err});
                 return self.defunct();
             },
 
             // A window was added to this session.
-            .window_add => |info| self.windowAdd(info.id) catch {
-                log.warn("failed to handle window add, becoming defunct", .{});
+            .window_add => |info| self.windowAdd(info.id) catch |err| {
+                log.warn("failed to handle window add, becoming defunct err={}", .{err});
                 return self.defunct();
             },
 
