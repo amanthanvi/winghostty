@@ -256,6 +256,7 @@ fn parseFlagToken(arg: []const u8) ?FlagToken {
 
     const flag = arg[1..];
     const attached_idx = std.mem.indexOfScalar(u8, flag, ':');
+    if ((attached_idx orelse flag.len) == 0) return null;
     return .{
         .name = flag[0 .. attached_idx orelse flag.len],
         .has_attached_value = attached_idx != null,
@@ -589,6 +590,11 @@ test "buildInjectedArgv: existing noexit prefix is not duplicated" {
 
 test "buildInjectedArgv: skips ambiguous no prefix" {
     const argv = [_][]const u8{ "pwsh.exe", "-No" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
+test "buildInjectedArgv: skips empty flag names" {
+    const argv = [_][]const u8{ "pwsh.exe", "-:Get-Date" };
     try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
 }
 

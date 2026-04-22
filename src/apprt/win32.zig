@@ -1824,11 +1824,11 @@ pub const App = struct {
         }
 
         self.running = true;
-        self.ui_thread_id = GetCurrentThreadId();
+        @atomicStore(DWORD, &self.ui_thread_id, GetCurrentThreadId(), .release);
         self.ensureMessageQueue();
         defer {
             self.stopQuitTimer();
-            self.ui_thread_id = 0;
+            @atomicStore(DWORD, &self.ui_thread_id, 0, .release);
             self.running = false;
         }
 
@@ -4884,7 +4884,8 @@ fn postUpdateCheckCompletion(ui_thread_id: DWORD, completion: *UpdateCheckComple
 
 fn winrtToastActivationCallback(ctx: *anyopaque, launch: []const u8) void {
     const self: *App = @ptrCast(@alignCast(ctx));
-    if (self.ui_thread_id == 0) {
+    const ui_thread_id = @atomicLoad(DWORD, &self.ui_thread_id, .acquire);
+    if (ui_thread_id == 0) {
         std.log.warn("dropping winrt toast activation before ui thread id is available", .{});
         return;
     }
@@ -4907,7 +4908,7 @@ fn winrtToastActivationCallback(ctx: *anyopaque, launch: []const u8) void {
     activation.* = parsed;
 
     if (PostThreadMessageW(
-        self.ui_thread_id,
+        ui_thread_id,
         WM_WINHOSTTY_TOAST_ACTIVATION,
         0,
         @as(LPARAM, @bitCast(@as(usize, @intFromPtr(activation)))),

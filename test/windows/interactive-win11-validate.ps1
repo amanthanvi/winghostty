@@ -17,22 +17,26 @@ class InteractiveWin11HarnessRun {
     [System.Diagnostics.Process] $Process
     [string] $Stdout
     [string] $Stderr
+    [int] $TimeoutSeconds
 
     InteractiveWin11HarnessRun(
         [string] $Script,
         [System.Diagnostics.Process] $Process,
         [string] $Stdout,
-        [string] $Stderr
+        [string] $Stderr,
+        [int] $TimeoutSeconds
     ) {
         if ([string]::IsNullOrWhiteSpace($Script)) { throw 'Script is required.' }
         if ($null -eq $Process) { throw 'Process is required.' }
         if ([string]::IsNullOrWhiteSpace($Stdout)) { throw 'Stdout is required.' }
         if ([string]::IsNullOrWhiteSpace($Stderr)) { throw 'Stderr is required.' }
+        if ($TimeoutSeconds -le 0) { throw 'TimeoutSeconds must be positive.' }
 
         $this.Script = $Script
         $this.Process = $Process
         $this.Stdout = $Stdout
         $this.Stderr = $Stderr
+        $this.TimeoutSeconds = $TimeoutSeconds
     }
 }
 
@@ -119,7 +123,19 @@ function Start-Harness {
         -RedirectStandardError $stderrPath `
         -PassThru
 
-    return [InteractiveWin11HarnessRun]::new($ScriptName, $process, $stdoutPath, $stderrPath)
+    return [InteractiveWin11HarnessRun]::new($ScriptName, $process, $stdoutPath, $stderrPath, $TimeoutSeconds)
+}
+
+function Get-HarnessLog {
+    param(
+        [Parameter(Mandatory)] [string] $Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return ''
+    }
+
+    return Get-Content -LiteralPath $Path -Raw
 }
 
 function Get-HarnessSummary {
@@ -149,12 +165,28 @@ Invoke-Harness -ScriptName 'interactive-win11-smoke.ps1' -TimeoutSeconds 10 -Pas
 )
 
 foreach ($run in $parallelRuns) {
-    $run.Process.WaitForExit()
+    $waitMilliseconds = ($run.TimeoutSeconds + 5) * 1000
+    if (-not $run.Process.WaitForExit($waitMilliseconds)) {
+        foreach ($other in $parallelRuns) {
+            if (-not $other.Process.HasExited) {
+                Stop-Process -Id $other.Process.Id -Force -ErrorAction SilentlyContinue
+                $other.Process.WaitForExit()
+            }
+        }
+        throw @"
+$($run.Script) timed out after $($run.TimeoutSeconds) seconds
+stdout ($($run.Stdout)):
+$(Get-HarnessLog -Path $run.Stdout)
+
+stderr ($($run.Stderr)):
+$(Get-HarnessLog -Path $run.Stderr)
+"@
+    }
 }
 
 foreach ($run in $parallelRuns) {
-    $stdout = if (Test-Path -LiteralPath $run.Stdout) { Get-Content -LiteralPath $run.Stdout -Raw } else { '' }
-    $stderr = if (Test-Path -LiteralPath $run.Stderr) { Get-Content -LiteralPath $run.Stderr -Raw } else { '' }
+    $stdout = Get-HarnessLog -Path $run.Stdout
+    $stderr = Get-HarnessLog -Path $run.Stderr
     $summary = Get-HarnessSummary -Path $run.Stdout
     $exitCode = $run.Process.ExitCode
 
