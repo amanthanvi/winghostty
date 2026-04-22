@@ -15,8 +15,7 @@ pub const Variation = struct {
             return .{ .a = v[0], .b = v[1], .c = v[2], .d = v[3] };
         }
 
-        /// Converts the ID to a string. The return value is only valid
-        /// for the lifetime of the self pointer.
+        /// Converts the ID to a 4-byte tag string.
         pub fn str(self: Id) [4]u8 {
             return .{ self.a, self.b, self.c, self.d };
         }

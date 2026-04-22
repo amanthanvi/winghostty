@@ -33,3 +33,25 @@ test "fallback allocator can allocate" {
     defer alloc.free(str);
     try testing.expectEqual(10, str.len);
 }
+
+test "default allocator uses explicit allocator when provided" {
+    const Stub = struct {
+        alloc: std.mem.Allocator,
+
+        fn zig(self: *const @This()) std.mem.Allocator {
+            return self.alloc;
+        }
+    };
+
+    var buf: [16]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buf);
+    const explicit = Stub{ .alloc = fba.allocator() };
+    const alloc = default(Stub, &explicit);
+
+    try testing.expect(alloc.ptr == explicit.alloc.ptr);
+    try testing.expect(alloc.vtable == explicit.alloc.vtable);
+
+    const str = try alloc.alloc(u8, 10);
+    defer alloc.free(str);
+    try testing.expectEqual(10, str.len);
+}

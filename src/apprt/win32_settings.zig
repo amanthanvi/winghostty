@@ -152,6 +152,18 @@ pub const Section = enum(u32) {
     }
 };
 
+fn backgroundBlurFromCheckbox(
+    current: Config.BackgroundBlur,
+    checked: bool,
+) Config.BackgroundBlur {
+    if (!checked) return .false;
+
+    return switch (current) {
+        .radius => |radius| if (radius > 0) current else .true,
+        .false, .true => .true,
+    };
+}
+
 extern "user32" fn RegisterClassExW(lpwcx: *const WNDCLASSEXW) callconv(.winapi) ATOM;
 extern "user32" fn CreateWindowExW(
     dwExStyle: u32,
@@ -682,26 +694,23 @@ pub const SettingsWindow = struct {
     }
 
     /// background-blur is a union (false / true / { radius: u8 }). The
-    /// GUI exposes only the boolean path — true/false. A user who has
-    /// set a numeric radius in their config file will see the checkbox
-    /// as checked; toggling it writes a boolean variant and discards
-    /// the radius precision.
+    /// GUI exposes only the boolean path, so keep an existing numeric
+    /// radius intact while the checkbox remains enabled.
     fn syncBgBlurFromCheckbox(self: *SettingsWindow) void {
         if (self.suppress_edit_events) return;
         const p = &(self.pending orelse return);
         const chk = self.chk_bg_blur orelse return;
         const state = SendMessageW(chk, BM_GETCHECK, 0, 0);
-        p.*.@"background-blur" = if (state == BST_CHECKED) .true else .false;
+        p.*.@"background-blur" = backgroundBlurFromCheckbox(
+            p.*.@"background-blur",
+            state == BST_CHECKED,
+        );
     }
 
     fn displayBgBlurInCheckbox(self: *SettingsWindow) void {
         const chk = self.chk_bg_blur orelse return;
         const p = self.pending orelse return;
-        const enabled = switch (p.@"background-blur") {
-            .false => false,
-            .true => true,
-            .radius => |r| r > 0,
-        };
+        const enabled = p.@"background-blur".enabled();
         self.suppress_edit_events = true;
         _ = SendMessageW(
             chk,
@@ -1538,4 +1547,30 @@ fn sat8(ch: u32, delta: i32) u32 {
 
 fn packColor(r: u32, g: u32, b: u32) COLORREF {
     return r | (g << 8) | (b << 16);
+}
+
+test "settings background blur checkbox preserves enabled radius" {
+    try std.testing.expectEqual(
+        Config.BackgroundBlur{ .radius = 42 },
+        backgroundBlurFromCheckbox(.{ .radius = 42 }, true),
+    );
+    try std.testing.expectEqual(
+        .true,
+        backgroundBlurFromCheckbox(.false, true),
+    );
+    try std.testing.expectEqual(
+        .true,
+        backgroundBlurFromCheckbox(.{ .radius = 0 }, true),
+    );
+}
+
+test "settings background blur checkbox can disable any variant" {
+    try std.testing.expectEqual(
+        .false,
+        backgroundBlurFromCheckbox(.true, false),
+    );
+    try std.testing.expectEqual(
+        .false,
+        backgroundBlurFromCheckbox(.{ .radius = 42 }, false),
+    );
 }

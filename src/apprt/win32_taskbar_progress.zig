@@ -27,6 +27,7 @@ pub const TBPF_PAUSED: TBPFLAG = .paused;
 
 const CLSID_TaskbarList = GUID.parse("{56FDF344-FD6D-11d0-958A-006097C9A090}");
 const IID_ITaskbarList3 = GUID.parse("{EA1AFB91-9E28-4B86-90E9-9E9F8A5EEFAF}");
+const CO_E_NOTINITIALIZED: HRESULT = @bitCast(@as(u32, 0x800401F0));
 
 extern "ole32" fn CoCreateInstance(
     rclsid: *const GUID,
@@ -119,6 +120,7 @@ pub fn mapProgressReport(report: ProgressReport) ProgressMapping {
 }
 
 pub const InitError = error{
+    ComNotInitialized,
     Unavailable,
     InitializationFailed,
 };
@@ -140,6 +142,7 @@ pub const TaskbarProgress = struct {
             &IID_ITaskbarList3,
             &raw,
         );
+        if (create_hr == CO_E_NOTINITIALIZED) return error.ComNotInitialized;
         if (create_hr < 0 or raw == null) return error.Unavailable;
 
         const taskbar = ITaskbarList3.fromRaw(raw.?);

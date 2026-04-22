@@ -61,7 +61,33 @@ pub const IEnumFORMATETCVtbl = extern struct {
     Clone: *const fn (*IEnumFORMATETC, *?*IEnumFORMATETC) callconv(.winapi) HRESULT,
 };
 
+const formatetc_size = 32;
+const formatetc_cf_format_offset = 0;
+const formatetc_ptd_offset = 8;
+const formatetc_tymed_offset = 24;
+
+const stgmedium_size = 24;
+const stgmedium_tymed_offset = 0;
+const stgmedium_u_offset = 8;
+const stgmedium_release_offset = 16;
+
 comptime {
+    if (@sizeOf(FORMATETC) != formatetc_size or
+        @offsetOf(FORMATETC, "cfFormat") != formatetc_cf_format_offset or
+        @offsetOf(FORMATETC, "ptd") != formatetc_ptd_offset or
+        @offsetOf(FORMATETC, "tymed") != formatetc_tymed_offset)
+    {
+        @compileError("FORMATETC layout mismatch");
+    }
+
+    if (@sizeOf(STGMEDIUM) != stgmedium_size or
+        @offsetOf(STGMEDIUM, "tymed") != stgmedium_tymed_offset or
+        @offsetOf(STGMEDIUM, "u") != stgmedium_u_offset or
+        @offsetOf(STGMEDIUM, "pUnkForRelease") != stgmedium_release_offset)
+    {
+        @compileError("STGMEDIUM layout mismatch");
+    }
+
     const data_object_expected = 12 * @sizeOf(*anyopaque);
     if (@sizeOf(IDataObjectVtbl) != data_object_expected) {
         @compileError(std.fmt.comptimePrint(
@@ -84,4 +110,18 @@ test "shared OLE vtable layouts match COM slot counts" {
 
     try testing.expectEqual(12 * @sizeOf(*anyopaque), @sizeOf(IDataObjectVtbl));
     try testing.expectEqual(7 * @sizeOf(*anyopaque), @sizeOf(IEnumFORMATETCVtbl));
+}
+
+test "shared OLE payload layouts match Win32 ABI" {
+    const testing = std.testing;
+
+    try testing.expectEqual(@as(usize, formatetc_size), @sizeOf(FORMATETC));
+    try testing.expectEqual(@as(usize, formatetc_cf_format_offset), @offsetOf(FORMATETC, "cfFormat"));
+    try testing.expectEqual(@as(usize, formatetc_ptd_offset), @offsetOf(FORMATETC, "ptd"));
+    try testing.expectEqual(@as(usize, formatetc_tymed_offset), @offsetOf(FORMATETC, "tymed"));
+
+    try testing.expectEqual(@as(usize, stgmedium_size), @sizeOf(STGMEDIUM));
+    try testing.expectEqual(@as(usize, stgmedium_tymed_offset), @offsetOf(STGMEDIUM, "tymed"));
+    try testing.expectEqual(@as(usize, stgmedium_u_offset), @offsetOf(STGMEDIUM, "u"));
+    try testing.expectEqual(@as(usize, stgmedium_release_offset), @offsetOf(STGMEDIUM, "pUnkForRelease"));
 }

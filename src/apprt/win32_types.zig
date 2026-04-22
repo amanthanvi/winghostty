@@ -79,6 +79,27 @@ test "shared Win32 type layouts" {
     try testing.expectEqual(@as(usize, 8), @sizeOf(POINT));
     try testing.expectEqual(@as(usize, 16), @sizeOf(RECT));
     try testing.expectEqual(@alignOf(?*anyopaque), @alignOf(PAINTSTRUCT));
+    try testing.expectEqual(@as(usize, 72), @sizeOf(PAINTSTRUCT));
+    try testing.expectEqual(@as(usize, 0), @offsetOf(PAINTSTRUCT, "hdc"));
+    try testing.expectEqual(@as(usize, 12), @offsetOf(PAINTSTRUCT, "rcPaint"));
+    try testing.expectEqual(@as(usize, 36), @offsetOf(PAINTSTRUCT, "rgbReserved"));
+
     try testing.expectEqual(@alignOf(?*anyopaque), @alignOf(CREATESTRUCTW));
+    try testing.expectEqual(@as(usize, 80), @sizeOf(CREATESTRUCTW));
+    try testing.expectEqual(@as(usize, 0), @offsetOf(CREATESTRUCTW, "lpCreateParams"));
+    try testing.expectEqual(@as(usize, 8), @offsetOf(CREATESTRUCTW, "hInstance"));
+    try testing.expectEqual(@as(usize, 56), @offsetOf(CREATESTRUCTW, "lpszName"));
+    try testing.expectEqual(@as(usize, 64), @offsetOf(CREATESTRUCTW, "lpszClass"));
+
     try testing.expectEqual(@alignOf(?*anyopaque), @alignOf(WNDCLASSEXW));
+    try testing.expectEqual(@as(usize, 80), @sizeOf(WNDCLASSEXW));
+    try testing.expectEqual(@as(usize, 0), @offsetOf(WNDCLASSEXW, "cbSize"));
+    try testing.expectEqual(@as(usize, 4), @offsetOf(WNDCLASSEXW, "style"));
+    try testing.expectEqual(@as(usize, 8), @offsetOf(WNDCLASSEXW, "lpfnWndProc"));
+    try testing.expectEqual(@as(usize, 24), @offsetOf(WNDCLASSEXW, "hInstance"));
+    try testing.expectEqual(@as(usize, 32), @offsetOf(WNDCLASSEXW, "hIcon"));
+    try testing.expectEqual(@as(usize, 40), @offsetOf(WNDCLASSEXW, "hCursor"));
+    try testing.expectEqual(@as(usize, 48), @offsetOf(WNDCLASSEXW, "hbrBackground"));
+    try testing.expectEqual(@as(usize, 56), @offsetOf(WNDCLASSEXW, "lpszMenuName"));
+    try testing.expectEqual(@as(usize, 64), @offsetOf(WNDCLASSEXW, "lpszClassName"));
 }
