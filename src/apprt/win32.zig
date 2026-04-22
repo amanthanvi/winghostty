@@ -3607,6 +3607,7 @@ pub const App = struct {
             if (found.tab.focused != handle) found.tab.focused = handle;
             if (!needs_host_sync) {
                 surface.presentWindow();
+                self.syncTaskbarProgressForHost(surface.host_id);
                 return;
             }
         }
