@@ -2,7 +2,6 @@ const std = @import("std");
 const Allocator = std.mem.Allocator;
 const help_strings = @import("help_strings");
 const actionpkg = @import("action.zig");
-const SpecialCase = actionpkg.SpecialCase;
 
 const list_fonts = @import("list_fonts.zig");
 const help = @import("help.zig");
@@ -21,179 +20,87 @@ const show_face = @import("show_face.zig");
 const boo = @import("boo.zig");
 const new_window = @import("new_window.zig");
 
-/// Special commands that can be invoked via CLI flags. These are all
-/// invoked by using `+<action>` as a CLI flag. The only exception is
-/// "version" which can be invoked additionally with `--version`.
-pub const Action = enum {
-    /// Output the version and exit
-    version,
+pub const Action = @import("ghostty_action.zig").Action;
 
-    /// Output help information for the CLI or configuration
-    help,
+/// Run the action. This returns the exit code to exit with.
+pub fn run(self: Action, alloc: Allocator) !u8 {
+    return runMain(self, alloc) catch |err| switch (err) {
+        // If help is requested, then we use some comptime trickery
+        // to find this action in the help strings and output that.
+        Action.help_error => err: {
+            inline for (@typeInfo(Action).@"enum".fields) |field| {
+                // All action help text is emitted through this shared path.
 
-    /// List available fonts
-    @"list-fonts",
+                if (std.mem.eql(u8, field.name, @tagName(self))) {
+                    var buffer: [1024]u8 = undefined;
+                    var stdout_writer = std.fs.File.stdout().writer(&buffer);
+                    const stdout = &stdout_writer.interface;
+                    const text = @field(help_strings.Action, field.name) ++ "\n";
+                    stdout.writeAll(text) catch |write_err| {
+                        std.log.warn("failed to write help text: {}\n", .{write_err});
+                        break :err 1;
+                    };
+                    stdout.flush() catch |flush_err| {
+                        std.log.warn("failed to flush help text: {}\n", .{flush_err});
+                        break :err 1;
+                    };
 
-    /// List available keybinds
-    @"list-keybinds",
-
-    /// List available themes
-    @"list-themes",
-
-    /// List named RGB colors
-    @"list-colors",
-
-    /// List keybind actions
-    @"list-actions",
-
-    /// Manage SSH terminfo cache for automatic remote host setup
-    @"ssh-cache",
-
-    /// Edit the config file in the configured terminal editor.
-    @"edit-config",
-
-    /// Dump the config to stdout
-    @"show-config",
-
-    /// Explain a single config option
-    @"explain-config",
-
-    // Validate passed config file
-    @"validate-config",
-
-    // Show which font face Ghostty loads a codepoint from.
-    @"show-face",
-
-    // List local crash reports.
-    @"crash-report",
-
-    // Boo!
-    boo,
-
-    // Use IPC to tell the running Ghostty to open a new window.
-    @"new-window",
-
-    pub fn detectSpecialCase(arg: []const u8) ?SpecialCase(Action) {
-        // If we see a "-e" and we haven't seen a command yet, then
-        // we are done looking for commands. This special case enables
-        // `ghostty -e ghostty +command`. If we've seen a command we
-        // still want to keep looking because
-        // `ghostty +command -e +command` is invalid.
-        if (std.mem.eql(u8, arg, "-e")) return .abort_if_no_action;
-
-        // Special case, --version always outputs the version no
-        // matter what, no matter what other args exist.
-        if (std.mem.eql(u8, arg, "--version")) {
-            return .{ .action = .version };
-        }
-
-        // --help matches "help" but if a subcommand is specified
-        // then we match the subcommand.
-        if (std.mem.eql(u8, arg, "--help") or std.mem.eql(u8, arg, "-h")) {
-            return .{ .fallback = .help };
-        }
-
-        return null;
-    }
-
-    /// This should be returned by actions that want to print the help text.
-    pub const help_error = actionpkg.help_error;
-
-    /// Run the action. This returns the exit code to exit with.
-    pub fn run(self: Action, alloc: Allocator) !u8 {
-        return self.runMain(alloc) catch |err| switch (err) {
-            // If help is requested, then we use some comptime trickery
-            // to find this action in the help strings and output that.
-            help_error => err: {
-                inline for (@typeInfo(Action).@"enum".fields) |field| {
-                    // All action help text is emitted through this shared path.
-
-                    if (std.mem.eql(u8, field.name, @tagName(self))) {
-                        var buffer: [1024]u8 = undefined;
-                        var stdout_writer = std.fs.File.stdout().writer(&buffer);
-                        const stdout = &stdout_writer.interface;
-                        const text = @field(help_strings.Action, field.name) ++ "\n";
-                        stdout.writeAll(text) catch |write_err| {
-                            std.log.warn("failed to write help text: {}\n", .{write_err});
-                            break :err 1;
-                        };
-                        stdout.flush() catch |flush_err| {
-                            std.log.warn("failed to flush help text: {}\n", .{flush_err});
-                            break :err 1;
-                        };
-
-                        break :err 0;
-                    }
+                    break :err 0;
                 }
+            }
 
-                break :err err;
-            },
-            else => err,
-        };
-    }
+            break :err err;
+        },
+        else => err,
+    };
+}
 
-    fn runMain(self: Action, alloc: Allocator) !u8 {
+fn runMain(self: Action, alloc: Allocator) !u8 {
+    return switch (self) {
+        .version => try version.run(alloc),
+        .help => try help.run(alloc),
+        .@"list-fonts" => try list_fonts.run(alloc),
+        .@"list-keybinds" => try list_keybinds.run(alloc),
+        .@"list-themes" => try list_themes.run(alloc),
+        .@"list-colors" => try list_colors.run(alloc),
+        .@"list-actions" => try list_actions.run(alloc),
+        .@"ssh-cache" => try ssh_cache.run(alloc),
+        .@"edit-config" => try edit_config.run(alloc),
+        .@"show-config" => try show_config.run(alloc),
+        .@"explain-config" => try explain_config.run(alloc),
+        .@"validate-config" => try validate_config.run(alloc),
+        .@"crash-report" => try crash_report.run(alloc),
+        .@"show-face" => try show_face.run(alloc),
+        .boo => try boo.run(alloc),
+        .@"new-window" => try new_window.run(alloc),
+    };
+}
+
+/// Returns the options of action. Supports generating shell completions
+/// without duplicating the mapping from Action to relevant Option
+/// @import(..) declaration.
+pub fn options(comptime self: Action) type {
+    comptime {
         return switch (self) {
-            .version => try version.run(alloc),
-            .help => try help.run(alloc),
-            .@"list-fonts" => try list_fonts.run(alloc),
-            .@"list-keybinds" => try list_keybinds.run(alloc),
-            .@"list-themes" => try list_themes.run(alloc),
-            .@"list-colors" => try list_colors.run(alloc),
-            .@"list-actions" => try list_actions.run(alloc),
-            .@"ssh-cache" => try ssh_cache.run(alloc),
-            .@"edit-config" => try edit_config.run(alloc),
-            .@"show-config" => try show_config.run(alloc),
-            .@"explain-config" => try explain_config.run(alloc),
-            .@"validate-config" => try validate_config.run(alloc),
-            .@"crash-report" => try crash_report.run(alloc),
-            .@"show-face" => try show_face.run(alloc),
-            .boo => try boo.run(alloc),
-            .@"new-window" => try new_window.run(alloc),
+            .version => version.Options,
+            .help => help.Options,
+            .@"list-fonts" => list_fonts.Options,
+            .@"list-keybinds" => list_keybinds.Options,
+            .@"list-themes" => list_themes.Options,
+            .@"list-colors" => list_colors.Options,
+            .@"list-actions" => list_actions.Options,
+            .@"ssh-cache" => ssh_cache.Options,
+            .@"edit-config" => edit_config.Options,
+            .@"show-config" => show_config.Options,
+            .@"explain-config" => explain_config.Options,
+            .@"validate-config" => validate_config.Options,
+            .@"crash-report" => crash_report.Options,
+            .@"show-face" => show_face.Options,
+            .boo => boo.Options,
+            .@"new-window" => new_window.Options,
         };
     }
-
-    /// Returns the filename associated with an action. This is a relative
-    /// path from the root src/ directory.
-    pub fn file(comptime self: Action) []const u8 {
-        comptime {
-            const filename = filename: {
-                const tag = @tagName(self);
-                var filename: [tag.len]u8 = undefined;
-                _ = std.mem.replace(u8, tag, "-", "_", &filename);
-                break :filename &filename;
-            };
-
-            return "cli/" ++ filename ++ ".zig";
-        }
-    }
-
-    /// Returns the options of action. Supports generating shell completions
-    /// without duplicating the mapping from Action to relevant Option
-    /// @import(..) declaration.
-    pub fn options(comptime self: Action) type {
-        comptime {
-            return switch (self) {
-                .version => version.Options,
-                .help => help.Options,
-                .@"list-fonts" => list_fonts.Options,
-                .@"list-keybinds" => list_keybinds.Options,
-                .@"list-themes" => list_themes.Options,
-                .@"list-colors" => list_colors.Options,
-                .@"list-actions" => list_actions.Options,
-                .@"ssh-cache" => ssh_cache.Options,
-                .@"edit-config" => edit_config.Options,
-                .@"show-config" => show_config.Options,
-                .@"explain-config" => explain_config.Options,
-                .@"validate-config" => validate_config.Options,
-                .@"crash-report" => crash_report.Options,
-                .@"show-face" => show_face.Options,
-                .boo => boo.Options,
-                .@"new-window" => new_window.Options,
-            };
-        }
-    }
-};
+}
 
 test "parse action none" {
     const testing = std.testing;

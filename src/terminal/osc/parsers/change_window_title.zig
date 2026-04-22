@@ -1,10 +1,7 @@
 const std = @import("std");
 
-const Parser = @import("../../osc.zig").Parser;
-const Command = @import("../../osc.zig").Command;
-
 /// Parse OSC 0 and OSC 2
-pub fn parse(parser: *Parser, _: ?u8) ?*Command {
+pub fn parse(parser: anytype, _: ?u8) ?*@TypeOf(parser.command) {
     const cap = if (parser.capture) |*c| c else {
         parser.state = .invalid;
         return null;
@@ -23,7 +20,7 @@ pub fn parse(parser: *Parser, _: ?u8) ?*Command {
 test "OSC 0: change_window_title" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     p.next('0');
     p.next(';');
     p.next('a');
@@ -36,9 +33,9 @@ test "OSC 0: change_window_title" {
 test "OSC 0: longer than buffer" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
-    const input = "0;" ++ "a" ** (Parser.MAX_BUF + 2);
+    const input = "0;" ++ "a" ** (@import("../../osc.zig").Parser.MAX_BUF + 2);
     for (input) |ch| p.next(ch);
 
     try testing.expect(p.end(null) == null);
@@ -47,10 +44,10 @@ test "OSC 0: longer than buffer" {
 test "OSC 0: one shorter than buffer length" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const prefix = "0;";
-    const title = "a" ** (Parser.MAX_BUF - 1);
+    const title = "a" ** (@import("../../osc.zig").Parser.MAX_BUF - 1);
     const input = prefix ++ title;
     for (input) |ch| p.next(ch);
 
@@ -62,10 +59,10 @@ test "OSC 0: one shorter than buffer length" {
 test "OSC 0: exactly at buffer length" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const prefix = "0;";
-    const title = "a" ** Parser.MAX_BUF;
+    const title = "a" ** @import("../../osc.zig").Parser.MAX_BUF;
     const input = prefix ++ title;
     for (input) |ch| p.next(ch);
 
@@ -75,7 +72,7 @@ test "OSC 0: exactly at buffer length" {
 test "OSC 2: change_window_title with 2" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     p.next('2');
     p.next(';');
     p.next('a');
@@ -88,7 +85,7 @@ test "OSC 2: change_window_title with 2" {
 test "OSC 2: change_window_title with utf8" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     p.next('2');
     p.next(';');
     // '—' EM DASH U+2014 (E2 80 94)
@@ -110,7 +107,7 @@ test "OSC 2: change_window_title with utf8" {
 test "OSC 2: change_window_title empty" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     p.next('2');
     p.next(';');
     const cmd = p.end(null).?.*;

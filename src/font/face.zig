@@ -1,9 +1,9 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const build_config = @import("../build_config.zig");
+const config_font = @import("../config/font_types.zig");
 const options = @import("main.zig").options;
 const Metrics = @import("main.zig").Metrics;
-const config = @import("../config/Config.zig");
 const freetype = @import("face/freetype.zig");
 const coretext = struct {
     pub const Face = void;
@@ -28,7 +28,7 @@ pub const default_dpi = if (builtin.os.tag == .macos) 72 else 96;
 /// These are the flags to customize how freetype loads fonts. This is
 /// only non-void if the freetype backend is enabled.
 pub const FreetypeLoadFlags = if (options.backend.hasFreetype())
-    config.FreetypeLoadFlags
+    config_font.FreetypeLoadFlags
 else
     void;
 pub const freetype_load_flags_default: FreetypeLoadFlags = if (FreetypeLoadFlags != void) .{} else {};
@@ -58,30 +58,7 @@ pub const DesiredSize = struct {
     pub const getGObjectType = void;
 };
 
-/// A font variation setting. The best documentation for this I know of
-/// is actually the CSS font-variation-settings property on MDN:
-/// https://developer.mozilla.org/en-US/docs/Web/CSS/font-variation-settings
-pub const Variation = struct {
-    id: Id,
-    value: f64,
-
-    pub const Id = packed struct(u32) {
-        d: u8,
-        c: u8,
-        b: u8,
-        a: u8,
-
-        pub fn init(v: *const [4]u8) Id {
-            return .{ .a = v[0], .b = v[1], .c = v[2], .d = v[3] };
-        }
-
-        /// Converts the ID to a string. The return value is only valid
-        /// for the lifetime of the self pointer.
-        pub fn str(self: Id) [4]u8 {
-            return .{ self.a, self.b, self.c, self.d };
-        }
-    };
-};
+pub const Variation = @import("variation.zig").Variation;
 
 /// The size and position of a glyph.
 pub const GlyphSize = struct {

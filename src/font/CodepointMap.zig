@@ -6,14 +6,14 @@ const CodepointMap = @This();
 const std = @import("std");
 const assert = @import("../quirks.zig").inlineAssert;
 const Allocator = std.mem.Allocator;
-const discovery = @import("main.zig").discovery;
+const Descriptor = @import("descriptor.zig").Descriptor;
 
 pub const Entry = struct {
     /// Unicode codepoint range. Asserts range[0] <= range[1].
     range: [2]u21,
 
     /// The discovery descriptor of the font to use for this range.
-    descriptor: discovery.Descriptor,
+    descriptor: Descriptor,
 };
 
 /// The list of entries. We use a multiarraylist because Descriptors are
@@ -52,7 +52,7 @@ pub fn add(self: *CodepointMap, alloc: Allocator, entry: Entry) !void {
 }
 
 /// Get a descriptor for a codepoint.
-pub fn get(self: *const CodepointMap, cp: u21) ?discovery.Descriptor {
+pub fn get(self: *const CodepointMap, cp: u21) ?Descriptor {
     const items = self.list.items(.range);
     for (0..items.len) |forward_i| {
         const i = items.len - forward_i - 1;

@@ -58,7 +58,7 @@ pub fn main() !MainReturn {
     // Execute our action if we have one
     if (state.action) |action| {
         std.log.info("executing winghostty CLI action={}", .{action});
-        posix.exit(action.run(alloc) catch |err| err: {
+        posix.exit(cli.ghostty.run(action, alloc) catch |err| err: {
             std.log.err("CLI action failed error={}", .{err});
             break :err 1;
         });

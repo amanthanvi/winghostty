@@ -3,7 +3,7 @@ const builtin = @import("builtin");
 const build_config = @import("build_config.zig");
 const cli_action = @import("cli/action.zig");
 const cli_args = @import("cli/args.zig");
-const cli_ghostty = @import("cli/ghostty.zig");
+const cli_ghostty_action = @import("cli/ghostty_action.zig");
 const internal_os = @import("os/main.zig");
 const fontconfig = if (build_config.font_backend.hasFontconfig())
     @import("fontconfig")
@@ -15,8 +15,10 @@ else
     };
 const harfbuzz = @import("harfbuzz");
 const oni = @import("oniguruma");
+const glslang = if (build_config.custom_shaders) @import("glslang") else struct {
+    pub fn init() !void {}
+};
 const crash = @import("crash/main.zig");
-const renderer = @import("renderer.zig");
 const apprt = @import("apprt.zig");
 
 /// We export the xev backend we want to use so that the rest of
@@ -38,7 +40,7 @@ pub const GlobalState = struct {
 
     gpa: ?GPA,
     alloc: std.mem.Allocator,
-    action: ?cli_ghostty.Action,
+    action: ?cli_ghostty_action.Action,
     logging: Logging,
     rlimits: ResourceLimits = .{},
 
@@ -97,7 +99,7 @@ pub const GlobalState = struct {
 
         // We first try to parse any action that we may be executing.
         self.action = try cli_action.detectArgs(
-            cli_ghostty.Action,
+            cli_ghostty_action.Action,
             self.alloc,
         );
 
@@ -133,7 +135,7 @@ pub const GlobalState = struct {
         if (comptime build_config.font_backend.hasFontconfig()) {
             std.log.info("dependency fontconfig={d}", .{fontconfig.version()});
         }
-        std.log.info("renderer={}", .{renderer.Renderer});
+        std.log.info("renderer={}", .{build_config.renderer});
         std.log.info("event backend={t}", .{xev.backend});
 
         // As early as possible, initialize our resource limits.
@@ -152,7 +154,7 @@ pub const GlobalState = struct {
         try internal_os.ensureLocale(self.alloc);
 
         // Initialize custom shader support, if it is compiled in.
-        try renderer.shadertoy.init();
+        try glslang.init();
 
         // Initialize oniguruma for regex
         try oni.init(&.{oni.Encoding.utf8});

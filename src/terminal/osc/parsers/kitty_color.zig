@@ -2,15 +2,13 @@ const std = @import("std");
 
 const assert = @import("../../../quirks.zig").inlineAssert;
 
-const Parser = @import("../../osc.zig").Parser;
-const Command = @import("../../osc.zig").Command;
 const kitty_color = @import("../../kitty/color.zig");
 const RGB = @import("../../color.zig").RGB;
 
 const log = std.log.scoped(.osc_kitty_color);
 
 /// Parse OSC 21, the Kitty Color Protocol.
-pub fn parse(parser: *Parser, terminator_ch: ?u8) ?*Command {
+pub fn parse(parser: anytype, terminator_ch: ?u8) ?*@TypeOf(parser.command) {
     assert(parser.state == .@"21");
 
     const alloc = parser.alloc orelse {
@@ -81,7 +79,7 @@ test "OSC 21: kitty color protocol" {
     const testing = std.testing;
     const Kind = kitty_color.Kind;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "21;foreground=?;background=rgb:f0/f8/ff;cursor=aliceblue;cursor_text;visual_bell=;selection_foreground=#xxxyyzz;selection_background=?;selection_background=#aabbcc;2=?;3=rgbi:1.0/1.0/1.0";
@@ -152,7 +150,7 @@ test "OSC 21: kitty color protocol" {
 test "OSC 21: kitty color protocol without allocator" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     defer p.deinit();
 
     const input = "21;foreground=?";
@@ -163,7 +161,7 @@ test "OSC 21: kitty color protocol without allocator" {
 test "OSC 21: kitty color protocol double reset" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "21;foreground=?;background=rgb:f0/f8/ff;cursor=aliceblue;cursor_text;visual_bell=;selection_foreground=#xxxyyzz;selection_background=?;selection_background=#aabbcc;2=?;3=rgbi:1.0/1.0/1.0";
@@ -179,7 +177,7 @@ test "OSC 21: kitty color protocol double reset" {
 test "OSC 21: kitty color protocol reset after invalid" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "21;foreground=?;background=rgb:f0/f8/ff;cursor=aliceblue;cursor_text;visual_bell=;selection_foreground=#xxxyyzz;selection_background=?;selection_background=#aabbcc;2=?;3=rgbi:1.0/1.0/1.0";
@@ -190,9 +188,9 @@ test "OSC 21: kitty color protocol reset after invalid" {
 
     p.reset();
 
-    try testing.expectEqual(Parser.State.start, p.state);
+    try testing.expectEqual(@import("../../osc.zig").Parser.State.start, p.state);
     p.next('X');
-    try testing.expectEqual(Parser.State.invalid, p.state);
+    try testing.expectEqual(@import("../../osc.zig").Parser.State.invalid, p.state);
 
     p.reset();
 }
@@ -200,7 +198,7 @@ test "OSC 21: kitty color protocol reset after invalid" {
 test "OSC 21: kitty color protocol no key" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "21;";

@@ -17,7 +17,9 @@ const assert = @import("../quirks.zig").inlineAssert;
 const Allocator = std.mem.Allocator;
 const ArenaAllocator = std.heap.ArenaAllocator;
 const deepEqual = @import("../datastruct/comparison.zig").deepEqual;
-const fontpkg = @import("../font/main.zig");
+const FontCodepointMap = @import("../font/CodepointMap.zig");
+const FontMetrics = @import("../font/Metrics.zig");
+const FontVariation = @import("../font/variation.zig").Variation;
 const inputpkg = @import("../input.zig");
 const internal_os = @import("../os/main.zig");
 const cli_args = @import("../cli/args.zig");
@@ -29,7 +31,7 @@ const file_load = @import("file_load.zig");
 const formatterpkg = @import("formatter.zig");
 const themepkg = @import("theme.zig");
 const url = @import("url.zig");
-const MetricModifier = fontpkg.Metrics.Modifier;
+const MetricModifier = FontMetrics.Modifier;
 const help_strings = @import("help_strings");
 pub const Command = @import("command.zig").Command;
 const RepeatableReadableIO = @import("io.zig").RepeatableReadableIO;
@@ -5641,7 +5643,7 @@ pub const RepeatableFontVariation = struct {
     const Self = @This();
 
     // Allocator for the list is the arena for the parent config.
-    list: std.ArrayListUnmanaged(fontpkg.face.Variation) = .{},
+    list: std.ArrayListUnmanaged(FontVariation) = .{},
 
     pub fn parseCLI(self: *Self, alloc: Allocator, input_: ?[]const u8) !void {
         const input = input_ orelse return error.ValueRequired;
@@ -5651,7 +5653,7 @@ pub const RepeatableFontVariation = struct {
         const value = std.mem.trim(u8, input[eql_idx + 1 ..], whitespace);
         if (key.len != 4) return error.InvalidValue;
         try self.list.append(alloc, .{
-            .id = fontpkg.face.Variation.Id.init(@ptrCast(key.ptr)),
+            .id = FontVariation.Id.init(@ptrCast(key.ptr)),
             .value = std.fmt.parseFloat(f64, value) catch return error.InvalidValue,
         });
     }
@@ -5704,12 +5706,12 @@ pub const RepeatableFontVariation = struct {
         try list.parseCLI(alloc, "slnt=-15");
 
         try testing.expectEqual(@as(usize, 2), list.list.items.len);
-        try testing.expectEqual(fontpkg.face.Variation{
-            .id = fontpkg.face.Variation.Id.init("wght"),
+        try testing.expectEqual(FontVariation{
+            .id = FontVariation.Id.init("wght"),
             .value = 200,
         }, list.list.items[0]);
-        try testing.expectEqual(fontpkg.face.Variation{
-            .id = fontpkg.face.Variation.Id.init("slnt"),
+        try testing.expectEqual(FontVariation{
+            .id = FontVariation.Id.init("slnt"),
             .value = -15,
         }, list.list.items[1]);
     }
@@ -5725,12 +5727,12 @@ pub const RepeatableFontVariation = struct {
         try list.parseCLI(alloc, "slnt= -15");
 
         try testing.expectEqual(@as(usize, 2), list.list.items.len);
-        try testing.expectEqual(fontpkg.face.Variation{
-            .id = fontpkg.face.Variation.Id.init("wght"),
+        try testing.expectEqual(FontVariation{
+            .id = FontVariation.Id.init("wght"),
             .value = 200,
         }, list.list.items[0]);
-        try testing.expectEqual(fontpkg.face.Variation{
-            .id = fontpkg.face.Variation.Id.init("slnt"),
+        try testing.expectEqual(FontVariation{
+            .id = FontVariation.Id.init("slnt"),
             .value = -15,
         }, list.list.items[1]);
     }
@@ -7301,7 +7303,7 @@ pub const Keybinds = struct {
 pub const RepeatableCodepointMap = struct {
     const Self = @This();
 
-    map: fontpkg.CodepointMap = .{},
+    map: FontCodepointMap = .{},
 
     pub fn parseCLI(self: *Self, alloc: Allocator, input_: ?[]const u8) !void {
         const input = input_ orelse return error.ValueRequired;
@@ -7879,11 +7881,7 @@ pub const FontStyle = union(enum) {
 };
 
 /// See `font-synthetic-style` for documentation.
-pub const FontSyntheticStyle = packed struct {
-    bold: bool = true,
-    italic: bool = true,
-    @"bold-italic": bool = true,
-};
+pub const FontSyntheticStyle = @import("font_types.zig").FontSyntheticStyle;
 
 /// See "font-shaping-break" for documentation
 pub const FontShapingBreak = packed struct {
@@ -8865,19 +8863,7 @@ pub const BackgroundImageFit = enum {
 };
 
 /// See freetype-load-flag
-pub const FreetypeLoadFlags = packed struct {
-    // The defaults here at the time of writing this match the defaults
-    // for Freetype itself. Ghostty hasn't made any opinionated changes
-    // to these defaults. (Strictly speaking, `light` isn't FreeType's
-    // own default, but appears to be the effective default with most
-    // Fontconfig-aware software using FreeType, so until Ghostty
-    // implements Fontconfig support we default to `light`.)
-    hinting: bool = true,
-    @"force-autohint": bool = false,
-    monochrome: bool = false,
-    autohint: bool = true,
-    light: bool = true,
-};
+pub const FreetypeLoadFlags = @import("font_types.zig").FreetypeLoadFlags;
 
 /// See linux-cgroup
 pub const LinuxCgroup = enum {

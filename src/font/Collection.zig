@@ -17,7 +17,7 @@ const Collection = @This();
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const config = @import("../config/Config.zig");
+const config_font = @import("../config/font_types.zig");
 const comparison = @import("../datastruct/comparison.zig");
 const font = @import("main.zig");
 const options = font.options;
@@ -320,7 +320,7 @@ pub const CompleteError = Allocator.Error || error{
 pub fn completeStyles(
     self: *Collection,
     alloc: Allocator,
-    synthetic_config: config.FontSyntheticStyle,
+    synthetic_config: config_font.FontSyntheticStyle,
 ) CompleteError!void {
     // If every style has at least one entry then we're done!
     // This is the most common case.

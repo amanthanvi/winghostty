@@ -1,10 +1,7 @@
 const std = @import("std");
 
-const Parser = @import("../../osc.zig").Parser;
-const Command = @import("../../osc.zig").Command;
-
 /// Parse OSC 7
-pub fn parse(parser: *Parser, _: ?u8) ?*Command {
+pub fn parse(parser: anytype, _: ?u8) ?*@TypeOf(parser.command) {
     const cap = if (parser.capture) |*c| c else {
         parser.state = .invalid;
         return null;
@@ -25,7 +22,7 @@ pub fn parse(parser: *Parser, _: ?u8) ?*Command {
 test "OSC 7: report pwd" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "7;file:///tmp/example";
     for (input) |ch| p.next(ch);
@@ -38,7 +35,7 @@ test "OSC 7: report pwd" {
 test "OSC 7: report pwd empty" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "7;";
     for (input) |ch| p.next(ch);

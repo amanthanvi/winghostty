@@ -1,12 +1,9 @@
 const std = @import("std");
 
-const Parser = @import("../../osc.zig").Parser;
-const Command = @import("../../osc.zig").Command;
-
 const log = std.log.scoped(.osc_hyperlink);
 
 /// Parse OSC 8 hyperlinks
-pub fn parse(parser: *Parser, _: ?u8) ?*Command {
+pub fn parse(parser: anytype, _: ?u8) ?*@TypeOf(parser.command) {
     const cap = if (parser.capture) |*c| c else {
         parser.state = .invalid;
         return null;
@@ -59,7 +56,7 @@ pub fn parse(parser: *Parser, _: ?u8) ?*Command {
 test "OSC 8: hyperlink" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "8;;http://example.com";
     for (input) |ch| p.next(ch);
@@ -72,7 +69,7 @@ test "OSC 8: hyperlink" {
 test "OSC 8: hyperlink with id set" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "8;id=foo;http://example.com";
     for (input) |ch| p.next(ch);
@@ -86,7 +83,7 @@ test "OSC 8: hyperlink with id set" {
 test "OSC 8: hyperlink with empty id" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "8;id=;http://example.com";
     for (input) |ch| p.next(ch);
@@ -100,7 +97,7 @@ test "OSC 8: hyperlink with empty id" {
 test "OSC 8: hyperlink with incomplete key" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "8;id;http://example.com";
     for (input) |ch| p.next(ch);
@@ -114,7 +111,7 @@ test "OSC 8: hyperlink with incomplete key" {
 test "OSC 8: hyperlink with empty key" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "8;=value;http://example.com";
     for (input) |ch| p.next(ch);
@@ -128,7 +125,7 @@ test "OSC 8: hyperlink with empty key" {
 test "OSC 8: hyperlink with empty key and id" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "8;=value:id=foo;http://example.com";
     for (input) |ch| p.next(ch);
@@ -142,7 +139,7 @@ test "OSC 8: hyperlink with empty key and id" {
 test "OSC 8: hyperlink with empty uri" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "8;id=foo;";
     for (input) |ch| p.next(ch);
@@ -154,7 +151,7 @@ test "OSC 8: hyperlink with empty uri" {
 test "OSC 8: hyperlink end" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "8;;";
     for (input) |ch| p.next(ch);
