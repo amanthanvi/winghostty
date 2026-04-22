@@ -82,7 +82,7 @@ pub fn wrapFragment(alloc: Allocator, html: []const u8) Allocator.Error![]u8 {
 fn headerRegionEnd(output: []const u8) usize {
     if (std.mem.indexOf(u8, output, "\r\n\r\n")) |idx| return idx;
     if (std.mem.indexOf(u8, output, "\n\n")) |idx| return idx;
-    if (std.mem.indexOf(u8, output, "<html")) |idx| return idx;
+    if (std.mem.indexOfScalar(u8, output, '<')) |idx| return idx;
     return output.len;
 }
 
@@ -101,6 +101,7 @@ pub fn headerOffset(output: []const u8, comptime key: []const u8) ?usize {
 pub fn fragmentRange(output: []const u8) ?FragmentRange {
     const start = headerOffset(output, "StartFragment") orelse return null;
     const end = headerOffset(output, "EndFragment") orelse return null;
+    if (start > end or end > output.len) return null;
     return .{ .start = start, .end = end };
 }
 
@@ -198,12 +199,35 @@ test "fragmentRange parses lenient CF_HTML fragment offsets" {
     try std.testing.expectEqual(@as(usize, 10), range.end);
 }
 
+test "fragmentRange rejects invalid CF_HTML fragment offsets" {
+    const inverted =
+        "StartFragment:10\r\n" ++
+        "EndFragment:5\r\n" ++
+        "hello world";
+    try std.testing.expect(fragmentRange(inverted) == null);
+
+    const out_of_bounds =
+        "StartFragment:0\r\n" ++
+        "EndFragment:99\r\n" ++
+        "hello world";
+    try std.testing.expect(fragmentRange(out_of_bounds) == null);
+}
+
 test "headerOffset ignores keys outside the CF_HTML header" {
     const raw =
         "Version:0.9\r\n" ++
         "StartFragment:0000000017\r\n" ++
         "\r\n" ++
         "<p>StartFragment:9999999999</p>";
+    try std.testing.expectEqual(@as(?usize, 17), headerOffset(raw, "StartFragment"));
+    try std.testing.expect(headerOffset(raw, "EndFragment") == null);
+}
+
+test "headerOffset treats any html tag as a fallback body boundary" {
+    const raw =
+        "Version:0.9\r\n" ++
+        "StartFragment:0000000017\r\n" ++
+        "<!DOCTYPE html><p>StartFragment:9999999999</p>";
     try std.testing.expectEqual(@as(?usize, 17), headerOffset(raw, "StartFragment"));
     try std.testing.expect(headerOffset(raw, "EndFragment") == null);
 }

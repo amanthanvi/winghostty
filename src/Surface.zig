@@ -173,6 +173,11 @@ readonly: bool = false,
 /// the wall clock time that has elapsed between timestamps.
 command_timer: ?std.time.Instant = null,
 
+/// Last terminal progress report, retained so re-enabling progress-style
+/// can restore the current native progress surface without waiting for
+/// another OSC 9;4 update.
+last_progress_report: ?terminal.osc.Command.ProgressReport = null,
+
 /// Search state
 search: ?Search = null,
 search_generation: std.atomic.Value(u64) = .init(0),
@@ -1105,6 +1110,7 @@ pub fn handleMessage(self: *Surface, msg: Message) !void {
         },
 
         .progress_report => |v| {
+            self.last_progress_report = v;
             if (!self.config.progress_style) return;
             _ = self.rt_app.performAction(
                 .{ .surface = self },
@@ -1815,16 +1821,19 @@ pub fn updateConfig(
     self.config.deinit();
     self.config = derived;
 
-    if (had_progress_style and !self.config.progress_style) {
+    if (progressReportForConfigTransition(
+        had_progress_style,
+        self.config.progress_style,
+        self.last_progress_report,
+    )) |report| {
         _ = self.rt_app.performAction(
             .{ .surface = self },
             .progress_report,
-            .{ .state = .remove },
+            report,
         ) catch |err| {
-            log.warn("failed to clear progress after disabling progress-style err={}", .{err});
+            log.warn("failed to sync progress after progress-style change err={}", .{err});
         };
     }
-    // Re-enable resync waits for the next OSC 9;4 report; disabled reports are not buffered.
 
     // If our mouse is hidden but we disabled mouse hiding, then show it again.
     if (!self.config.mouse_hide_while_typing and self.mouse.hidden) {
@@ -1899,6 +1908,45 @@ pub fn updateConfig(
         .config_change,
         .{ .config = config },
     );
+}
+
+fn progressReportForConfigTransition(
+    had_progress_style: bool,
+    has_progress_style: bool,
+    last_report: ?terminal.osc.Command.ProgressReport,
+) ?terminal.osc.Command.ProgressReport {
+    if (had_progress_style and !has_progress_style) {
+        return .{ .state = .remove };
+    }
+
+    if (!had_progress_style and has_progress_style) {
+        return last_report;
+    }
+
+    return null;
+}
+
+test "progress-style disable clears native progress" {
+    const report = progressReportForConfigTransition(
+        true,
+        false,
+        .{ .state = .set, .progress = 50 },
+    ).?;
+    try std.testing.expectEqual(terminal.osc.Command.ProgressReport.State.remove, report.state);
+    try std.testing.expect(report.progress == null);
+}
+
+test "progress-style enable replays retained progress report" {
+    const report = progressReportForConfigTransition(
+        false,
+        true,
+        .{ .state = .set, .progress = 50 },
+    ).?;
+    try std.testing.expectEqual(terminal.osc.Command.ProgressReport.State.set, report.state);
+    try std.testing.expectEqual(@as(?u8, 50), report.progress);
+
+    try std.testing.expect(progressReportForConfigTransition(false, true, null) == null);
+    try std.testing.expect(progressReportForConfigTransition(true, true, .{ .state = .set }) == null);
 }
 
 const InitialSizeError = error{
