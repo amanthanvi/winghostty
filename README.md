@@ -1,4 +1,9 @@
-<h1 align="center">winghostty</h1>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/winghostty-flag.svg" />
+    <img src="images/winghostty-flag-light.svg" alt="Winghostty" width="320" />
+  </picture>
+</p>
 
 <p align="center">
   <em>A Windows terminal emulator that reuses Ghostty's terminal core under a native Win32 front end.</em>

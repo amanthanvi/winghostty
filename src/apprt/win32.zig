@@ -1001,6 +1001,10 @@ fn shouldShowSurfaceImmediately(host_id: ?u32) bool {
     return host_id == null;
 }
 
+fn shouldResizeHostForInitialSize(host_surface_count: usize) bool {
+    return host_surface_count == 1;
+}
+
 fn shouldDispatchOcclusion(current: ?bool, visible: bool) bool {
     return current == null or current.? != visible;
 }
@@ -2405,6 +2409,10 @@ pub const App = struct {
                         return true;
                     },
                     .activation => |activation| {
+                        const dropped_args = forwardedActivationExtraArgCount(value.arguments);
+                        if (dropped_args > 0) {
+                            std.log.warn("dropping {d} forwarded argv item(s) bundled with toast activation", .{dropped_args});
+                        }
                         if (self.handleToastActivation(activation)) return true;
                         self.pending_toast_activation = activation;
                         forwarded_arguments = null;
@@ -3169,7 +3177,7 @@ pub const App = struct {
         errdefer self.core_app.alloc.destroy(surface);
 
         try surface.init(self, title, config, opts);
-        self.consumePendingToastActivation();
+        if (opts.host_id == null) self.consumePendingToastActivation();
         return surface;
     }
 
@@ -3629,8 +3637,9 @@ pub const App = struct {
 
     fn consumePendingToastActivation(self: *App) void {
         const activation = self.pending_toast_activation orelse return;
-        self.pending_toast_activation = null;
-        _ = self.handleToastActivation(activation);
+        if (self.handleToastActivation(activation)) {
+            self.pending_toast_activation = null;
+        }
     }
 
     fn activateSurfaceNoFocus(self: *App, surface: *Surface) void {
@@ -12012,6 +12021,12 @@ fn scanForwardedToastActivation(
     return win32_toast_activation.scanLaunchArgsDetailed(argv);
 }
 
+fn forwardedActivationExtraArgCount(arguments: ?[]const [:0]const u8) usize {
+    const argv = arguments orelse return 0;
+    if (win32_toast_activation.scanLaunchArgs(argv) == null) return 0;
+    return if (argv.len > 1) argv.len - 1 else 0;
+}
+
 /// Return the last CLI `--config-file` override as an absolute path.
 /// Settings save targets the last file because later config files
 /// override earlier ones.
@@ -18910,8 +18925,17 @@ pub const Surface = struct {
             .width = @intCast(size.width),
             .height = @intCast(size.height),
         };
-        if (self.fullscreen or self.restore_maximized) return;
+        if (self.fullscreen or
+            self.restore_maximized or
+            !shouldResizeHostForInitialSize(self.hostSurfaceCount())) return;
         try self.resizeClientArea(size.width, size.height);
+    }
+
+    fn hostSurfaceCount(self: *const Surface) usize {
+        const host = self.host orelse return 1;
+        var count: usize = 0;
+        for (host.tabs.items) |*tab| count += tab.leafCount();
+        return count;
     }
 
     fn resetWindowSize(self: *Surface) !void {
@@ -20614,6 +20638,61 @@ test "win32 shouldShowSurfaceImmediately only for new hosts" {
     try std.testing.expect(shouldShowSurfaceImmediately(null));
     try std.testing.expect(!shouldShowSurfaceImmediately(1));
     try std.testing.expect(!shouldShowSurfaceImmediately(99));
+}
+
+test "win32 shouldResizeHostForInitialSize only for single-surface hosts" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!shouldResizeHostForInitialSize(0));
+    try std.testing.expect(shouldResizeHostForInitialSize(1));
+    try std.testing.expect(!shouldResizeHostForInitialSize(2));
+    try std.testing.expect(!shouldResizeHostForInitialSize(8));
+}
+
+test "win32 forwardedActivationExtraArgCount counts args bundled with activation" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const activation_only = [_][:0]const u8{"wgh://activate?surface=1"};
+    try std.testing.expectEqual(@as(usize, 0), forwardedActivationExtraArgCount(&activation_only));
+
+    const bundled = [_][:0]const u8{
+        "wgh://activate?surface=1",
+        "--config-file",
+        "manual.conf",
+    };
+    try std.testing.expectEqual(@as(usize, 2), forwardedActivationExtraArgCount(&bundled));
+
+    const malformed = [_][:0]const u8{"wgh://activate?surface=abc"};
+    try std.testing.expectEqual(@as(usize, 0), forwardedActivationExtraArgCount(&malformed));
+}
+
+test "win32 hostSurfaceCount tracks surfaces attached to one host" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var host: Host = undefined;
+    host.id = 42;
+    host.tabs = .empty;
+    host.active_tab = 0;
+    defer {
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var first: Surface = undefined;
+    first.host = &host;
+    first.host_id = host.id;
+
+    var second: Surface = undefined;
+    second.host = &host;
+    second.host_id = host.id;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &first));
+    try std.testing.expectEqual(@as(usize, 1), first.hostSurfaceCount());
+    try std.testing.expect(shouldResizeHostForInitialSize(first.hostSurfaceCount()));
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &second));
+    try std.testing.expectEqual(@as(usize, 2), first.hostSurfaceCount());
+    try std.testing.expect(!shouldResizeHostForInitialSize(first.hostSurfaceCount()));
 }
 
 test "win32 shouldDispatchOcclusion dispatches initial hidden state" {

@@ -62,6 +62,7 @@ const IID_IUnknown = GUID.parse("{00000000-0000-0000-C000-000000000046}");
 const IID_IInspectable = GUID.parse("{AF86E2E0-B12D-4C6A-9C5A-D7AA65101E90}");
 const IID_IToastNotificationManagerStatics = GUID.parse("{50AC103F-D235-4598-BBEF-98FE4D1A3AD4}");
 const IID_IToastNotificationFactory = GUID.parse("{04124B20-82C6-4229-B109-FD9ED4662B53}");
+const IID_IXmlDocument = GUID.parse("{F7F3A506-1E87-42D6-BCFB-B8C809FA5494}");
 const IID_IXmlDocumentIO = GUID.parse("{6CD0E74E-EE65-4489-9EBF-CA43E87BA637}");
 const IID_IToastActivatedHandler = GUID.parse("{AB54DE2D-97D9-5528-B6AD-105AFE156530}");
 const IID_IAgileObject = GUID.parse("{94EA2B94-E9CC-49E0-C0FF-EE64CA8F5B90}");
@@ -547,6 +548,13 @@ pub const WinrtToast = struct {
         const load_hr = xml_io.vtbl.LoadXml(xml_io.asRaw(), xml_hs);
         if (load_hr < 0) return ShowError.XmlLoadFailed;
 
+        var xml_doc_raw: ?*anyopaque = null;
+        const doc_hr = xml_inspectable.queryInterface(&IID_IXmlDocument, &xml_doc_raw);
+        if (doc_hr < 0 or xml_doc_raw == null) return ShowError.XmlLoadFailed;
+
+        const xml_doc = IInspectable.fromRaw(xml_doc_raw.?);
+        defer _ = xml_doc.release();
+
         const toast_class_hs = try createHStringShow(&self.fns, toast_notification_class);
         defer _ = self.fns.delete_string(toast_class_hs);
 
@@ -558,7 +566,7 @@ pub const WinrtToast = struct {
         defer _ = toast_factory.release();
 
         var notification_raw: ?*anyopaque = null;
-        const cn_hr = toast_factory.vtbl.CreateToastNotification(toast_factory.asRaw(), xml_inspectable.asRaw(), &notification_raw);
+        const cn_hr = toast_factory.vtbl.CreateToastNotification(toast_factory.asRaw(), xml_doc.asRaw(), &notification_raw);
         if (cn_hr < 0 or notification_raw == null) return ShowError.ActivationFailed;
 
         const notification = IToastNotification.fromRaw(notification_raw.?);
@@ -829,6 +837,7 @@ test "WinrtToast GUID sizes are 16 bytes" {
     try std.testing.expectEqual(@as(usize, 16), @sizeOf(@TypeOf(IID_IInspectable)));
     try std.testing.expectEqual(@as(usize, 16), @sizeOf(@TypeOf(IID_IToastNotificationManagerStatics)));
     try std.testing.expectEqual(@as(usize, 16), @sizeOf(@TypeOf(IID_IToastNotificationFactory)));
+    try std.testing.expectEqual(@as(usize, 16), @sizeOf(@TypeOf(IID_IXmlDocument)));
     try std.testing.expectEqual(@as(usize, 16), @sizeOf(@TypeOf(IID_IXmlDocumentIO)));
 }
 

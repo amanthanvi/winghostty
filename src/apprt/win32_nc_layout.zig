@@ -66,7 +66,7 @@ pub const Metrics = struct {
     /// Caption button height (== integrated-titlebar height).
     /// Default 40 px @ 96 dpi.
     caption_button_h: i32,
-    /// Edge-resize strip width. Typically equal to size_frame_x.
+    /// Edge-resize strip width. Includes the padded invisible border.
     edge_resize_width: i32,
 };
 
@@ -79,7 +79,7 @@ pub fn metricsDefault(dpi: u32) Metrics {
         .padded_border = scaleDim(4, scale),
         .caption_button_w = scaleDim(46, scale),
         .caption_button_h = scaleDim(40, scale),
-        .edge_resize_width = scaleDim(4, scale),
+        .edge_resize_width = scaleDim(8, scale),
     };
 }
 
@@ -171,11 +171,12 @@ pub fn captionButtonsRect(window: Rect, metrics: Metrics, state: WindowState) Ca
 /// Classify a cursor position into the correct hit-test code.
 ///
 /// Zone priority (highest first):
-///   1. Close / Max / Min button rects
-///   2. Sysmenu rect (leftmost 40 px of caption row)
-///   3. Edge-resize strips (suppressed when maximized)
-///   4. Caption row (top `caption_button_h` pixels)
-///   5. Client area
+///   1. Resize corners (suppressed when maximized)
+///   2. Close / Max / Min button rects
+///   3. Sysmenu rect (leftmost 40 px of caption row)
+///   4. Edge-resize strips (suppressed when maximized)
+///   5. Caption row (top `caption_button_h` pixels)
+///   6. Client area
 pub fn hitTest(
     window: Rect,
     cursor: Point,
@@ -185,13 +186,25 @@ pub fn hitTest(
     // Outside the window entirely.
     if (!window.contains(cursor.x, cursor.y)) return .nowhere;
 
-    // --- 1. Caption buttons (always checked first) ---
+    const edge_hit = if (state == .normal)
+        edgeHitTest(window, cursor, metrics.edge_resize_width)
+    else
+        null;
+
+    // --- 1. Resize corners must win in the outer frame so diagonal
+    // resizing remains available with an integrated client titlebar.
+    if (edge_hit) |hit| switch (hit) {
+        .topleft, .topright, .bottomleft, .bottomright => return hit,
+        else => {},
+    };
+
+    // --- 2. Caption buttons ---
     const btns = captionButtonsRect(window, metrics, state);
     if (btns.close.contains(cursor.x, cursor.y)) return .close;
     if (btns.max.contains(cursor.x, cursor.y)) return .maxbutton;
     if (btns.min.contains(cursor.x, cursor.y)) return .minbutton;
 
-    // --- 2. Sysmenu (leftmost 40 px of caption row, DPI-unscaled; we
+    // --- 3. Sysmenu (leftmost 40 px of caption row, DPI-unscaled; we
     //     use the caption_button_h as the sysmenu width for a square
     //     icon area) ---
     const caption_top = captionTop(window, metrics, state);
@@ -203,28 +216,13 @@ pub fn hitTest(
     };
     if (sysmenu_rect.contains(cursor.x, cursor.y)) return .sysmenu;
 
-    // --- 3. Edge-resize strips (normal only) ---
-    if (state == .normal) {
-        const ew = metrics.edge_resize_width;
-        const in_left = cursor.x < window.left + ew;
-        const in_right = cursor.x >= window.right - ew;
-        const in_top = cursor.y < window.top + ew;
-        const in_bottom = cursor.y >= window.bottom - ew;
+    // --- 4. Edge-resize strips (normal only) ---
+    if (edge_hit) |hit| return hit;
 
-        if (in_top and in_left) return .topleft;
-        if (in_top and in_right) return .topright;
-        if (in_bottom and in_left) return .bottomleft;
-        if (in_bottom and in_right) return .bottomright;
-        if (in_top) return .top;
-        if (in_bottom) return .bottom;
-        if (in_left) return .left;
-        if (in_right) return .right;
-    }
-
-    // --- 4. Caption row ---
+    // --- 5. Caption row ---
     if (cursor.y >= caption_top and cursor.y < caption_top + metrics.caption_button_h) return .caption;
 
-    // --- 5. Client ---
+    // --- 6. Client ---
     return .client;
 }
 
@@ -238,6 +236,23 @@ fn scaleDim(base: i32, dpi: i32) i32 {
     return @divTrunc(base * dpi + 48, 96);
 }
 
+fn edgeHitTest(window: Rect, cursor: Point, ew: i32) ?HitTest {
+    const in_left = cursor.x < window.left + ew;
+    const in_right = cursor.x >= window.right - ew;
+    const in_top = cursor.y < window.top + ew;
+    const in_bottom = cursor.y >= window.bottom - ew;
+
+    if (in_top and in_left) return .topleft;
+    if (in_top and in_right) return .topright;
+    if (in_bottom and in_left) return .bottomleft;
+    if (in_bottom and in_right) return .bottomright;
+    if (in_top) return .top;
+    if (in_bottom) return .bottom;
+    if (in_left) return .left;
+    if (in_right) return .right;
+    return null;
+}
+
 // ---------------------------------------------------------------------------
 // Tests
 // ---------------------------------------------------------------------------
@@ -249,7 +264,7 @@ test "metricsDefault: 96 dpi produces base values" {
     try std.testing.expectEqual(@as(i32, 4), m.padded_border);
     try std.testing.expectEqual(@as(i32, 46), m.caption_button_w);
     try std.testing.expectEqual(@as(i32, 40), m.caption_button_h);
-    try std.testing.expectEqual(@as(i32, 4), m.edge_resize_width);
+    try std.testing.expectEqual(@as(i32, 8), m.edge_resize_width);
 }
 
 test "metricsDefault: 144 dpi (150%)" {
@@ -301,21 +316,11 @@ test "sides preserved in both states" {
 
 // -- hitTest ----------------------------------------------------------------
 
-test "top-left corner: sysmenu wins over topleft resize" {
+test "top-left corner: resize wins over sysmenu in outer frame" {
     const m = metricsDefault(96);
     const win = Rect{ .left = 0, .top = 0, .right = 1280, .bottom = 800 };
-    // (0, 0) falls inside both the sysmenu rect and the topleft resize
-    // strip.  Sysmenu is checked first (higher priority), so .sysmenu wins.
-    try std.testing.expectEqual(HitTest.sysmenu, hitTest(win, .{ .x = 0, .y = 0 }, m, .normal));
-    // Pure topleft: bottom-left of the edge strip, outside sysmenu rect
-    // (y >= caption_button_h puts it outside sysmenu, but also outside the
-    // top edge strip).  Instead test a point at the very top but past
-    // sysmenu width — that is actually topright if far enough right, or
-    // top.  The only unambiguous topleft pixel is one that is inside the
-    // edge strip AND outside sysmenu.  At 96 dpi sysmenu is 40 px wide,
-    // edge strip is 4 px.  They overlap at (0..3, 0..3).  There is no
-    // topleft-only pixel — sysmenu always covers it.  This is intentional:
-    // the icon area at top-left takes priority.
+    try std.testing.expectEqual(HitTest.topleft, hitTest(win, .{ .x = 0, .y = 0 }, m, .normal));
+    try std.testing.expectEqual(HitTest.sysmenu, hitTest(win, .{ .x = 20, .y = 20 }, m, .normal));
 }
 
 test "topleft resize at bottom-left corner" {
@@ -325,17 +330,11 @@ test "topleft resize at bottom-left corner" {
     try std.testing.expectEqual(HitTest.bottomleft, hitTest(win, .{ .x = 0, .y = 799 }, m, .normal));
 }
 
-test "top-right corner: close button wins over topright resize" {
+test "top-right corner: resize wins over close in outer frame" {
     const m = metricsDefault(96);
     const win = Rect{ .left = 0, .top = 0, .right = 1280, .bottom = 800 };
-    // (1279, 0) lands inside the close button rect, which has higher
-    // priority than the topright edge-resize strip.
-    try std.testing.expectEqual(HitTest.close, hitTest(win, .{ .x = 1279, .y = 0 }, m, .normal));
-    // Verify actual topright at a position outside caption buttons.
-    // Buttons start at 1280 - 3*46 = 1142.  Rightmost edge strip:
-    // x >= 1276.  So x=1141 y=0 is in the top strip but not the right
-    // strip (top only).  For topright we need both: x=1279 y=0 but that
-    // hits close.  Try the bottom-right corner instead:
+    try std.testing.expectEqual(HitTest.topright, hitTest(win, .{ .x = 1279, .y = 0 }, m, .normal));
+    try std.testing.expectEqual(HitTest.close, hitTest(win, .{ .x = 1257, .y = 20 }, m, .normal));
     try std.testing.expectEqual(HitTest.bottomright, hitTest(win, .{ .x = 1279, .y = 799 }, m, .normal));
 }
 
