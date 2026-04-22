@@ -103,6 +103,16 @@ const GWLP_WNDPROC = -4;
 const GWL_STYLE = -16;
 const GWL_EXSTYLE = -20;
 const IDC_ARROW = @as(INTRESOURCE, @ptrFromInt(32512));
+const ID_ICON_GHOSTTY = 1;
+const IMAGE_ICON = 1;
+const LR_SHARED = 0x00008000;
+const SM_CXICON = 11;
+const SM_CYICON = 12;
+const SM_CXSMICON = 49;
+const SM_CYSMICON = 50;
+const WM_SETICON = 0x0080;
+const ICON_SMALL = 0;
+const ICON_BIG = 1;
 const HTNOWHERE = 0;
 const HTCLIENT = 1;
 const HTCAPTION = 2;
@@ -675,6 +685,8 @@ extern "user32" fn GetClipboardData(uFormat: UINT) callconv(.winapi) ?*anyopaque
 extern "user32" fn SetClipboardData(uFormat: UINT, hMem: ?*anyopaque) callconv(.winapi) ?*anyopaque;
 extern "user32" fn IsClipboardFormatAvailable(format: UINT) callconv(.winapi) BOOL;
 extern "user32" fn LoadCursorW(hInstance: ?HINSTANCE, lpCursorName: INTRESOURCE) callconv(.winapi) HCURSOR;
+extern "user32" fn LoadImageW(hInst: HINSTANCE, name: INTRESOURCE, @"type": UINT, cx: i32, cy: i32, fuLoad: UINT) callconv(.winapi) ?*anyopaque;
+extern "user32" fn GetSystemMetrics(nIndex: i32) callconv(.winapi) i32;
 extern "user32" fn MessageBoxW(hWnd: ?HWND, lpText: LPCWSTR, lpCaption: LPCWSTR, uType: UINT) callconv(.winapi) i32;
 extern "user32" fn MessageBeep(uType: UINT) callconv(.winapi) BOOL;
 extern "user32" fn InvalidateRect(hWnd: HWND, lpRect: ?*const RECT, bErase: BOOL) callconv(.winapi) BOOL;
@@ -1003,6 +1015,36 @@ fn shouldShowSurfaceImmediately(host_id: ?u32) bool {
 
 fn shouldResizeHostForInitialSize(host_surface_count: usize) bool {
     return host_surface_count == 1;
+}
+
+fn intResource(id: usize) INTRESOURCE {
+    return @as(INTRESOURCE, @ptrFromInt(id));
+}
+
+fn appIconResource() INTRESOURCE {
+    return intResource(ID_ICON_GHOSTTY);
+}
+
+fn loadAppIcon(hinstance: HINSTANCE, small: bool) HICON {
+    const cx = if (small) GetSystemMetrics(SM_CXSMICON) else GetSystemMetrics(SM_CXICON);
+    const cy = if (small) GetSystemMetrics(SM_CYSMICON) else GetSystemMetrics(SM_CYICON);
+    return LoadImageW(
+        hinstance,
+        appIconResource(),
+        IMAGE_ICON,
+        if (cx > 0) cx else if (small) 16 else 32,
+        if (cy > 0) cy else if (small) 16 else 32,
+        LR_SHARED,
+    );
+}
+
+fn setWindowIcon(hwnd: HWND, hinstance: HINSTANCE) void {
+    if (loadAppIcon(hinstance, false)) |icon| {
+        _ = SendMessageW(hwnd, WM_SETICON, ICON_BIG, @as(LPARAM, @bitCast(@intFromPtr(icon))));
+    }
+    if (loadAppIcon(hinstance, true)) |icon| {
+        _ = SendMessageW(hwnd, WM_SETICON, ICON_SMALL, @as(LPARAM, @bitCast(@intFromPtr(icon))));
+    }
 }
 
 fn shouldDispatchOcclusion(current: ?bool, visible: bool) bool {
@@ -1686,7 +1728,7 @@ pub const App = struct {
         // continue) — toasts and taskbar grouping are non-essential
         // for basic terminal function.
         win32_aumid.setProcessAumid();
-        win32_aumid.registerAumidDisplayName();
+        win32_aumid.registerAumidDisplayName(core_app.alloc);
 
         // Boot the WinRT toast notifier. Failure falls back to the
         // host banner/log path in `showDesktopNotificationWithLaunch`.
@@ -3081,12 +3123,12 @@ pub const App = struct {
             .cbClsExtra = 0,
             .cbWndExtra = 0,
             .hInstance = self.hinstance,
-            .hIcon = null,
+            .hIcon = loadAppIcon(self.hinstance, false),
             .hCursor = LoadCursorW(null, IDC_ARROW),
             .hbrBackground = null,
             .lpszMenuName = null,
             .lpszClassName = class_name,
-            .hIconSm = null,
+            .hIconSm = loadAppIcon(self.hinstance, true),
         };
 
         self.class_atom = RegisterClassExW(&wc);
@@ -3105,12 +3147,12 @@ pub const App = struct {
             .cbClsExtra = 0,
             .cbWndExtra = 0,
             .hInstance = self.hinstance,
-            .hIcon = null,
+            .hIcon = loadAppIcon(self.hinstance, false),
             .hCursor = LoadCursorW(null, IDC_ARROW),
             .hbrBackground = null,
             .lpszMenuName = null,
             .lpszClassName = host_class_name,
-            .hIconSm = null,
+            .hIconSm = loadAppIcon(self.hinstance, true),
         };
 
         self.host_class_atom = RegisterClassExW(&wc);
@@ -3361,6 +3403,7 @@ pub const App = struct {
             host,
         ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
         host.hwnd = hwnd;
+        setWindowIcon(hwnd, self.hinstance);
         applyDwmThemeWithBuild(hwnd, &self.resolved_theme, &self.config, self.os_build);
         host.current_dpi = GetDpiForWindow(hwnd);
         if (host.current_dpi == 0) host.current_dpi = 96;

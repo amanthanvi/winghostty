@@ -1,0 +1,43 @@
+<svg width="1024" height="1024" viewBox="0 0 1024 1024" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="tile" x1="170" y1="92" x2="880" y2="956" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#111827"/>
+      <stop offset="0.52" stop-color="#0B1220"/>
+      <stop offset="1" stop-color="#020617"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(300 226) rotate(44) scale(820)">
+      <stop stop-color="#FFFFFF" stop-opacity="0.22"/>
+      <stop offset="0.46" stop-color="#FFFFFF" stop-opacity="0.04"/>
+      <stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/>
+    </radialGradient>
+    <filter id="shadow" x="110" y="100" width="804" height="820" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feDropShadow dx="0" dy="24" stdDeviation="30" flood-color="#000000" flood-opacity="0.42"/>
+    </filter>
+    <clipPath id="ghostClip">
+      <path d="M204 760V424C204 254.448 341.552 116 512 116C682.448 116 820 254.448 820 424V760C820 838.977 755.977 903 677 903C639.613 903 603.753 888.376 577 862.476C552.247 886.453 516.988 886.453 492.235 862.476C465.482 888.376 429.622 903 392.235 903C313.258 903 249.235 838.977 249.235 760H204Z"/>
+    </clipPath>
+    <clipPath id="innerClip">
+      <path d="M264 748V428C264 291.033 375.033 180 512 180C648.967 180 760 291.033 760 428V748C760 794.392 722.392 832 676 832C644.511 832 615.934 814.524 601.36 788.501C589.461 767.253 559.919 763.906 543.405 781.809L540.887 784.54C524.917 801.855 497.813 801.855 481.843 784.54L479.325 781.809C462.811 763.906 433.269 767.253 421.37 788.501C406.796 814.524 378.219 832 346.73 832C300.338 832 264 794.392 264 748Z"/>
+    </clipPath>
+  </defs>
+  <rect x="56" y="56" width="912" height="912" rx="206" fill="url(#tile)"/>
+  <rect x="56" y="56" width="912" height="912" rx="206" fill="url(#glow)"/>
+  <path d="M196 180H828" stroke="#FFFFFF" stroke-opacity="0.08" stroke-width="2"/>
+  <g filter="url(#shadow)">
+    <g clip-path="url(#ghostClip)">
+      <rect x="204" y="116" width="308" height="394" fill="#F25022"/>
+      <rect x="512" y="116" width="308" height="394" fill="#7FBA00"/>
+      <rect x="204" y="510" width="308" height="393" fill="#00A4EF"/>
+      <rect x="512" y="510" width="308" height="393" fill="#FFB900"/>
+    </g>
+    <path d="M204 760V424C204 254.448 341.552 116 512 116C682.448 116 820 254.448 820 424V760C820 838.977 755.977 903 677 903C639.613 903 603.753 888.376 577 862.476C552.247 886.453 516.988 886.453 492.235 862.476C465.482 888.376 429.622 903 392.235 903C313.258 903 249.235 838.977 249.235 760H204Z" stroke="#05070B" stroke-width="44" stroke-linejoin="round"/>
+    <g clip-path="url(#innerClip)">
+      <rect x="264" y="180" width="496" height="652" fill="#F8FAFC"/>
+      <rect x="264" y="180" width="248" height="326" fill="#FFFFFF"/>
+      <rect x="512" y="506" width="248" height="326" fill="#F1F5F9"/>
+    </g>
+    <path d="M357.5 424.5L476.5 493.206C500.5 507.062 500.5 541.703 476.5 555.559L357.5 624.265C332.833 638.505 302 620.704 302 592.223C302 579.007 309.052 566.795 320.5 560.187L383.5 523.806L320.5 487.425C309.052 480.817 302 468.605 302 455.389C302 426.908 332.833 409.107 357.5 423.347V424.5Z" fill="#05070B"/>
+    <rect x="533" y="496" width="196" height="58" rx="29" fill="#05070B"/>
+  </g>
+  <path d="M218 112H806C864.542 112 912 159.458 912 218V806" stroke="#FFFFFF" stroke-opacity="0.16" stroke-width="5" stroke-linecap="round"/>
+</svg>

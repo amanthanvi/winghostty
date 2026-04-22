@@ -88,13 +88,10 @@ pub fn setProcessAumid() void {
 }
 
 /// Write `HKCU\Software\Classes\AppUserModelId\com.ghostty.winghostty`
-/// with DisplayName + ShowInSettings. Idempotent; writes every launch
-/// (cost is negligible and this keeps the display-name synchronised
-/// even if it changes). Icon wiring is deferred — extracting the exe
-/// icon to a stable file path requires shell32's
-/// `SHGetStockIconInfo` / icon-resource-extraction which we don't
-/// need for the unshortcut'd dev path.
-pub fn registerAumidDisplayName() void {
+/// with DisplayName + IconUri + ShowInSettings. Idempotent; writes every
+/// launch (cost is negligible and this keeps shell attribution in sync
+/// with the active dev/build path).
+pub fn registerAumidDisplayName(alloc: std.mem.Allocator) void {
     const subkey = std.unicode.utf8ToUtf16LeStringLiteral(
         "Software\\Classes\\AppUserModelId\\com.ghostty.winghostty",
     );
@@ -117,20 +114,27 @@ pub fn registerAumidDisplayName() void {
     }
     defer _ = RegCloseKey(hkey);
 
-    const display_name = std.unicode.utf8ToUtf16LeStringLiteral("Ghostty");
-    // REG_SZ takes byte count including the trailing null. The literal
-    // is a *const [N:0]u16 whose length is known at comptime.
-    const name_bytes = (display_name.len + 1) * @sizeOf(u16);
-    const set_rc = RegSetValueExW(
-        hkey,
-        std.unicode.utf8ToUtf16LeStringLiteral("DisplayName"),
-        0,
-        REG_SZ,
-        @ptrCast(display_name),
-        @intCast(name_bytes),
-    );
+    const display_name = std.unicode.utf8ToUtf16LeStringLiteral("winghostty");
+    const set_rc = writeRegSz(hkey, std.unicode.utf8ToUtf16LeStringLiteral("DisplayName"), display_name);
     if (set_rc != ERROR_SUCCESS) {
         std.log.warn("AUMID: write DisplayName failed rc={d}", .{set_rc});
+    }
+
+    if (std.fs.selfExePathAlloc(alloc)) |exe_path| {
+        defer alloc.free(exe_path);
+
+        if (std.unicode.utf8ToUtf16LeAllocZ(alloc, exe_path)) |icon_uri| {
+            defer alloc.free(icon_uri);
+
+            const icon_rc = writeRegSz(hkey, std.unicode.utf8ToUtf16LeStringLiteral("IconUri"), icon_uri);
+            if (icon_rc != ERROR_SUCCESS) {
+                std.log.warn("AUMID: write IconUri failed rc={d}", .{icon_rc});
+            }
+        } else |err| {
+            std.log.warn("AUMID: IconUri utf16 conversion failed err={}", .{err});
+        }
+    } else |err| {
+        std.log.warn("AUMID: self exe path unavailable for IconUri err={}", .{err});
     }
 
     var show_in_settings: u32 = 1;
@@ -145,6 +149,17 @@ pub fn registerAumidDisplayName() void {
     if (show_rc != ERROR_SUCCESS) {
         std.log.warn("AUMID: write ShowInSettings failed rc={d}", .{show_rc});
     }
+}
+
+fn writeRegSz(hkey: HKEY, value_name: LPCWSTR, value: [:0]const u16) i32 {
+    return RegSetValueExW(
+        hkey,
+        value_name,
+        0,
+        REG_SZ,
+        @ptrCast(value.ptr),
+        @intCast((value.len + 1) * @sizeOf(u16)),
+    );
 }
 
 test "aumid string shape" {
