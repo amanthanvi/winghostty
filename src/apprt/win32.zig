@@ -1017,6 +1017,10 @@ fn shouldResizeHostForInitialSize(host_surface_count: usize) bool {
     return host_surface_count == 1;
 }
 
+fn hostPresentShowCommand(is_zoomed: bool) i32 {
+    return if (is_zoomed) SW_MAXIMIZE else SW_SHOW;
+}
+
 fn intResource(id: usize) INTRESOURCE {
     return @as(INTRESOURCE, @ptrFromInt(id));
 }
@@ -6796,7 +6800,7 @@ const Host = struct {
 
     fn present(self: *Host) void {
         const hwnd = self.hwnd orelse return;
-        _ = ShowWindow(hwnd, SW_SHOW);
+        _ = ShowWindow(hwnd, hostPresentShowCommand(IsZoomed(hwnd) != 0));
         _ = SetForegroundWindow(hwnd);
         _ = SetFocus(hwnd);
     }
@@ -20692,6 +20696,13 @@ test "win32 shouldResizeHostForInitialSize only for single-surface hosts" {
     try std.testing.expect(shouldResizeHostForInitialSize(1));
     try std.testing.expect(!shouldResizeHostForInitialSize(2));
     try std.testing.expect(!shouldResizeHostForInitialSize(8));
+}
+
+test "win32 hostPresentShowCommand preserves maximized state" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(SW_SHOW, hostPresentShowCommand(false));
+    try std.testing.expectEqual(SW_MAXIMIZE, hostPresentShowCommand(true));
 }
 
 test "win32 forwardedActivationExtraArgCount counts args bundled with activation" {
