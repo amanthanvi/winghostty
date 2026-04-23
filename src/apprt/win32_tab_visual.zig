@@ -26,6 +26,7 @@
 //! acceptable for opacity-only transitions.
 
 const std = @import("std");
+const geometry = @import("win32_geometry.zig");
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -166,13 +167,7 @@ pub const UnderlineState = struct {
 // Hit-zone helper
 // ---------------------------------------------------------------------------
 
-/// Axis-aligned integer rectangle (Win32 RECT layout).
-pub const Rect = extern struct {
-    left: i32,
-    top: i32,
-    right: i32,
-    bottom: i32,
-};
+pub const Rect = geometry.Rect;
 
 /// Given a tab button's full rect and the current close-button alpha,
 /// return the close-button hit rect. When alpha == 0 the hit zone has

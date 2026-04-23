@@ -1,12 +1,10 @@
-//! Native Win32 settings window (P3 scaffold).
+//! Native Win32 settings window.
 //!
-//! First-pass surface: singleton top-level HWND owned by `App`. The
-//! action rerouting (`open_config` → `SettingsWindow.open`) is live,
-//! but the content pane is a placeholder while the section catalogue,
-//! custom controls, diff preview, and atomic save path land in
-//! subsequent passes. `App` invokes this module via a thin handle so
-//! the module doesn't need to know `Host`, `Surface`, or the other
-//! win32 apprt internals.
+//! Singleton top-level HWND owned by `App`. The `open_config` action
+//! routes here; the Advanced section keeps the text-editor escape hatch
+//! for config keys that do not have native controls. `App` invokes this
+//! module via a thin handle so the module doesn't need to know `Host`,
+//! `Surface`, or the other win32 apprt internals.
 //!
 //! Lifecycle:
 //!   * `SettingsWindow.open(app)` — creates the HWND if absent,
@@ -16,32 +14,30 @@
 //!   * `SettingsWindow.destroy(self)` — called from App.terminate;
 //!     `DestroyWindow` + free the struct.
 //!
-//! Config draft (the `pending` shallow clone for diff / Apply / Cancel)
-//! and all the per-field controls arrive with later passes. Per
-//! AGENTS.md:49, the shallow-clone invariant matters here: the clone
-//! MUST NOT deinit an inherited `command` override.
+//! The editable draft is a shallow-cloned `Config` saved atomically
+//! through `AppHandle.saveAndReload`. Per AGENTS.md:49, the clone MUST
+//! NOT deinit an inherited `command` override.
 
 const std = @import("std");
 const windows = std.os.windows;
-const configpkg = @import("../config.zig");
-const Config = configpkg.Config;
+const Config = @import("../config/Config.zig");
+const win32_types = @import("win32_types.zig");
 
-/// Minimal set of Win32 types + externs we need here. Duplicated from
-/// `win32.zig` to keep this module free of an `*App` type dependency
-/// that would force a cycle. Keeping them local is cheaper than
-/// threading every extern through a shared module just yet.
-const HWND = windows.HWND;
-const HINSTANCE = windows.HINSTANCE;
-const LPCWSTR = [*:0]const u16;
-const UINT = u32;
-const LRESULT = isize;
-const WPARAM = usize;
-const LPARAM = isize;
-const BOOL = windows.BOOL;
-const LONG_PTR = isize;
-const ATOM = u16;
-const COLORREF = u32;
-const RECT = extern struct { left: i32, top: i32, right: i32, bottom: i32 };
+/// Minimal set of Win32 aliases + externs we need here. Shared ABI structs
+/// live in `win32_types.zig` so this module stays free of an `*App` type
+/// dependency without duplicating layout-sensitive declarations.
+const HWND = win32_types.HWND;
+const HINSTANCE = win32_types.HINSTANCE;
+const LPCWSTR = win32_types.LPCWSTR;
+const UINT = win32_types.UINT;
+const LRESULT = win32_types.LRESULT;
+const WPARAM = win32_types.WPARAM;
+const LPARAM = win32_types.LPARAM;
+const BOOL = win32_types.BOOL;
+const LONG_PTR = win32_types.LONG_PTR;
+const ATOM = win32_types.ATOM;
+const COLORREF = win32_types.COLORREF;
+const RECT = win32_types.RECT;
 
 const WS_OVERLAPPEDWINDOW: u32 = 0x00CF0000;
 const WS_MAXIMIZEBOX: u32 = 0x00010000;
@@ -156,6 +152,18 @@ pub const Section = enum(u32) {
     }
 };
 
+fn backgroundBlurFromCheckbox(
+    current: Config.BackgroundBlur,
+    checked: bool,
+) Config.BackgroundBlur {
+    if (!checked) return .false;
+
+    return switch (current) {
+        .radius => |radius| if (radius > 0) current else .true,
+        .false, .true => .true,
+    };
+}
+
 extern "user32" fn RegisterClassExW(lpwcx: *const WNDCLASSEXW) callconv(.winapi) ATOM;
 extern "user32" fn CreateWindowExW(
     dwExStyle: u32,
@@ -200,44 +208,9 @@ const DT_VCENTER: UINT = 0x4;
 const DT_SINGLELINE: UINT = 0x20;
 const DT_NOPREFIX: UINT = 0x800;
 
-const PAINTSTRUCT = extern struct {
-    hdc: ?*anyopaque,
-    fErase: BOOL,
-    rcPaint: RECT,
-    fRestore: BOOL,
-    fIncUpdate: BOOL,
-    rgbReserved: [32]u8,
-};
-
-const CREATESTRUCTW = extern struct {
-    lpCreateParams: ?*anyopaque,
-    hInstance: HINSTANCE,
-    hMenu: ?*anyopaque,
-    hwndParent: ?HWND,
-    cy: i32,
-    cx: i32,
-    y: i32,
-    x: i32,
-    style: i32,
-    lpszName: ?LPCWSTR,
-    lpszClass: ?LPCWSTR,
-    dwExStyle: u32,
-};
-
-const WNDCLASSEXW = extern struct {
-    cbSize: u32,
-    style: u32,
-    lpfnWndProc: *const fn (HWND, UINT, WPARAM, LPARAM) callconv(.winapi) LRESULT,
-    cbClsExtra: i32,
-    cbWndExtra: i32,
-    hInstance: HINSTANCE,
-    hIcon: ?*anyopaque,
-    hCursor: ?*anyopaque,
-    hbrBackground: ?*anyopaque,
-    lpszMenuName: ?LPCWSTR,
-    lpszClassName: LPCWSTR,
-    hIconSm: ?*anyopaque,
-};
+const PAINTSTRUCT = win32_types.PAINTSTRUCT;
+const CREATESTRUCTW = win32_types.CREATESTRUCTW;
+const WNDCLASSEXW = win32_types.WNDCLASSEXW;
 
 const class_name = std.unicode.utf8ToUtf16LeStringLiteral("winghostty.win32.settings");
 
@@ -721,27 +694,23 @@ pub const SettingsWindow = struct {
     }
 
     /// background-blur is a union (false / true / { radius: u8 }). The
-    /// GUI exposes only the boolean path — true/false. A user who has
-    /// set a numeric radius in their config file will see the checkbox
-    /// as checked, and unchecking then saving clobbers the radius back
-    /// to the plain `true` variant. Inline note in the paint path
-    /// should eventually surface this.
+    /// GUI exposes only the boolean path, so keep an existing numeric
+    /// radius intact while the checkbox remains enabled.
     fn syncBgBlurFromCheckbox(self: *SettingsWindow) void {
         if (self.suppress_edit_events) return;
         const p = &(self.pending orelse return);
         const chk = self.chk_bg_blur orelse return;
         const state = SendMessageW(chk, BM_GETCHECK, 0, 0);
-        p.*.@"background-blur" = if (state == BST_CHECKED) .true else .false;
+        p.*.@"background-blur" = backgroundBlurFromCheckbox(
+            p.*.@"background-blur",
+            state == BST_CHECKED,
+        );
     }
 
     fn displayBgBlurInCheckbox(self: *SettingsWindow) void {
         const chk = self.chk_bg_blur orelse return;
         const p = self.pending orelse return;
-        const enabled = switch (p.@"background-blur") {
-            .false => false,
-            .true => true,
-            .radius => |r| r > 0,
-        };
+        const enabled = p.@"background-blur".enabled();
         self.suppress_edit_events = true;
         _ = SendMessageW(
             chk,
@@ -934,8 +903,8 @@ pub const SettingsWindow = struct {
             null,
         );
         // "Save" button — always visible; writes `pending` to disk
-        // and fires a hard reload. Error surfaces via std.log.warn
-        // for now; inline banner is P3 polish.
+        // and fires a hard reload. Save errors are logged and the draft
+        // remains in memory for retry.
         const btn_save_label = std.unicode.utf8ToUtf16LeStringLiteral("Save");
         self.btn_save = CreateWindowExW(
             0,
@@ -1460,7 +1429,7 @@ fn paint(hwnd: HWND, owner: *SettingsWindow) void {
     _ = SetBkMode(hdc, TRANSPARENT);
     _ = SetTextColor(hdc, fg);
 
-    // Content pane: header + placeholder body describing the section.
+    // Content pane: header + section summary.
     const pane_left = left_rail_width + side_pad;
     const pane_right = rect.right - side_pad;
     const pane_top = section_btn_top_pad;
@@ -1482,7 +1451,7 @@ fn paint(hwnd: HWND, owner: *SettingsWindow) void {
         DT_LEFT | DT_TOP | DT_SINGLELINE | DT_NOPREFIX,
     );
 
-    // Placeholder body below the header (section summary in 1 line).
+    // Section summary below the header.
     var body_buf_w: [256]u16 = undefined;
     const body_w = utf8ToW(&body_buf_w, owner.active_section.placeholderText());
     var body_rect: RECT = .{
@@ -1578,4 +1547,30 @@ fn sat8(ch: u32, delta: i32) u32 {
 
 fn packColor(r: u32, g: u32, b: u32) COLORREF {
     return r | (g << 8) | (b << 16);
+}
+
+test "settings background blur checkbox preserves enabled radius" {
+    try std.testing.expectEqual(
+        Config.BackgroundBlur{ .radius = 42 },
+        backgroundBlurFromCheckbox(.{ .radius = 42 }, true),
+    );
+    try std.testing.expectEqual(
+        .true,
+        backgroundBlurFromCheckbox(.false, true),
+    );
+    try std.testing.expectEqual(
+        .true,
+        backgroundBlurFromCheckbox(.{ .radius = 0 }, true),
+    );
+}
+
+test "settings background blur checkbox can disable any variant" {
+    try std.testing.expectEqual(
+        .false,
+        backgroundBlurFromCheckbox(.true, false),
+    );
+    try std.testing.expectEqual(
+        .false,
+        backgroundBlurFromCheckbox(.{ .radius = 42 }, false),
+    );
 }

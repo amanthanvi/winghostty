@@ -3,7 +3,7 @@
 const xev = @import("../global.zig").xev;
 const apprt = @import("../apprt.zig");
 const renderer = @import("../renderer.zig");
-const Config = @import("../config.zig").Config;
+const Config = @import("../config/Config.zig");
 const termio = @import("../termio.zig");
 
 /// All size metrics for the terminal.

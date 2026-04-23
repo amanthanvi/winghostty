@@ -112,7 +112,7 @@ pub const Face = struct {
             .color = color,
             .size = opts.size,
         };
-        result.quirks_disable_default_font_features = quirks.disableDefaultFontFeatures(&result);
+        result.quirks_disable_default_font_features = quirks.disableDefaultFontFeatures();
 
         // In debug mode, we output information about available variation axes,
         // if they exist.

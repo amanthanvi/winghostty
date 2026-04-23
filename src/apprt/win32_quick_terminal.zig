@@ -25,10 +25,11 @@
 //!   center — width = size against W, height = size against H; centered.
 //!            Start rect == end rect (no slide; caller fades alpha).
 //!
-//! This module is allocation-free. It imports nothing from Win32; the Rect
-//! struct is layout-compatible with RECT but defined locally.
+//! This module is allocation-free and uses shared Win32-compatible geometry
+//! types without importing the Win32 runtime module.
 
 const std = @import("std");
+const geometry = @import("win32_geometry.zig");
 
 // ---------------------------------------------------------------------------
 // Public types
@@ -67,21 +68,7 @@ pub const QuickTerminalConfig = struct {
     keyboard_interactivity: KeyboardInteractivity = .on_demand,
 };
 
-/// Layout-compatible with Win32 RECT but defined without Win32 imports.
-pub const Rect = extern struct {
-    left: i32,
-    top: i32,
-    right: i32,
-    bottom: i32,
-
-    pub fn width(self: Rect) i32 {
-        return self.right - self.left;
-    }
-
-    pub fn height(self: Rect) i32 {
-        return self.bottom - self.top;
-    }
-};
+pub const Rect = geometry.Rect;
 
 pub const MonitorInfo = struct {
     work_area: Rect,

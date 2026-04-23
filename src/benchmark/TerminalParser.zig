@@ -49,8 +49,7 @@ pub fn benchmark(self: *TerminalParser) Benchmark {
 fn setup(ptr: *anyopaque) Benchmark.Error!void {
     const self: *TerminalParser = @ptrCast(@alignCast(ptr));
 
-    // Open our data file to prepare for reading. We can do more
-    // validation here eventually.
+    // Open our data file to prepare for reading.
     assert(self.data_f == null);
     self.data_f = options.dataFile(self.opts.data) catch |err| {
         log.warn("error opening data file err={}", .{err});
@@ -69,11 +68,7 @@ fn teardown(ptr: *anyopaque) void {
 fn step(ptr: *anyopaque) Benchmark.Error!void {
     const self: *TerminalParser = @ptrCast(@alignCast(ptr));
 
-    // Get our buffered reader so we're not predominantly
-    // waiting on file IO. It'd be better to move this fully into
-    // memory. If we're IO bound though that should show up on
-    // the benchmark results and... I know writing this that we
-    // aren't currently IO bound.
+    // Use a buffered reader so parser costs dominate the benchmark.
     const f = self.data_f orelse return;
     var read_buf: [4096]u8 align(std.atomic.cache_line) = undefined;
     var f_reader = f.reader(&read_buf);

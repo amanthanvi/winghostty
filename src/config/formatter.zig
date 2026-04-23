@@ -2,7 +2,6 @@ const formatter = @This();
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
-const Key = @import("key.zig").Key;
 
 /// Returns a single entry formatter for the given field name and writer.
 pub fn entryFormatter(

@@ -4,53 +4,12 @@ const assert = @import("../quirks.zig").inlineAssert;
 const freetype = @import("freetype");
 const Collection = @import("main.zig").Collection;
 const DeferredFace = @import("main.zig").DeferredFace;
-const Variation = @import("main.zig").face.Variation;
+pub const Descriptor = @import("descriptor.zig").Descriptor;
+const Variation = @import("variation.zig").Variation;
 
 const log = std.log.scoped(.discovery);
 
 pub const Discover = Windows;
-
-pub const Descriptor = struct {
-    family: ?[:0]const u8 = null,
-    style: ?[:0]const u8 = null,
-    codepoint: u32 = 0,
-    size: f32 = 0,
-    bold: bool = false,
-    italic: bool = false,
-    monospace: bool = false,
-    variations: []const Variation = &.{},
-
-    pub fn hash(self: Descriptor, hasher: anytype) void {
-        const autoHash = std.hash.autoHash;
-        const autoHashStrat = std.hash.autoHashStrat;
-        autoHashStrat(hasher, self.family, .Deep);
-        autoHashStrat(hasher, self.style, .Deep);
-        autoHash(hasher, self.codepoint);
-        autoHash(hasher, @as(u32, @bitCast(self.size)));
-        autoHash(hasher, self.bold);
-        autoHash(hasher, self.italic);
-        autoHash(hasher, self.monospace);
-        autoHash(hasher, self.variations.len);
-        for (self.variations) |variation| {
-            autoHash(hasher, variation.id);
-            autoHash(hasher, @as(i64, @intFromFloat(variation.value)));
-        }
-    }
-
-    pub fn hashcode(self: Descriptor) u64 {
-        var hasher = std.hash.Wyhash.init(0);
-        self.hash(&hasher);
-        return hasher.final();
-    }
-
-    pub fn clone(self: *const Descriptor, alloc: Allocator) !Descriptor {
-        var copy = self.*;
-        copy.family = if (self.family) |src| try alloc.dupeZ(u8, src) else null;
-        copy.style = if (self.style) |src| try alloc.dupeZ(u8, src) else null;
-        copy.variations = try alloc.dupe(Variation, self.variations);
-        return copy;
-    }
-};
 
 pub const Windows = struct {
     alloc: Allocator,

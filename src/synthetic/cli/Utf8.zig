@@ -3,7 +3,7 @@ const Utf8 = @This();
 const std = @import("std");
 const assert = std.debug.assert;
 const Allocator = std.mem.Allocator;
-const synthetic = @import("../main.zig");
+const SyntheticUtf8 = @import("../Utf8.zig");
 
 const log = std.log.scoped(.@"terminal-stream-bench");
 
@@ -26,7 +26,7 @@ pub fn destroy(self: *Utf8, alloc: Allocator) void {
 pub fn run(self: *Utf8, writer: *std.Io.Writer, rand: std.Random) !void {
     _ = self;
 
-    var gen: synthetic.Utf8 = .{
+    var gen: SyntheticUtf8 = .{
         .rand = rand,
     };
 

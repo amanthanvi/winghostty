@@ -1,9 +1,9 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
-const Action = @import("ghostty.zig").Action;
+const actionpkg = @import("action.zig");
 const args = @import("args.zig");
-const x11_color = @import("../terminal/main.zig").x11_color;
+const x11_color = @import("../terminal/x11_color.zig");
 const vaxis = @import("vaxis");
 const tui = @import("tui.zig");
 
@@ -18,7 +18,7 @@ pub const Options = struct {
     /// Enables "-h" and "--help" to work.
     pub fn help(self: Options) !void {
         _ = self;
-        return Action.help_error;
+        return actionpkg.help_error;
     }
 };
 

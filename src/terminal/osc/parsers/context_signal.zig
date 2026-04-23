@@ -6,8 +6,6 @@
 //! and form a stack.
 
 const std = @import("std");
-const Parser = @import("../../osc.zig").Parser;
-const OSCCommand = @import("../../osc.zig").Command;
 
 const log = std.log.scoped(.osc_context_signal);
 
@@ -200,7 +198,7 @@ pub const Field = enum {
 /// Expected data format (after "3008;" prefix has been consumed by the state machine):
 ///   start=<id>[;<field>=<value>]*
 ///   end=<id>[;<field>=<value>]*
-pub fn parse(parser: *Parser, _: ?u8) ?*OSCCommand {
+pub fn parse(parser: anytype, _: ?u8) ?*@TypeOf(parser.command) {
     const cap = if (parser.capture) |*c| c else {
         parser.state = .invalid;
         return null;
@@ -280,7 +278,7 @@ pub fn parse(parser: *Parser, _: ?u8) ?*OSCCommand {
 test "OSC 3008: basic start command" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "3008;start=abc123";
     for (input) |ch| p.next(ch);
 
@@ -294,7 +292,7 @@ test "OSC 3008: basic start command" {
 test "OSC 3008: basic end command" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "3008;end=abc123";
     for (input) |ch| p.next(ch);
 
@@ -308,7 +306,7 @@ test "OSC 3008: basic end command" {
 test "OSC 3008: start with metadata fields" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "3008;start=bed86fab93af4328bbed0a1224af6d40;type=container;user=lennart;hostname=zeta";
     for (input) |ch| p.next(ch);
 
@@ -326,7 +324,7 @@ test "OSC 3008: start with metadata fields" {
 test "OSC 3008: start with all common fields" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "3008;start=myctx;type=shell;user=root;hostname=myhost;machineid=3deb5353d3ba43d08201c136a47ead7b;bootid=d4a3d0fdf2e24fdea6d971ce73f4fbf2;pid=1062862;pidfdid=1063162;comm=bash";
     for (input) |ch| p.next(ch);
 
@@ -345,7 +343,7 @@ test "OSC 3008: start with all common fields" {
 test "OSC 3008: end with exit metadata" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "3008;end=myctx;exit=success;status=0";
     for (input) |ch| p.next(ch);
 
@@ -360,7 +358,7 @@ test "OSC 3008: end with exit metadata" {
 test "OSC 3008: end with failure exit" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "3008;end=myctx;exit=failure;status=1;signal=SIGKILL";
     for (input) |ch| p.next(ch);
 
@@ -374,7 +372,7 @@ test "OSC 3008: end with failure exit" {
 test "OSC 3008: unknown fields are ignored" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "3008;start=myctx;type=shell;unknownfield=value;user=root";
     for (input) |ch| p.next(ch);
 
@@ -387,7 +385,7 @@ test "OSC 3008: unknown fields are ignored" {
 test "OSC 3008: missing field returns null" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "3008;start=myctx;user=lennart";
     for (input) |ch| p.next(ch);
 
@@ -401,7 +399,7 @@ test "OSC 3008: missing field returns null" {
 test "OSC 3008: invalid prefix" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "3008;bogus=abc123";
     for (input) |ch| p.next(ch);
     try testing.expect(p.end(null) == null);
@@ -413,7 +411,7 @@ test "OSC 3008: empty data" {
     // Can't really produce empty data after "3008;" because the state machine
     // won't write a writer for that case, but we test the edge case where
     // only "start=" is present with no ID.
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "3008;start=";
     for (input) |ch| p.next(ch);
     try testing.expect(p.end(null) == null);
@@ -422,7 +420,7 @@ test "OSC 3008: empty data" {
 test "OSC 3008: max length context ID" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const id = "a" ** 64;
     const input = "3008;start=" ++ id;
     for (input) |ch| p.next(ch);
@@ -435,7 +433,7 @@ test "OSC 3008: max length context ID" {
 test "OSC 3008: over-length context ID" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const id = "a" ** 65;
     const input = "3008;start=" ++ id;
     for (input) |ch| p.next(ch);
@@ -481,7 +479,7 @@ test "OSC 3008: spec example - container start" {
     const testing = std.testing;
 
     // From the spec: a new container "foobar" invoked by user "lennart" on host "zeta"
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "3008;start=bed86fab93af4328bbed0a1224af6d40;type=container;user=lennart;hostname=zeta;machineid=3deb5353d3ba43d08201c136a47ead7b;bootid=d4a3d0fdf2e24fdea6d971ce73f4fbf2;pid=1062862;pidfdid=1063162;comm=systemd-nspawn;container=foobar";
     for (input) |ch| p.next(ch);
 
@@ -501,7 +499,7 @@ test "OSC 3008: spec example - context end" {
     const testing = std.testing;
 
     // From the spec: context end
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "3008;end=bed86fab93af4328bbed0a1224af6d40";
     for (input) |ch| p.next(ch);
 
@@ -514,7 +512,7 @@ test "OSC 3008: spec example - context end" {
 test "OSC 3008: cwd and cmdline fields" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "3008;start=myctx;type=command;cwd=/home/user;cmdline=ls -la";
     for (input) |ch| p.next(ch);
 
@@ -527,7 +525,7 @@ test "OSC 3008: cwd and cmdline fields" {
 test "OSC 3008: start command with no fields" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "3008;start=simpleid";
     for (input) |ch| p.next(ch);
 

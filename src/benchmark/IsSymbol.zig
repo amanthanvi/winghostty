@@ -1,6 +1,4 @@
-//! This benchmark tests the throughput of grapheme break calculation.
-//! This is a common operation in terminal character printing for terminals
-//! that support grapheme clustering.
+//! This benchmark tests the throughput of symbol-codepoint detection.
 const IsSymbol = @This();
 
 const std = @import("std");
@@ -39,7 +37,7 @@ pub const Mode = enum {
     table,
 };
 
-/// Create a new terminal stream handler for the given arguments.
+/// Create a new symbol-detection benchmark for the given arguments.
 pub fn create(
     alloc: Allocator,
     opts: Options,
@@ -68,8 +66,7 @@ pub fn benchmark(self: *IsSymbol) Benchmark {
 fn setup(ptr: *anyopaque) Benchmark.Error!void {
     const self: *IsSymbol = @ptrCast(@alignCast(ptr));
 
-    // Open our data file to prepare for reading. We can do more
-    // validation here eventually.
+    // Open our data file to prepare for reading.
     assert(self.data_f == null);
     self.data_f = options.dataFile(self.opts.data) catch |err| {
         log.warn("error opening data file err={}", .{err});

@@ -49,10 +49,9 @@ const Terminal = @import("Terminal.zig");
 pub const RenderState = struct {
     /// The current screen dimensions. It is possible that these don't match
     /// the renderer's current dimensions in grid cells because resizing
-    /// can happen asynchronously. For example, for Metal, our NSView resizes
-    /// at a different time than when our internal terminal state resizes.
-    /// This can lead to a one or two frame mismatch a renderer needs to
-    /// handle.
+    /// can happen asynchronously. Platform view resize notifications can
+    /// arrive at a different time than our internal terminal state resize,
+    /// leading to a one or two frame mismatch a renderer needs to handle.
     ///
     /// The viewport is always exactly equal to the active area size so this
     /// is also the viewport size.

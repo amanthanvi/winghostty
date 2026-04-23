@@ -1,12 +1,9 @@
 const std = @import("std");
 
-const Parser = @import("../../osc.zig").Parser;
-const Command = @import("../../osc.zig").Command;
-
 const log = std.log.scoped(.osc_rxvt_extension);
 
 /// Parse OSC 777
-pub fn parse(parser: *Parser, _: ?u8) ?*Command {
+pub fn parse(parser: anytype, _: ?u8) ?*@TypeOf(parser.command) {
     const cap = if (parser.capture) |*c| c else {
         parser.state = .invalid;
         return null;
@@ -47,7 +44,7 @@ pub fn parse(parser: *Parser, _: ?u8) ?*Command {
 test "OSC: OSC 777 show desktop notification with title" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "777;notify;Title;Body";
     for (input) |ch| p.next(ch);

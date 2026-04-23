@@ -12,70 +12,40 @@ if ($TimeoutSeconds -le 0) {
 
 $launcherPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
+$libPath = Join-Path $repoRoot 'scripts\interactive-win11-lib.ps1'
+. $libPath
 
 if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_SMOKE_BOOTSTRAPPED) {
     $forwardedArgs = @('-TimeoutSeconds', $TimeoutSeconds.ToString())
     if ($Rebuild) { $forwardedArgs += '-Rebuild' }
     if ($ResetState) { $forwardedArgs += '-ResetState' }
 
-    $bootstrapCmd = Join-Path $repoRoot 'scripts\dev-windows.cmd'
-    $exitCode = 0
-    $env:WINGHOSTTY_INTERACTIVE_WIN11_SMOKE_BOOTSTRAPPED = '1'
-
-    Push-Location $repoRoot
-    try {
-        & $bootstrapCmd powershell.exe -ExecutionPolicy Bypass -File $launcherPath @forwardedArgs
-        if ($null -ne $LASTEXITCODE) {
-            $exitCode = $LASTEXITCODE
-        }
-    }
-    finally {
-        Pop-Location
-        Remove-Item Env:WINGHOSTTY_INTERACTIVE_WIN11_SMOKE_BOOTSTRAPPED -ErrorAction SilentlyContinue
-    }
-
-    exit $exitCode
+    $bootstrapExitCode = 0
+    Invoke-InteractiveWin11Bootstrap `
+        -RepoRoot $repoRoot `
+        -LauncherPath $launcherPath `
+        -EnvironmentVariable 'WINGHOSTTY_INTERACTIVE_WIN11_SMOKE_BOOTSTRAPPED' `
+        -ArgumentList $forwardedArgs `
+        -ExitCode ([ref] $bootstrapExitCode)
+    exit $bootstrapExitCode
 }
 
-$libPath = Join-Path $repoRoot 'scripts\interactive-win11-lib.ps1'
-. $libPath
+$harness = Initialize-InteractiveWin11Sandbox -RepoRoot $repoRoot -SandboxName 'smoke' -ResetState:$ResetState
+$repoRoot = $harness.RepoRoot
+$layout = $harness.Layout
 
-$repoRoot = Get-InteractiveWin11NormalizedPath -Path $repoRoot
-$layout = Get-InteractiveWin11SandboxLayout -RepoRoot $repoRoot
-
-if ($ResetState) {
-    Reset-InteractiveWin11Sandbox -Layout $layout
-}
-
-New-InteractiveWin11Sandbox -Layout $layout
-
-$sandboxEnv = Get-InteractiveWin11Environment -Layout $layout
-foreach ($entry in $sandboxEnv.GetEnumerator()) {
-    [System.Environment]::SetEnvironmentVariable([string] $entry.Key, [string] $entry.Value, 'Process')
-}
-
-$exePath = Get-InteractiveWin11NormalizedPath -Path (Join-Path $repoRoot 'zig-out\bin\winghostty.exe')
-$launchAction = Get-InteractiveWin11LaunchAction -ExePath $exePath -Rebuild:$Rebuild
+$exePath = Get-InteractiveWin11ExePath -RepoRoot $repoRoot
+$buildInputs = Get-InteractiveWin11DefaultBuildInputs -RepoRoot $repoRoot
+$launchAction = Get-InteractiveWin11LaunchAction -ExePath $exePath -Rebuild:$Rebuild -BuildInputs $buildInputs
 $launchArgs = @(Get-InteractiveWin11LaunchArguments -Layout $layout)
 $stdoutPath = Join-Path $layout.Logs 'interactive-win11-smoke-stdout.log'
 $stderrPath = Join-Path $layout.Logs 'interactive-win11-smoke-stderr.log'
 
 if ($launchAction -eq 'build') {
-    Push-Location $repoRoot
-    try {
-        & zig build -Demit-exe=true
-        if ($LASTEXITCODE -ne 0) {
-            throw "zig build -Demit-exe=true failed with exit code $LASTEXITCODE"
-        }
-    }
-    finally {
-        Pop-Location
-    }
+    Invoke-InteractiveWin11Build -RepoRoot $repoRoot
 }
 
-if (-not [System.IO.File]::Exists($exePath)) {
-    throw "Missing winghostty.exe at $exePath"
-}
+Assert-InteractiveWin11ExeExists -ExePath $exePath
 
 Remove-Item -LiteralPath $stdoutPath, $stderrPath -ErrorAction SilentlyContinue
 
@@ -97,11 +67,7 @@ try {
     while ([DateTime]::UtcNow -lt $deadline) {
         Start-Sleep -Milliseconds 250
 
-        $stderr = if (Test-Path -LiteralPath $stderrPath) {
-            Get-Content -LiteralPath $stderrPath -Raw
-        } else {
-            ''
-        }
+        $stderr = Get-InteractiveWin11TextFile -Path $stderrPath
 
         if ($stderr.Contains($successPattern)) {
             $smokePassed = $true
@@ -120,10 +86,7 @@ try {
     }
 }
 finally {
-    if (-not $process.HasExited) {
-        Stop-Process -Id $process.Id -Force
-        $process.WaitForExit()
-    }
+    Stop-InteractiveWin11Process -Process $process
 }
 
 if (-not $smokePassed) {
@@ -131,11 +94,7 @@ if (-not $smokePassed) {
         $failureReason = "timed out after $TimeoutSeconds seconds waiting for initial shell startup"
     }
 
-    $stderrTail = if (Test-Path -LiteralPath $stderrPath) {
-        (Get-Content -LiteralPath $stderrPath | Select-Object -Last 40) -join [Environment]::NewLine
-    } else {
-        '<stderr log missing>'
-    }
+    $stderrTail = Get-InteractiveWin11TextFileTail -Path $stderrPath -LineCount 40
 
     throw @"
 interactive Win11 smoke test failed: $failureReason

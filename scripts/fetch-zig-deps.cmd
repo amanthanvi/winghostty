@@ -1,6 +1,9 @@
 @echo off
 setlocal
 
+rem Seeds the dependency subset used by the Windows build. Generated
+rem build.zig.zon metadata may still list inactive platform packages.
+
 set "_SYSTEM_DRIVE=%SystemDrive%"
 if "%_SYSTEM_DRIVE%"=="" set "_SYSTEM_DRIVE=C:"
 set "_USER_HOME=%USERPROFILE%"
@@ -29,17 +32,9 @@ if not exist "%DOWNLOAD_DIR%" mkdir "%DOWNLOAD_DIR%" >nul 2>nul
 call :seed "https://deps.files.ghostty.org/libxev-34fa50878aec6e5fa8f532867001ab3c36fae23e.tar.gz" "libxev-34fa50878aec6e5fa8f532867001ab3c36fae23e.tar.gz" || exit /b 1
 call :seed "https://deps.files.ghostty.org/vaxis-7dbb9fd3122e4ffad262dd7c151d80d863b68558.tar.gz" "vaxis-7dbb9fd3122e4ffad262dd7c151d80d863b68558.tar.gz" || exit /b 1
 call :seed "https://deps.files.ghostty.org/z2d-0.10.0-j5P_Hu-6FgBsZNgwphIqh17jDnj8_yPtD8yzjO6PpHRQ.tar.gz" "z2d-0.10.0-j5P_Hu-6FgBsZNgwphIqh17jDnj8_yPtD8yzjO6PpHRQ.tar.gz" || exit /b 1
-call :seed "https://deps.files.ghostty.org/zig_objc-f356ed02833f0f1b8e84d50bed9e807bf7cdc0ae.tar.gz" "zig_objc-f356ed02833f0f1b8e84d50bed9e807bf7cdc0ae.tar.gz" || exit /b 1
 call :seed "https://deps.files.ghostty.org/zig_js-04db83c617da1956ac5adc1cb9ba1e434c1cb6fd.tar.gz" "zig_js-04db83c617da1956ac5adc1cb9ba1e434c1cb6fd.tar.gz" || exit /b 1
 call :seed "https://deps.files.ghostty.org/uucode-0.2.0-ZZjBPqZVVABQepOqZHR7vV_NcaN-wats0IB6o-Exj6m9.tar.gz" "uucode-0.2.0-ZZjBPqZVVABQepOqZHR7vV_NcaN-wats0IB6o-Exj6m9.tar.gz" || exit /b 1
-call :seed "https://deps.files.ghostty.org/zig_wayland-1b5c038ec10da20ed3a15b0b2a6db1c21383e8ea.tar.gz" "zig_wayland-1b5c038ec10da20ed3a15b0b2a6db1c21383e8ea.tar.gz" || exit /b 1
 call :seed "https://deps.files.ghostty.org/zf-3c52637b7e937c5ae61fd679717da3e276765b23.tar.gz" "zf-3c52637b7e937c5ae61fd679717da3e276765b23.tar.gz" || exit /b 1
-call :seed "https://github.com/ivanstepanovftw/zigimg/archive/d7b7ab0ba0899643831ef042bd73289510b39906.tar.gz" "zigimg-d7b7ab0ba0899643831ef042bd73289510b39906.tar.gz" || exit /b 1
-call :seed "https://mirrors.lug.mtu.edu/gentoo/distfiles/59/uucode-0.1.0-ZZjBPj96QADXyt5sqwBJUnhaDYs_qBeeKijZvlRa0eqM.tar.gz" "uucode-0.1.0-ZZjBPj96QADXyt5sqwBJUnhaDYs_qBeeKijZvlRa0eqM.tar.gz" || exit /b 1
-call :seed "https://deps.files.ghostty.org/gobject-2025-11-08-23-1.tar.zst" "gobject-2025-11-08-23-1.tar.zst" || exit /b 1
-call :seed "https://deps.files.ghostty.org/wayland-9cb3d7aa9dc995ffafdbdef7ab86a949d0fb0e7d.tar.gz" "wayland-9cb3d7aa9dc995ffafdbdef7ab86a949d0fb0e7d.tar.gz" || exit /b 1
-call :seedOptional "https://gitlab.freedesktop.org/wayland/wayland-protocols/-/archive/1.47/wayland-protocols-1.47.tar.gz" "wayland-protocols-1.47.tar.gz"
-call :seed "https://deps.files.ghostty.org/plasma_wayland_protocols-12207e0851c12acdeee0991e893e0132fc87bb763969a585dc16ecca33e88334c566.tar.gz" "plasma_wayland_protocols-12207e0851c12acdeee0991e893e0132fc87bb763969a585dc16ecca33e88334c566.tar.gz" || exit /b 1
 call :seed "https://deps.files.ghostty.org/JetBrainsMono-2.304.tar.gz" "JetBrainsMono-2.304.tar.gz" || exit /b 1
 call :seed "https://deps.files.ghostty.org/NerdFontsSymbolsOnly-3.4.0.tar.gz" "NerdFontsSymbolsOnly-3.4.0.tar.gz" || exit /b 1
 call :seed "https://deps.files.ghostty.org/ghostty-themes-release-20260323-152405-a2c7b60.tgz" "ghostty-themes-release-20260323-152405-a2c7b60.tgz" || exit /b 1
@@ -49,8 +44,6 @@ call :seed "https://github.com/ocornut/imgui/archive/refs/tags/v1.92.5-docking.t
 call :seed "https://deps.files.ghostty.org/fontconfig-2.14.2.tar.gz" "fontconfig-2.14.2.tar.gz" || exit /b 1
 call :seed "https://deps.files.ghostty.org/freetype-1220b81f6ecfb3fd222f76cf9106fecfa6554ab07ec7fdc4124b9bb063ae2adf969d.tar.gz" "freetype-1220b81f6ecfb3fd222f76cf9106fecfa6554ab07ec7fdc4124b9bb063ae2adf969d.tar.gz" || exit /b 1
 call :seed "https://deps.files.ghostty.org/glslang-12201278a1a05c0ce0b6eb6026c65cd3e9247aa041b1c260324bf29cee559dd23ba1.tar.gz" "glslang-12201278a1a05c0ce0b6eb6026c65cd3e9247aa041b1c260324bf29cee559dd23ba1.tar.gz" || exit /b 1
-call :seed "https://deps.files.ghostty.org/gtk4-layer-shell-1.1.0.tar.gz" "gtk4-layer-shell-1.1.0.tar.gz" || exit /b 1
-call :seed "https://deps.files.ghostty.org/wayland-protocols-258d8f88f2c8c25a830c6316f87d23ce1a0f12d9.tar.gz" "wayland-protocols-258d8f88f2c8c25a830c6316f87d23ce1a0f12d9.tar.gz" || exit /b 1
 call :seed "https://deps.files.ghostty.org/harfbuzz-11.0.0.tar.xz" "harfbuzz-11.0.0.tar.xz" || exit /b 1
 call :seed "https://deps.files.ghostty.org/highway-66486a10623fa0d72fe91260f96c892e41aceb06.tar.gz" "highway-66486a10623fa0d72fe91260f96c892e41aceb06.tar.gz" || exit /b 1
 call :seed "https://deps.files.ghostty.org/gettext-0.24.tar.gz" "gettext-0.24.tar.gz" || exit /b 1

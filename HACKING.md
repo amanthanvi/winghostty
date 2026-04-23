@@ -32,7 +32,7 @@ user code runs; 0.15.2 and any later 0.15 patch will compile. CI uses
 verify the one on your `PATH` before debugging build issues.
 
 If Zig fails before compilation because the dependency cache is empty or cannot
-be hydrated automatically, seed it first from the repo root:
+be hydrated automatically for Windows builds, seed it first from the repo root:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/fetch-zig-deps.ps1

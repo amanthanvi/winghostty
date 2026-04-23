@@ -4,8 +4,6 @@ const Allocator = std.mem.Allocator;
 const DynamicColor = @import("../../color.zig").Dynamic;
 const SpecialColor = @import("../../color.zig").Special;
 const RGB = @import("../../color.zig").RGB;
-const Parser = @import("../../osc.zig").Parser;
-const Command = @import("../../osc.zig").Command;
 
 const log = std.log.scoped(.osc_color);
 
@@ -42,7 +40,7 @@ pub const Operation = enum {
 };
 
 /// Parse OSCs 4, 5, 10-19, 104, 110-119
-pub fn parse(parser: *Parser, terminator_ch: ?u8) ?*Command {
+pub fn parse(parser: anytype, terminator_ch: ?u8) ?*@TypeOf(parser.command) {
     const alloc = parser.alloc orelse {
         parser.state = .invalid;
         return null;
@@ -102,7 +100,7 @@ pub fn parse(parser: *Parser, terminator_ch: ?u8) ?*Command {
 test "OSC 4: empty param" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "4;;";
     for (input) |ch| p.next(ch);

@@ -1,8 +1,6 @@
 //! https://gitlab.freedesktop.org/Per_Bothner/specifications/blob/master/proposals/semantic-prompts.md
 const std = @import("std");
 
-const Parser = @import("../../osc.zig").Parser;
-const OSCCommand = @import("../../osc.zig").Command;
 const string_encoding = @import("../../../os/string_encoding.zig");
 
 const log = std.log.scoped(.osc_semantic_prompt);
@@ -297,7 +295,7 @@ pub const Redraw = enum(u2) {
 };
 
 /// Parse OSC 133, semantic prompts
-pub fn parse(parser: *Parser, _: ?u8) ?*OSCCommand {
+pub fn parse(parser: anytype, _: ?u8) ?*@TypeOf(parser.command) {
     const cap = if (parser.capture) |*c| c else {
         parser.state = .invalid;
         return null;
@@ -381,7 +379,7 @@ pub fn parse(parser: *Parser, _: ?u8) ?*OSCCommand {
 test "OSC 133: end_input_start_output" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;C";
     for (input) |ch| p.next(ch);
@@ -396,7 +394,7 @@ test "OSC 133: end_input_start_output" {
 test "OSC 133: end_input_start_output extra contents" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;Cextra";
     for (input) |ch| p.next(ch);
     try testing.expect(p.end(null) == null);
@@ -405,7 +403,7 @@ test "OSC 133: end_input_start_output extra contents" {
 test "OSC 133: end_input_start_output with options" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;C;aid=foo";
     for (input) |ch| p.next(ch);
 
@@ -421,7 +419,7 @@ test "OSC 133: end_input_start_output with cmdline" {
     var w: std.Io.Writer.Allocating = .init(testing.allocator);
     defer w.deinit();
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;C;cmdline=echo bobr kurwa";
     for (input) |ch| p.next(ch);
 
@@ -439,7 +437,7 @@ test "OSC 133: end_input_start_output with cmdline 3" {
     var w: std.Io.Writer.Allocating = .init(testing.allocator);
     defer w.deinit();
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;C;cmdline=echo bobr\\nkurwa";
     for (input) |ch| p.next(ch);
 
@@ -456,7 +454,7 @@ test "OSC 133: end_input_start_output with cmdline 4" {
     var w: std.Io.Writer.Allocating = .init(testing.allocator);
     defer w.deinit();
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;C;cmdline=$'echo bobr kurwa'";
     for (input) |ch| p.next(ch);
 
@@ -474,7 +472,7 @@ test "OSC 133: end_input_start_output with cmdline 5" {
     var w: std.Io.Writer.Allocating = .init(testing.allocator);
     defer w.deinit();
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;C;cmdline='echo bobr kurwa'";
     for (input) |ch| p.next(ch);
 
@@ -492,7 +490,7 @@ test "OSC 133: end_input_start_output with cmdline 6" {
     var w: std.Io.Writer.Allocating = .init(testing.allocator);
     defer w.deinit();
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;C;cmdline='echo bobr kurwa";
     for (input) |ch| p.next(ch);
 
@@ -508,7 +506,7 @@ test "OSC 133: end_input_start_output with cmdline 7" {
     var w: std.Io.Writer.Allocating = .init(testing.allocator);
     defer w.deinit();
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;C;cmdline=$'echo bobr kurwa";
     for (input) |ch| p.next(ch);
 
@@ -525,7 +523,7 @@ test "OSC 133: end_input_start_output with cmdline 8" {
     var w: std.Io.Writer.Allocating = .init(testing.allocator);
     defer w.deinit();
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;C;cmdline=$'";
     for (input) |ch| p.next(ch);
 
@@ -541,7 +539,7 @@ test "OSC 133: end_input_start_output with cmdline 9" {
     var w: std.Io.Writer.Allocating = .init(testing.allocator);
     defer w.deinit();
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;C;cmdline=";
     for (input) |ch| p.next(ch);
 
@@ -559,7 +557,7 @@ test "OSC 133: end_input_start_output with cmdline_url 1" {
     var w: std.Io.Writer.Allocating = .init(testing.allocator);
     defer w.deinit();
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;C;cmdline_url=echo bobr kurwa";
     for (input) |ch| p.next(ch);
 
@@ -577,7 +575,7 @@ test "OSC 133: end_input_start_output with cmdline_url 2" {
     var w: std.Io.Writer.Allocating = .init(testing.allocator);
     defer w.deinit();
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;C;cmdline_url=echo bobr%20kurwa";
     for (input) |ch| p.next(ch);
 
@@ -595,7 +593,7 @@ test "OSC 133: end_input_start_output with cmdline_url 3" {
     var w: std.Io.Writer.Allocating = .init(testing.allocator);
     defer w.deinit();
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;C;cmdline_url=echo bobr%3bkurwa";
     for (input) |ch| p.next(ch);
 
@@ -613,7 +611,7 @@ test "OSC 133: end_input_start_output with cmdline_url 4" {
     var w: std.Io.Writer.Allocating = .init(testing.allocator);
     defer w.deinit();
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;C;cmdline_url=echo bobr%3kurwa";
     for (input) |ch| p.next(ch);
 
@@ -629,7 +627,7 @@ test "OSC 133: end_input_start_output with cmdline_url 5" {
     var w: std.Io.Writer.Allocating = .init(testing.allocator);
     defer w.deinit();
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;C;cmdline_url=echo bobr%kurwa";
     for (input) |ch| p.next(ch);
 
@@ -645,7 +643,7 @@ test "OSC 133: end_input_start_output with cmdline_url 6" {
     var w: std.Io.Writer.Allocating = .init(testing.allocator);
     defer w.deinit();
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;C;cmdline_url=echo bobr kurwa%20";
     for (input) |ch| p.next(ch);
 
@@ -663,7 +661,7 @@ test "OSC 133: end_input_start_output with cmdline_url 7" {
     var w: std.Io.Writer.Allocating = .init(testing.allocator);
     defer w.deinit();
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;C;cmdline_url=echo bobr kurwa%2";
     for (input) |ch| p.next(ch);
 
@@ -679,7 +677,7 @@ test "OSC 133: end_input_start_output with cmdline_url 8" {
     var w: std.Io.Writer.Allocating = .init(testing.allocator);
     defer w.deinit();
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;C;cmdline_url=echo bobr kurwa%";
     for (input) |ch| p.next(ch);
 
@@ -692,7 +690,7 @@ test "OSC 133: end_input_start_output with cmdline_url 8" {
 test "OSC 133: fresh_line" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;L";
     for (input) |ch| p.next(ch);
@@ -707,7 +705,7 @@ test "OSC 133: fresh_line extra contents" {
 
     // Random
     {
-        var p: Parser = .init(null);
+        var p = @import("../../osc.zig").Parser.init(null);
         const input = "133;Lol";
         for (input) |ch| p.next(ch);
         try testing.expect(p.end(null) == null);
@@ -715,7 +713,7 @@ test "OSC 133: fresh_line extra contents" {
 
     // Options
     {
-        var p: Parser = .init(null);
+        var p = @import("../../osc.zig").Parser.init(null);
         const input = "133;L;aid=foo";
         for (input) |ch| p.next(ch);
         try testing.expect(p.end(null) == null);
@@ -725,7 +723,7 @@ test "OSC 133: fresh_line extra contents" {
 test "OSC 133: fresh_line_new_prompt" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;A";
     for (input) |ch| p.next(ch);
@@ -740,7 +738,7 @@ test "OSC 133: fresh_line_new_prompt" {
 test "OSC 133: fresh_line_new_prompt with aid" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;A;aid=14";
     for (input) |ch| p.next(ch);
@@ -754,7 +752,7 @@ test "OSC 133: fresh_line_new_prompt with aid" {
 test "OSC 133: fresh_line_new_prompt with '=' in aid" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;A;aid=a=b";
     for (input) |ch| p.next(ch);
@@ -768,7 +766,7 @@ test "OSC 133: fresh_line_new_prompt with '=' in aid" {
 test "OSC 133: fresh_line_new_prompt with cl=line" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;A;cl=line";
     for (input) |ch| p.next(ch);
@@ -782,7 +780,7 @@ test "OSC 133: fresh_line_new_prompt with cl=line" {
 test "OSC 133: fresh_line_new_prompt with cl=m" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;A;cl=m";
     for (input) |ch| p.next(ch);
@@ -796,7 +794,7 @@ test "OSC 133: fresh_line_new_prompt with cl=m" {
 test "OSC 133: fresh_line_new_prompt with invalid cl" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;A;cl=invalid";
     for (input) |ch| p.next(ch);
@@ -810,7 +808,7 @@ test "OSC 133: fresh_line_new_prompt with invalid cl" {
 test "OSC 133: fresh_line_new_prompt with trailing ;" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;A;";
     for (input) |ch| p.next(ch);
@@ -823,7 +821,7 @@ test "OSC 133: fresh_line_new_prompt with trailing ;" {
 test "OSC 133: fresh_line_new_prompt with bare key" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;A;barekey";
     for (input) |ch| p.next(ch);
@@ -838,7 +836,7 @@ test "OSC 133: fresh_line_new_prompt with bare key" {
 test "OSC 133: fresh_line_new_prompt with multiple options" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;A;aid=foo;cl=line";
     for (input) |ch| p.next(ch);
@@ -853,7 +851,7 @@ test "OSC 133: fresh_line_new_prompt with multiple options" {
 test "OSC 133: fresh_line_new_prompt default redraw" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;A";
     for (input) |ch| p.next(ch);
@@ -867,7 +865,7 @@ test "OSC 133: fresh_line_new_prompt default redraw" {
 test "OSC 133: fresh_line_new_prompt with redraw=0" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;A;redraw=0";
     for (input) |ch| p.next(ch);
@@ -881,7 +879,7 @@ test "OSC 133: fresh_line_new_prompt with redraw=0" {
 test "OSC 133: fresh_line_new_prompt with redraw=1" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;A;redraw=1";
     for (input) |ch| p.next(ch);
@@ -895,7 +893,7 @@ test "OSC 133: fresh_line_new_prompt with redraw=1" {
 test "OSC 133: fresh_line_new_prompt with invalid redraw" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;A;redraw=x";
     for (input) |ch| p.next(ch);
@@ -909,7 +907,7 @@ test "OSC 133: fresh_line_new_prompt with invalid redraw" {
 test "OSC 133: prompt_start" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;P";
     for (input) |ch| p.next(ch);
@@ -923,7 +921,7 @@ test "OSC 133: prompt_start" {
 test "OSC 133: prompt_start with k=i" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;P;k=i";
     for (input) |ch| p.next(ch);
@@ -937,7 +935,7 @@ test "OSC 133: prompt_start with k=i" {
 test "OSC 133: prompt_start with k=r" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;P;k=r";
     for (input) |ch| p.next(ch);
@@ -951,7 +949,7 @@ test "OSC 133: prompt_start with k=r" {
 test "OSC 133: prompt_start with k=c" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;P;k=c";
     for (input) |ch| p.next(ch);
@@ -965,7 +963,7 @@ test "OSC 133: prompt_start with k=c" {
 test "OSC 133: prompt_start with k=s" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;P;k=s";
     for (input) |ch| p.next(ch);
@@ -979,7 +977,7 @@ test "OSC 133: prompt_start with k=s" {
 test "OSC 133: prompt_start with invalid k" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;P;k=x";
     for (input) |ch| p.next(ch);
@@ -993,7 +991,7 @@ test "OSC 133: prompt_start with invalid k" {
 test "OSC 133: prompt_start extra contents" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;Pextra";
     for (input) |ch| p.next(ch);
     try testing.expect(p.end(null) == null);
@@ -1002,7 +1000,7 @@ test "OSC 133: prompt_start extra contents" {
 test "OSC 133: new_command" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;N";
     for (input) |ch| p.next(ch);
@@ -1017,7 +1015,7 @@ test "OSC 133: new_command" {
 test "OSC 133: new_command with aid" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;N;aid=foo";
     for (input) |ch| p.next(ch);
@@ -1031,7 +1029,7 @@ test "OSC 133: new_command with aid" {
 test "OSC 133: new_command with cl=line" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;N;cl=line";
     for (input) |ch| p.next(ch);
@@ -1045,7 +1043,7 @@ test "OSC 133: new_command with cl=line" {
 test "OSC 133: new_command with multiple options" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;N;aid=foo;cl=line";
     for (input) |ch| p.next(ch);
@@ -1060,7 +1058,7 @@ test "OSC 133: new_command with multiple options" {
 test "OSC 133: new_command extra contents" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;Nextra";
     for (input) |ch| p.next(ch);
     try testing.expect(p.end(null) == null);
@@ -1069,7 +1067,7 @@ test "OSC 133: new_command extra contents" {
 test "OSC 133: end_prompt_start_input" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;B";
     for (input) |ch| p.next(ch);
@@ -1082,7 +1080,7 @@ test "OSC 133: end_prompt_start_input" {
 test "OSC 133: end_prompt_start_input extra contents" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;Bextra";
     for (input) |ch| p.next(ch);
     try testing.expect(p.end(null) == null);
@@ -1091,7 +1089,7 @@ test "OSC 133: end_prompt_start_input extra contents" {
 test "OSC 133: end_prompt_start_input with options" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;B;aid=foo";
     for (input) |ch| p.next(ch);
 
@@ -1104,7 +1102,7 @@ test "OSC 133: end_prompt_start_input with options" {
 test "OSC 133: end_prompt_start_input_terminate_eol" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;I";
     for (input) |ch| p.next(ch);
@@ -1117,7 +1115,7 @@ test "OSC 133: end_prompt_start_input_terminate_eol" {
 test "OSC 133: end_prompt_start_input_terminate_eol extra contents" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;Iextra";
     for (input) |ch| p.next(ch);
     try testing.expect(p.end(null) == null);
@@ -1126,7 +1124,7 @@ test "OSC 133: end_prompt_start_input_terminate_eol extra contents" {
 test "OSC 133: end_prompt_start_input_terminate_eol with options" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;I;aid=foo";
     for (input) |ch| p.next(ch);
 
@@ -1139,7 +1137,7 @@ test "OSC 133: end_prompt_start_input_terminate_eol with options" {
 test "OSC 133: end_command" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;D";
     for (input) |ch| p.next(ch);
@@ -1155,7 +1153,7 @@ test "OSC 133: end_command" {
 test "OSC 133: end_command extra contents" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     const input = "133;Dextra";
     for (input) |ch| p.next(ch);
     try testing.expect(p.end(null) == null);
@@ -1164,7 +1162,7 @@ test "OSC 133: end_command extra contents" {
 test "OSC 133: end_command with exit code 0" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;D;0";
     for (input) |ch| p.next(ch);
@@ -1178,7 +1176,7 @@ test "OSC 133: end_command with exit code 0" {
 test "OSC 133: end_command with exit code and aid" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "133;D;12;aid=foo";
     for (input) |ch| p.next(ch);

@@ -2,14 +2,14 @@ const std = @import("std");
 const assert = @import("../quirks.zig").inlineAssert;
 const Allocator = std.mem.Allocator;
 const build_config = @import("../build_config.zig");
-const internal_os = @import("../os/main.zig");
+const xdg = @import("../os/xdg.zig");
 
 const log = std.log.scoped(.config);
 
 /// Default path for the XDG home configuration file. Returned value
 /// must be freed by the caller.
 pub fn defaultXdgPath(alloc: Allocator) ![]const u8 {
-    return try internal_os.xdg.config(
+    return try xdg.config(
         alloc,
         .{ .subdir = build_config.data_dir_name ++ "/config.ghostty" },
     );
@@ -18,14 +18,14 @@ pub fn defaultXdgPath(alloc: Allocator) ![]const u8 {
 /// Legacy Ghostty default path for the XDG home configuration file.
 /// Returned value must be freed by the caller.
 pub fn legacyGhosttyDefaultXdgPath(alloc: Allocator) ![]const u8 {
-    return try internal_os.xdg.config(
+    return try xdg.config(
         alloc,
         .{ .subdir = "ghostty/config" },
     );
 }
 
 pub fn legacyGhosttyConfigDotGhosttyPath(alloc: Allocator) ![]const u8 {
-    return try internal_os.xdg.config(
+    return try xdg.config(
         alloc,
         .{ .subdir = "ghostty/config.ghostty" },
     );

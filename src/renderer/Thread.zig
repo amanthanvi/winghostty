@@ -315,9 +315,8 @@ fn setQosClass(self: *const Thread) void {
         // always drop our rendering priority down because it's just
         // mostly wasted work.
         //
-        // The renderer itself should be doing this as well (for example
-        // Metal will stop our DisplayLink) but this also helps with
-        // general forced updates and CPU usage i.e. a rebuild cells call.
+        // The renderer itself should be doing this as well, but this also
+        // helps with general forced updates and CPU usage i.e. a rebuild cells call.
         if (!self.flags.visible) break :class .utility;
 
         // If we're not focused, but we're visible, then we set a higher

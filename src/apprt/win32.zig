@@ -6,7 +6,7 @@ const apprt = @import("../apprt.zig");
 const build_config = @import("../build_config.zig");
 const CoreApp = @import("../App.zig");
 const CoreSurface = @import("../Surface.zig");
-const cli = @import("../cli.zig");
+const cli_args = @import("../cli/args.zig");
 const configpkg = @import("../config.zig");
 const config_edit = @import("../config/edit.zig");
 const windows_shell = @import("../config/windows_shell.zig");
@@ -25,8 +25,8 @@ const win32_settings = @import("win32_settings.zig");
 const win32_aumid = @import("win32_aumid.zig");
 const win32_clipboard_html = @import("win32_clipboard_html.zig");
 const win32_undo = @import("win32_undo.zig");
-const win32_toast = @import("win32_toast.zig");
 const win32_toast_winrt = @import("win32_toast_winrt.zig");
+const win32_taskbar_progress = @import("win32_taskbar_progress.zig");
 const win32_powershell_install = @import("win32_powershell_install.zig");
 const win32_link_preview = @import("win32_link_preview.zig");
 const win32_quick_terminal = @import("win32_quick_terminal.zig");
@@ -43,6 +43,7 @@ const win32_nc_layout = @import("win32_nc_layout.zig");
 const win32_status_bar = @import("win32_status_bar.zig");
 const win32_tab_visual = @import("win32_tab_visual.zig");
 const win32_focus_ring = @import("win32_focus_ring.zig");
+const win32_types = @import("win32_types.zig");
 
 // Re-export types from theme module
 const ThemeColors = win32_theme.ThemeColors;
@@ -71,29 +72,29 @@ const windows = std.os.windows;
 
 pub const resourcesDir = internal_os.resourcesDir;
 
-const ATOM = u16;
-const LPCWSTR = [*:0]const u16;
-const HBRUSH = ?*anyopaque;
-const HCURSOR = ?*anyopaque;
-const HDC = ?*anyopaque;
-const HGLRC = ?*anyopaque;
-const HGDIOBJ = ?*anyopaque;
-const HMODULE = ?*anyopaque;
-const HMENU = ?*anyopaque;
-const HICON = ?*anyopaque;
-const LPARAM = isize;
-const WPARAM = usize;
-const LRESULT = isize;
-const LONG_PTR = isize;
-const UINT = u32;
-const UINT_PTR = usize;
-const DWORD = u32;
-const WORD = u16;
-const BYTE = u8;
-const BOOL = windows.BOOL;
-const HWND = windows.HWND;
-const HINSTANCE = windows.HINSTANCE;
-const INTRESOURCE = ?*const anyopaque;
+const ATOM = win32_types.ATOM;
+const LPCWSTR = win32_types.LPCWSTR;
+const HBRUSH = win32_types.HBRUSH;
+const HCURSOR = win32_types.HCURSOR;
+const HDC = win32_types.HDC;
+const HGLRC = win32_types.HGLRC;
+const HGDIOBJ = win32_types.HGDIOBJ;
+const HMODULE = win32_types.HMODULE;
+const HMENU = win32_types.HMENU;
+const HICON = win32_types.HICON;
+const LPARAM = win32_types.LPARAM;
+const WPARAM = win32_types.WPARAM;
+const LRESULT = win32_types.LRESULT;
+const LONG_PTR = win32_types.LONG_PTR;
+const UINT = win32_types.UINT;
+const UINT_PTR = win32_types.UINT_PTR;
+const DWORD = win32_types.DWORD;
+const WORD = win32_types.WORD;
+const BYTE = win32_types.BYTE;
+const BOOL = win32_types.BOOL;
+const HWND = win32_types.HWND;
+const HINSTANCE = win32_types.HINSTANCE;
+const INTRESOURCE = win32_types.INTRESOURCE;
 
 const CS_OWNDC = 0x0020;
 const CW_USEDEFAULT = @as(i32, @bitCast(@as(u32, 0x80000000)));
@@ -102,6 +103,16 @@ const GWLP_WNDPROC = -4;
 const GWL_STYLE = -16;
 const GWL_EXSTYLE = -20;
 const IDC_ARROW = @as(INTRESOURCE, @ptrFromInt(32512));
+const ID_ICON_GHOSTTY = 1;
+const IMAGE_ICON = 1;
+const LR_SHARED = 0x00008000;
+const SM_CXICON = 11;
+const SM_CYICON = 12;
+const SM_CXSMICON = 49;
+const SM_CYSMICON = 50;
+const WM_SETICON = 0x0080;
+const ICON_SMALL = 0;
+const ICON_BIG = 1;
 const HTNOWHERE = 0;
 const HTCLIENT = 1;
 const HTCAPTION = 2;
@@ -160,6 +171,7 @@ const WM_NCCREATE = 0x0081;
 const WM_NCCALCSIZE = 0x0083;
 const WM_NCHITTEST = 0x0084;
 const WM_NCMOUSEMOVE = 0x00A0;
+const WM_NCLBUTTONDOWN = 0x00A1;
 const WM_NCLBUTTONUP = 0x00A2;
 const WM_NCMOUSELEAVE = 0x02A2;
 const WM_SYSCOMMAND = 0x0112;
@@ -192,6 +204,7 @@ const WM_SYSKEYDOWN = 0x0104;
 const WM_SYSKEYUP = 0x0105;
 const WM_WINHOSTTY_WAKE = WM_APP + 1;
 const WM_WINHOSTTY_UPDATE = WM_APP + 2;
+const WM_WINHOSTTY_TOAST_ACTIVATION = WM_APP + 3;
 const PM_NOREMOVE: UINT = 0x0000;
 const WS_OVERLAPPED = 0x00000000;
 const WS_CHILD = 0x40000000;
@@ -225,7 +238,6 @@ const RDW_UPDATENOW: UINT = 0x0100;
 const RDW_FRAME: UINT = 0x0400;
 const MONITOR_DEFAULTTONEAREST = 0x00000002;
 const MONITOR_DEFAULTTOPRIMARY = 0x00000001;
-const HRESULT = i32;
 const COLOR_WINDOW = 5;
 const CF_UNICODETEXT = 13;
 /// CF_HTML: registered clipboard format name is the literal string
@@ -298,6 +310,7 @@ const host_overlay_accept_width: i32 = default_metrics.overlay_accept_width;
 const host_overlay_cancel_width: i32 = default_metrics.overlay_cancel_width;
 const host_tab_small_button_width: i32 = default_metrics.tab_small_button_width;
 const host_tab_overflow_button_width: i32 = default_metrics.tab_overflow_button_width;
+const host_titlebar_action_button_size: i32 = 32;
 const host_tab_label_max_len: usize = default_metrics.tab_label_max_len;
 const host_tab_min_button_width: i32 = default_metrics.tab_min_width;
 /// Non-owning view over the palette's command lists. Points into
@@ -326,6 +339,7 @@ const DWMSBT_MAINWINDOW: u32 = 2;
 /// Win11 22H2+ (build ≥ 22621); older Win11 (≥ 22000) accepts
 /// `DWMSBT_MAINWINDOW` but not this variant.
 const DWMSBT_TABBEDWINDOW: u32 = 4;
+const OS_BUILD_WIN11_21H2: u32 = 22000;
 const OS_BUILD_WIN11_22H2: u32 = 22621;
 const DC_BRUSH: i32 = 18;
 const DC_PEN: i32 = 19;
@@ -412,7 +426,7 @@ const SEARCH_CLOSE_ID: usize = 2108;
 const MF_POPUP: UINT = 0x00000010;
 const MF_CHECKED: UINT = 0x00000008;
 
-const WNDPROC = *const fn (HWND, UINT, WPARAM, LPARAM) callconv(.winapi) LRESULT;
+const WNDPROC = win32_types.WNDPROC;
 const SHORT = i16;
 
 const VK_BACK = 0x08;
@@ -491,17 +505,8 @@ const ipc_wire_version: u32 = 1;
 const ipc_ack_success: u8 = 0;
 const ipc_ack_failure: u8 = 1;
 
-const POINT = extern struct {
-    x: i32,
-    y: i32,
-};
-
-const RECT = extern struct {
-    left: i32,
-    top: i32,
-    right: i32,
-    bottom: i32,
-};
+const POINT = win32_types.POINT;
+const RECT = win32_types.RECT;
 
 const PIXELFORMATDESCRIPTOR = extern struct {
     nSize: WORD,
@@ -542,14 +547,7 @@ const MSG = extern struct {
     lPrivate: u32,
 };
 
-const PAINTSTRUCT = extern struct {
-    hdc: HDC,
-    fErase: BOOL,
-    rcPaint: RECT,
-    fRestore: BOOL,
-    fIncUpdate: BOOL,
-    rgbReserved: [32]u8,
-};
+const PAINTSTRUCT = win32_types.PAINTSTRUCT;
 
 const DRAWITEMSTRUCT = extern struct {
     CtlType: UINT,
@@ -585,35 +583,8 @@ const NCCALCSIZE_PARAMS = extern struct {
     lppos: *WINDOWPOS,
 };
 
-const WNDCLASSEXW = extern struct {
-    cbSize: u32,
-    style: u32,
-    lpfnWndProc: WNDPROC,
-    cbClsExtra: i32,
-    cbWndExtra: i32,
-    hInstance: HINSTANCE,
-    hIcon: HICON,
-    hCursor: HCURSOR,
-    hbrBackground: HBRUSH,
-    lpszMenuName: ?LPCWSTR,
-    lpszClassName: LPCWSTR,
-    hIconSm: HICON,
-};
-
-const CREATESTRUCTW = extern struct {
-    lpCreateParams: ?*anyopaque,
-    hInstance: HINSTANCE,
-    hMenu: HMENU,
-    hwndParent: HWND,
-    cy: i32,
-    cx: i32,
-    y: i32,
-    x: i32,
-    style: i32,
-    lpszName: LPCWSTR,
-    lpszClass: LPCWSTR,
-    dwExStyle: u32,
-};
+const WNDCLASSEXW = win32_types.WNDCLASSEXW;
+const CREATESTRUCTW = win32_types.CREATESTRUCTW;
 
 const MONITORINFO = extern struct {
     cbSize: u32,
@@ -696,6 +667,7 @@ extern "user32" fn GetMonitorInfoW(hMonitor: ?*anyopaque, lpmi: *MONITORINFO) ca
 extern "user32" fn GetWindowRect(hWnd: HWND, lpRect: *RECT) callconv(.winapi) BOOL;
 extern "user32" fn GetWindowTextLengthW(hWnd: HWND) callconv(.winapi) i32;
 extern "user32" fn GetWindowTextW(hWnd: HWND, lpString: [*]u16, nMaxCount: i32) callconv(.winapi) i32;
+extern "user32" fn IsWindow(hWnd: HWND) callconv(.winapi) BOOL;
 extern "user32" fn IsWindowVisible(hWnd: HWND) callconv(.winapi) BOOL;
 extern "user32" fn IsZoomed(hWnd: HWND) callconv(.winapi) BOOL;
 extern "user32" fn MonitorFromWindow(hwnd: HWND, dwFlags: u32) callconv(.winapi) ?*anyopaque;
@@ -713,6 +685,8 @@ extern "user32" fn GetClipboardData(uFormat: UINT) callconv(.winapi) ?*anyopaque
 extern "user32" fn SetClipboardData(uFormat: UINT, hMem: ?*anyopaque) callconv(.winapi) ?*anyopaque;
 extern "user32" fn IsClipboardFormatAvailable(format: UINT) callconv(.winapi) BOOL;
 extern "user32" fn LoadCursorW(hInstance: ?HINSTANCE, lpCursorName: INTRESOURCE) callconv(.winapi) HCURSOR;
+extern "user32" fn LoadImageW(hInst: HINSTANCE, name: INTRESOURCE, @"type": UINT, cx: i32, cy: i32, fuLoad: UINT) callconv(.winapi) ?*anyopaque;
+extern "user32" fn GetSystemMetrics(nIndex: i32) callconv(.winapi) i32;
 extern "user32" fn MessageBoxW(hWnd: ?HWND, lpText: LPCWSTR, lpCaption: LPCWSTR, uType: UINT) callconv(.winapi) i32;
 extern "user32" fn MessageBeep(uType: UINT) callconv(.winapi) BOOL;
 extern "user32" fn InvalidateRect(hWnd: HWND, lpRect: ?*const RECT, bErase: BOOL) callconv(.winapi) BOOL;
@@ -761,25 +735,6 @@ extern "user32" fn UnregisterHotKey(hWnd: ?HWND, id: i32) callconv(.winapi) BOOL
 extern "user32" fn UpdateWindow(hWnd: HWND) callconv(.winapi) BOOL;
 extern "user32" fn KillTimer(hWnd: ?HWND, uIDEvent: UINT_PTR) callconv(.winapi) BOOL;
 extern "kernel32" fn GetModuleHandleW(lpModuleName: ?LPCWSTR) callconv(.winapi) HINSTANCE;
-const HTHEME = ?*anyopaque;
-const WINDOW_THEME_CLASS = std.unicode.utf8ToUtf16LeStringLiteral("WINDOW");
-const WP_MINBUTTON: i32 = 15;
-const WP_MAXBUTTON: i32 = 17;
-const WP_CLOSEBUTTON: i32 = 18;
-const WP_RESTOREBUTTON: i32 = 21;
-const CBS_NORMAL: i32 = 1;
-const CBS_HOT: i32 = 2;
-extern "uxtheme" fn OpenThemeData(hwnd: HWND, pszClassList: [*:0]const u16) callconv(.winapi) HTHEME;
-extern "uxtheme" fn CloseThemeData(theme: HTHEME) callconv(.winapi) HRESULT;
-extern "uxtheme" fn DrawThemeBackground(
-    theme: HTHEME,
-    hdc: HDC,
-    iPartId: i32,
-    iStateId: i32,
-    pRect: *const RECT,
-    pClipRect: ?*const RECT,
-) callconv(.winapi) HRESULT;
-
 /// Main-thread COM apartment for in-process STA clients (settings path
 /// picker, WinRT toast factory, OLE drag-drop targets). `S_FALSE` and
 /// `RPC_E_CHANGED_MODE` are success values per the MS contract — they
@@ -819,6 +774,10 @@ fn probeWindowsBuild() u32 {
     const rc = RtlGetVersion(&info);
     if (rc < 0) return 0;
     return info.dwBuildNumber;
+}
+
+fn integratedTitlebarEnabledForBuild(build: u32) bool {
+    return build >= OS_BUILD_WIN11_21H2;
 }
 
 /// Atomic replace of an existing file. Used by the settings save path
@@ -970,6 +929,14 @@ const host_overlay_tab_title_label_utf8 = "Tab title:";
 const host_overlay_command_palette_label = std.unicode.utf8ToUtf16LeStringLiteral("Command:");
 const host_tab_new_button_label = std.unicode.utf8ToUtf16LeStringLiteral("+");
 const host_tab_dropdown_button_label = std.unicode.utf8ToUtf16LeStringLiteral("\u{25BE}"); // dropdown chevron
+const titlebar_icon_font_fluent = std.unicode.utf8ToUtf16LeStringLiteral("Segoe Fluent Icons");
+const titlebar_icon_font_mdl2 = std.unicode.utf8ToUtf16LeStringLiteral("Segoe MDL2 Assets");
+const titlebar_glyph_minimize = std.unicode.utf8ToUtf16LeStringLiteral("\u{E921}");
+const titlebar_glyph_maximize = std.unicode.utf8ToUtf16LeStringLiteral("\u{E922}");
+const titlebar_glyph_restore = std.unicode.utf8ToUtf16LeStringLiteral("\u{E923}");
+const titlebar_glyph_close = std.unicode.utf8ToUtf16LeStringLiteral("\u{E8BB}");
+const titlebar_glyph_new_tab = std.unicode.utf8ToUtf16LeStringLiteral("\u{E710}");
+const titlebar_glyph_dropdown = std.unicode.utf8ToUtf16LeStringLiteral("\u{E70D}");
 const host_banner_inspector_inactive = "Inspector hidden. Terminal view is active.";
 const search_results_idle = "Type to search";
 const search_results_pending = "Searching";
@@ -1044,6 +1011,44 @@ fn shouldApplyInheritedWindowState(dst_host_id: ?u32, src_host_id: ?u32) bool {
 
 fn shouldShowSurfaceImmediately(host_id: ?u32) bool {
     return host_id == null;
+}
+
+fn shouldResizeHostForInitialSize(host_surface_count: usize) bool {
+    return host_surface_count == 1;
+}
+
+fn hostPresentShowCommand(is_zoomed: bool) i32 {
+    return if (is_zoomed) SW_MAXIMIZE else SW_SHOW;
+}
+
+fn intResource(id: usize) INTRESOURCE {
+    return @as(INTRESOURCE, @ptrFromInt(id));
+}
+
+fn appIconResource() INTRESOURCE {
+    return intResource(ID_ICON_GHOSTTY);
+}
+
+fn loadAppIcon(hinstance: HINSTANCE, small: bool) HICON {
+    const cx = if (small) GetSystemMetrics(SM_CXSMICON) else GetSystemMetrics(SM_CXICON);
+    const cy = if (small) GetSystemMetrics(SM_CYSMICON) else GetSystemMetrics(SM_CYICON);
+    return LoadImageW(
+        hinstance,
+        appIconResource(),
+        IMAGE_ICON,
+        if (cx > 0) cx else if (small) 16 else 32,
+        if (cy > 0) cy else if (small) 16 else 32,
+        LR_SHARED,
+    );
+}
+
+fn setWindowIcon(hwnd: HWND, hinstance: HINSTANCE) void {
+    if (loadAppIcon(hinstance, false)) |icon| {
+        _ = SendMessageW(hwnd, WM_SETICON, ICON_BIG, @as(LPARAM, @bitCast(@intFromPtr(icon))));
+    }
+    if (loadAppIcon(hinstance, true)) |icon| {
+        _ = SendMessageW(hwnd, WM_SETICON, ICON_SMALL, @as(LPARAM, @bitCast(@intFromPtr(icon))));
+    }
 }
 
 fn shouldDispatchOcclusion(current: ?bool, visible: bool) bool {
@@ -1419,7 +1424,7 @@ fn normalizeForwardedStartupArg(
 }
 
 fn collectStartupForwardArguments(alloc: Allocator) !?[]const [:0]const u8 {
-    var iter = try cli.args.argsIterator(alloc);
+    var iter = try cli_args.argsIterator(alloc);
     defer iter.deinit();
 
     var argv: std.ArrayList([:0]const u8) = .empty;
@@ -1654,9 +1659,6 @@ pub const App = struct {
     /// enough; re-registering on every copy is documented as
     /// cheap by MS but still pointless work.
     cf_html_format: UINT = 0,
-    /// In-app toast state, owned at App scope so notifications can
-    /// outlive the Host/tab that created them.
-    toast_stack: win32_toast.ToastStack = undefined,
     /// Hyperlink hover-dwell tracker. Reset via `dismiss()` whenever
     /// focus leaves a surface or a click arrives.
     link_hover_tracker: win32_link_preview.HoverTracker = undefined,
@@ -1665,6 +1667,11 @@ pub const App = struct {
     /// case `showDesktopNotification` falls back to the in-app banner
     /// path. One notifier per App, released in `App.terminate`.
     winrt_toast: ?win32_toast_winrt.WinrtToast = null,
+    /// Taskbar progress COM object. `null` when the taskbar API is
+    /// unavailable, in which case progress continues to render only in
+    /// the window title/status text.
+    taskbar_progress: ?win32_taskbar_progress.TaskbarProgress = null,
+    toast_activation_post_pending: std.atomic.Value(bool) = .init(false),
     /// Absolute path supplied via `--config-file <path>` on the CLI.
     /// Resolved ONCE against the startup cwd during `App.init` — that's
     /// important because `run()` later calls `sanitizeCurrentDirectory()`,
@@ -1682,6 +1689,9 @@ pub const App = struct {
     startup_cwd: ?[]u8 = null,
     /// Parsed `wgh://activate?...` launch argument from a cold-start
     /// toast activation. `null` when no such argv entry is present.
+    /// Consumed once after the first window spawns. We first try the
+    /// requested surface/window identity and fall back to the newly
+    /// created primary surface when the IDs came from a prior process.
     pending_toast_activation: ?win32_toast_activation.ActivationTarget = null,
 
     pub fn init(
@@ -1722,17 +1732,20 @@ pub const App = struct {
         // continue) — toasts and taskbar grouping are non-essential
         // for basic terminal function.
         win32_aumid.setProcessAumid();
-        win32_aumid.registerAumidDisplayName();
+        win32_aumid.registerAumidDisplayName(core_app.alloc);
 
-        // Boot the WinRT toast notifier. Failure is silent — the
-        // in-app banner / toast stack covers the functional gap.
+        // Boot the WinRT toast notifier. Failure falls back to the
+        // host banner/log path in `showDesktopNotificationWithLaunch`.
         // MUST run AFTER `setProcessAumid` so `CreateToastNotifierWithId`
         // attributes toasts to our AUMID.
         const aumid_utf16 = std.unicode.utf8ToUtf16LeStringLiteral("com.ghostty.winghostty");
         self.winrt_toast = win32_toast_winrt.WinrtToast.init(core_app.alloc, aumid_utf16) catch |err| blk: {
-            std.log.warn("winrt toast init failed err={}; falling back to in-app notifications", .{err});
+            std.log.warn("winrt toast init failed err={}; falling back to host notifications", .{err});
             break :blk null;
         };
+        if (self.winrt_toast) |*toast| {
+            toast.setActivationCallback(self, winrtToastActivationCallback);
+        }
 
         // Install the PowerShell shell-integration script into
         // %LOCALAPPDATA%\winghostty\shell-integration\powershell\
@@ -1749,18 +1762,18 @@ pub const App = struct {
             std.log.warn("powershell integration install path resolve failed err={}", .{err});
         }
 
-        // Windows version probe. Keep the integrated-titlebar path
-        // hard-disabled for now so Win32 uses the stock non-client
-        // caption/buttons path on every build while the redesign work
-        // on this branch settles.
         self.os_build = probeWindowsBuild();
-        self.use_integrated_titlebar = false;
+        self.use_integrated_titlebar = integratedTitlebarEnabledForBuild(self.os_build);
         log.info("win32 os_build={d} integrated_titlebar={}", .{
             self.os_build,
             self.use_integrated_titlebar,
         });
 
         self.initComApartment();
+        self.taskbar_progress = win32_taskbar_progress.TaskbarProgress.init() catch |err| blk: {
+            std.log.warn("taskbar progress init failed err={}; falling back to title-only progress", .{err});
+            break :blk null;
+        };
         self.refreshSystemWheelSettings();
         self.refreshSystemScrollbarPreference();
         self.resolved_theme = resolveTheme(&self.config);
@@ -1777,7 +1790,6 @@ pub const App = struct {
             .notifySuccess = &settingsNotifySuccessThunk,
             .onClosed = &settingsOnClosedThunk,
         });
-        self.toast_stack = win32_toast.ToastStack.init(core_app.alloc);
         self.link_hover_tracker = win32_link_preview.HoverTracker.init();
     }
 
@@ -1801,33 +1813,6 @@ pub const App = struct {
         }
     }
 
-    /// Push a transient in-app toast onto the stack. Safe to call from
-    /// any app-thread context (message handlers, action dispatch). The
-    /// per-toast HWND + paint path lands with a later P4 pass; for now
-    /// the stack holds the message in memory and expires on schedule
-    /// so `tickToasts` logging gives visible confirmation the plumbing
-    /// works end-to-end.
-    pub fn showToast(
-        self: *App,
-        title: []const u8,
-        body: []const u8,
-        severity: win32_toast.Severity,
-    ) !void {
-        const now: u64 = @intCast(std.time.milliTimestamp());
-        const id = try self.toast_stack.push(title, body, severity, now);
-        std.log.info("toast pushed id={d} severity={s} title={s}", .{ id, @tagName(severity), title });
-    }
-
-    /// Advance the toast stack: expire old toasts, promote pending,
-    /// recompute y-offsets. Called from the message-loop idle path
-    /// (once per WM_TIMER or WM_WINHOSTTY_WAKE tick). Cheap when the
-    /// stack is empty.
-    pub fn tickToasts(self: *App) void {
-        if (!self.toast_stack.hasAny()) return;
-        const now: u64 = @intCast(std.time.milliTimestamp());
-        _ = self.toast_stack.tick(now);
-    }
-
     pub fn run(self: *App) !void {
         try self.sanitizeCurrentDirectory();
         const cwd = std.process.getCwdAlloc(self.core_app.alloc) catch null;
@@ -1843,11 +1828,11 @@ pub const App = struct {
         }
 
         self.running = true;
-        self.ui_thread_id = GetCurrentThreadId();
+        @atomicStore(DWORD, &self.ui_thread_id, GetCurrentThreadId(), .release);
         self.ensureMessageQueue();
         defer {
             self.stopQuitTimer();
-            self.ui_thread_id = 0;
+            @atomicStore(DWORD, &self.ui_thread_id, 0, .release);
             self.running = false;
         }
 
@@ -1904,6 +1889,18 @@ pub const App = struct {
                 continue;
             }
 
+            if (msg.message == WM_WINHOSTTY_TOAST_ACTIVATION) {
+                const activation: *win32_toast_activation.ActivationTarget = @ptrFromInt(@as(usize, @bitCast(msg.lParam)));
+                defer std.heap.page_allocator.destroy(activation);
+                defer self.toast_activation_post_pending.store(false, .release);
+                if (!self.handleToastActivation(activation.*)) {
+                    self.pending_toast_activation = activation.*;
+                }
+                try self.core_app.tick(self);
+                if (!self.running and self.windows.items.len == 0) break;
+                continue;
+            }
+
             if (msg.message == WM_TIMER) {
                 if (self.quit_timer_id) |timer_id| {
                     if (msg.wParam == timer_id) {
@@ -1933,7 +1930,6 @@ pub const App = struct {
             }
 
             try self.core_app.tick(self);
-            self.tickToasts();
 
             if (!self.running and self.windows.items.len == 0) break;
         }
@@ -1964,10 +1960,13 @@ pub const App = struct {
             slot.* = null;
         }
         self.settings_window.deinit();
-        self.toast_stack.deinit();
         if (self.winrt_toast) |*toast| {
             toast.deinit();
             self.winrt_toast = null;
+        }
+        if (self.taskbar_progress) |*taskbar| {
+            taskbar.deinit();
+            self.taskbar_progress = null;
         }
         if (self.cli_config_override_path) |path| {
             self.core_app.alloc.free(path);
@@ -2448,13 +2447,30 @@ pub const App = struct {
             },
 
             .new_window => {
+                var forwarded_arguments = value.arguments;
+                switch (scanForwardedToastActivation(value.arguments)) {
+                    .none => {},
+                    .malformed => {
+                        std.log.warn("dropping malformed forwarded toast activation argv", .{});
+                        return true;
+                    },
+                    .activation => |activation| {
+                        const dropped_args = forwardedActivationExtraArgCount(value.arguments);
+                        if (dropped_args > 0) {
+                            std.log.warn("dropping {d} forwarded argv item(s) bundled with toast activation", .{dropped_args});
+                        }
+                        if (self.handleToastActivation(activation)) return true;
+                        self.pending_toast_activation = activation;
+                        forwarded_arguments = null;
+                    },
+                }
                 var config = try apprt.surface.newConfig(
                     self.core_app,
                     &self.config,
                     .window,
                 );
                 defer config.deinit();
-                try applyNewWindowArguments(self.core_app.alloc, &config, value.arguments);
+                try applyNewWindowArguments(self.core_app.alloc, &config, forwarded_arguments);
                 _ = try self.createWindowSurface(&config, default_title, .{
                     .clone_state_from = self.findSurfaceForTarget(target),
                 });
@@ -2555,9 +2571,6 @@ pub const App = struct {
                     try self.core_app.updateConfig(self, &self.config);
                     if (self.config.@"app-notifications".@"config-reload") {
                         try self.showDesktopNotification(.app, "winghostty", "Configuration reloaded");
-                        self.showToast("Config reloaded", "", .success) catch |err| {
-                            std.log.warn("toast push failed err={}", .{err});
-                        };
                     }
                     return true;
                 }
@@ -2604,9 +2617,6 @@ pub const App = struct {
                 try self.core_app.updateConfig(self, &config);
                 if (self.config.@"app-notifications".@"config-reload") {
                     try self.showDesktopNotification(.app, "winghostty", "Configuration reloaded");
-                    self.showToast("Config reloaded", "", .success) catch |err| {
-                        std.log.warn("toast push failed err={}", .{err});
-                    };
                 }
                 return true;
             },
@@ -3117,12 +3127,12 @@ pub const App = struct {
             .cbClsExtra = 0,
             .cbWndExtra = 0,
             .hInstance = self.hinstance,
-            .hIcon = null,
+            .hIcon = loadAppIcon(self.hinstance, false),
             .hCursor = LoadCursorW(null, IDC_ARROW),
             .hbrBackground = null,
             .lpszMenuName = null,
             .lpszClassName = class_name,
-            .hIconSm = null,
+            .hIconSm = loadAppIcon(self.hinstance, true),
         };
 
         self.class_atom = RegisterClassExW(&wc);
@@ -3141,12 +3151,12 @@ pub const App = struct {
             .cbClsExtra = 0,
             .cbWndExtra = 0,
             .hInstance = self.hinstance,
-            .hIcon = null,
+            .hIcon = loadAppIcon(self.hinstance, false),
             .hCursor = LoadCursorW(null, IDC_ARROW),
             .hbrBackground = null,
             .lpszMenuName = null,
             .lpszClassName = host_class_name,
-            .hIconSm = null,
+            .hIconSm = loadAppIcon(self.hinstance, true),
         };
 
         self.host_class_atom = RegisterClassExW(&wc);
@@ -3213,6 +3223,7 @@ pub const App = struct {
         errdefer self.core_app.alloc.destroy(surface);
 
         try surface.init(self, title, config, opts);
+        if (opts.host_id == null) self.consumePendingToastActivation();
         return surface;
     }
 
@@ -3396,10 +3407,12 @@ pub const App = struct {
             host,
         ) orelse return windows.unexpectedError(windows.kernel32.GetLastError());
         host.hwnd = hwnd;
+        setWindowIcon(hwnd, self.hinstance);
         applyDwmThemeWithBuild(hwnd, &self.resolved_theme, &self.config, self.os_build);
         host.current_dpi = GetDpiForWindow(hwnd);
         if (host.current_dpi == 0) host.current_dpi = 96;
         host.chrome_font = host.createChromeFont();
+        host.recreateTitlebarIconFonts();
         errdefer _ = DestroyWindow(hwnd);
 
         try self.hosts.append(self.core_app.alloc, host);
@@ -3435,6 +3448,20 @@ pub const App = struct {
         const host = self.findHostById(host_id) orelse return null;
         const tab = self.activeTab(host) orelse return null;
         return tab.focusedSurface();
+    }
+
+    fn findSurfaceById(self: *App, surface_id: u64) ?*Surface {
+        for (self.windows.items) |surface| {
+            if (surface.core().id == surface_id) return surface;
+        }
+
+        for (self.hosts.items) |host| {
+            for (host.tabs.items) |*tab| {
+                if (tab.findSurfaceByCoreId(surface_id)) |surface| return surface;
+            }
+        }
+
+        return null;
     }
 
     fn inheritHostWindowState(_: *App, destination: *Host, source: *Host) !void {
@@ -3584,10 +3611,83 @@ pub const App = struct {
             if (found.tab.focused != handle) found.tab.focused = handle;
             if (!needs_host_sync) {
                 surface.presentWindow();
+                self.syncTaskbarProgressForHost(surface.host_id);
                 return;
             }
         }
         self.showHostSurface(surface, true);
+        self.syncTaskbarProgressForHost(surface.host_id);
+    }
+
+    fn syncTaskbarProgressForHost(self: *App, host_id: u32) void {
+        const taskbar = if (self.taskbar_progress) |*value| value else return;
+        const host = self.findHostById(host_id) orelse return;
+        const hwnd = host.hwnd orelse return;
+        const report = if (self.activeSurfaceForHost(host_id)) |surface|
+            surface.taskbar_progress
+        else
+            null;
+        const state_name = if (report) |value| @tagName(value.state) else "remove";
+        std.log.debug("taskbar progress sync host_id={d} state={s}", .{ host_id, state_name });
+        taskbar.apply(hwnd, report) catch |err| {
+            std.log.warn("taskbar progress sync failed host_id={d} err={}; disabling native taskbar progress", .{ host_id, err });
+            taskbar.deinit();
+            self.taskbar_progress = null;
+        };
+    }
+
+    fn focusedSurfaceForHostTab(_: *App, host: *Host, tab_id: u32) ?*Surface {
+        for (host.tabs.items) |*tab| {
+            if (tab.id != tab_id) continue;
+            return tab.focusedSurface();
+        }
+
+        return null;
+    }
+
+    fn resolveToastActivationSurface(
+        self: *App,
+        activation: win32_toast_activation.ActivationTarget,
+    ) ?*Surface {
+        if (activation.surface_id) |surface_id| {
+            if (self.findSurfaceById(surface_id)) |surface| {
+                return surface;
+            }
+        }
+
+        if (activation.window_id) |window_id| {
+            if (self.findHostById(window_id)) |host| {
+                if (activation.tab_id) |tab_id| {
+                    if (self.focusedSurfaceForHostTab(host, tab_id)) |surface| {
+                        return surface;
+                    }
+                }
+                if (self.activeTab(host)) |tab| {
+                    if (tab.focusedSurface()) |surface| {
+                        return surface;
+                    }
+                }
+            }
+        }
+
+        return self.primarySurface();
+    }
+
+    fn handleToastActivation(self: *App, activation: win32_toast_activation.ActivationTarget) bool {
+        if (activation.action) |action| switch (action) {
+            .focus => {},
+        };
+
+        const surface = self.resolveToastActivationSurface(activation) orelse return false;
+        surface.present();
+        return true;
+    }
+
+    fn consumePendingToastActivation(self: *App) void {
+        const activation = self.pending_toast_activation orelse return;
+        if (self.handleToastActivation(activation)) {
+            self.pending_toast_activation = null;
+        }
     }
 
     fn activateSurfaceNoFocus(self: *App, surface: *Surface) void {
@@ -3609,10 +3709,12 @@ pub const App = struct {
             if (found.tab.focused != handle) found.tab.focused = handle;
             if (!needs_host_sync) {
                 surface.setVisible(true);
+                self.syncTaskbarProgressForHost(surface.host_id);
                 return;
             }
         }
         self.showHostSurface(surface, false);
+        self.syncTaskbarProgressForHost(surface.host_id);
     }
 
     fn noteSurfaceFocused(self: *App, surface: *Surface) bool {
@@ -3948,9 +4050,7 @@ pub const App = struct {
 
     /// Resolve the 7 `quick-terminal-*` config fields into a concrete
     /// end rect via `win32_quick_terminal` and apply it immediately
-    /// with `SetWindowPos`. The full animation / tween path lands
-    /// with a later P4.5 pass; this snap-to-final version already
-    /// honours position / size / screen / keyboard-interactivity.
+    /// with `SetWindowPos`.
     fn applyQuickTerminalGeometry(self: *App, hwnd: HWND) !void {
         const qt_cfg = win32_quick_terminal.QuickTerminalConfig{
             .position = switch (self.config.@"quick-terminal-position") {
@@ -4216,9 +4316,8 @@ pub const App = struct {
         //   1. If the process was started with `--config-file <path>`
         //      on the CLI, write to THAT file. Writing to the default
         //      `ghostty.conf` when the user explicitly specified a
-        //      custom config is the regression Codex caught in
-        //      round 7: the user either edits the wrong file OR the
-        //      CLI-provided config masks the saved value on reload.
+        //      custom config would either edit the wrong file or let
+        //      the CLI-provided config mask the saved value on reload.
         //   2. Otherwise, fall back to the per-user default path
         //      (`config_edit.openPath`), which also handles the
         //      first-run "create the file" case.
@@ -4527,11 +4626,12 @@ pub const App = struct {
         _ = MessageBeep(MB_ICONINFORMATION);
     }
 
-    fn showDesktopNotification(
+    fn showDesktopNotificationWithLaunch(
         self: *App,
         target: apprt.Target,
-        title: [:0]const u8,
-        body: [:0]const u8,
+        title: []const u8,
+        body: []const u8,
+        launch: ?[]const u8,
     ) !void {
         const caption = if (title.len > 0) title else "winghostty";
         const message = if (title.len > 0 and !std.mem.eql(u8, title, "winghostty"))
@@ -4547,7 +4647,11 @@ pub const App = struct {
         // Assist, notifications disabled, runtime unavailable) falls
         // back to the banner so the user still gets feedback.
         if (self.winrt_toast) |*toast| {
-            if (toast.show(caption, body, .info)) |_| {
+            const result = if (launch) |value|
+                toast.showWithLaunch(caption, body, .info, value)
+            else
+                toast.show(caption, body, .info);
+            if (result) |_| {
                 return;
             } else |err| {
                 std.log.warn("winrt toast show failed err={}; falling back to banner", .{err});
@@ -4555,12 +4659,20 @@ pub const App = struct {
         }
 
         if (try self.showHostBanner(target, .info, message)) return;
-        // Fallback modal: pass the COMPOSED `message` as the body so
+        // Final local fallback: pass the composed `message` as the body so
         // notifications with an empty `body` (e.g. settings-save
         // success, where title alone carries the signal) still render
-        // something readable. Using raw `body` would produce a blank
-        // modal that looks broken despite the action succeeding.
+        // something readable.
         try self.showInfoMessage(target, caption, message);
+    }
+
+    fn showDesktopNotification(
+        self: *App,
+        target: apprt.Target,
+        title: [:0]const u8,
+        body: [:0]const u8,
+    ) !void {
+        try self.showDesktopNotificationWithLaunch(target, title, body, null);
     }
 
     fn showChildExited(
@@ -4579,13 +4691,60 @@ pub const App = struct {
         try self.showInfoMessage(target, "winghostty", message);
     }
 
+    const CommandFinishPlan = struct {
+        bell: bool = false,
+        notify: bool = false,
+
+        fn any(self: CommandFinishPlan) bool {
+            return self.bell or self.notify;
+        }
+    };
+
+    fn commandFinishPlan(
+        notify_on_command_finish: configpkg.Config.NotifyOnCommandFinish,
+        notify_on_command_finish_action: configpkg.Config.NotifyOnCommandFinishAction,
+        desktop_notifications: bool,
+        notify_on_command_finish_after: configpkg.Config.Duration,
+        is_focused: bool,
+        duration: configpkg.Config.Duration,
+    ) CommandFinishPlan {
+        if (duration.duration < notify_on_command_finish_after.duration) return .{};
+
+        const allow = switch (notify_on_command_finish) {
+            .never => false,
+            .always => true,
+            .unfocused => !is_focused,
+        };
+        if (!allow) return .{};
+
+        return .{
+            .bell = notify_on_command_finish_action.bell,
+            .notify = notify_on_command_finish_action.notify and desktop_notifications,
+        };
+    }
+
     fn showCommandFinished(
         self: *App,
         target: apprt.Target,
         finished: apprt.action.CommandFinished,
     ) !void {
+        const surface = self.findSurfaceForTarget(target) orelse return;
+        const config = &surface.core().config;
+        const plan = commandFinishPlan(
+            config.notify_on_command_finish,
+            config.notify_on_command_finish_action,
+            config.desktop_notifications,
+            config.notify_on_command_finish_after,
+            self.isSurfaceFocused(surface),
+            finished.duration,
+        );
+        if (!plan.any()) return;
+
+        if (plan.bell) self.ringBell(target);
+        if (!plan.notify) return;
+
         const seconds = @as(f64, @floatFromInt(finished.duration.duration)) / @as(f64, std.time.ns_per_s);
-        const message = if (finished.exit_code) |code|
+        const body = if (finished.exit_code) |code|
             try std.fmt.allocPrint(
                 self.core_app.alloc,
                 "Command finished with exit code {d} | Runtime: {d:.2}s",
@@ -4597,9 +4756,18 @@ pub const App = struct {
                 "Command finished | Runtime: {d:.2}s",
                 .{seconds},
             );
-        defer self.core_app.alloc.free(message);
-        if (try self.showHostBanner(target, .info, message)) return;
-        try self.showInfoMessage(target, "winghostty", message);
+        defer self.core_app.alloc.free(body);
+
+        const launch = try buildToastLaunchForSurface(self.core_app.alloc, surface);
+        defer self.core_app.alloc.free(launch);
+        try self.showDesktopNotificationWithLaunch(target, "Command finished", body, launch);
+    }
+
+    fn isSurfaceFocused(self: *App, surface: *Surface) bool {
+        return self.core_app.focused and
+            surface.host_active and
+            surface.window_focused and
+            self.core_app.focusedSurface() == surface.core();
     }
 
     fn showInfoMessage(
@@ -4610,13 +4778,10 @@ pub const App = struct {
     ) !void {
         _ = self;
         _ = target;
-        // Tertiary fallback after WinRT toast + host banner both
-        // fail. Reached only when there's no UI surface to render a
-        // banner AND the WinRT path failed (Focus Assist, corporate
-        // lockdown with no combase, etc.) — i.e. the user genuinely
-        // has nowhere to see the notification. Log so telemetry
-        // captures the event. Replaced a modal `MessageBoxW` per
-        // AGENTS.md:84 ban.
+        // Final fallback for notification paths that cannot surface a
+        // host banner. Replaced the old modal `MessageBoxW` path with
+        // an explicit log entry so failures stay observable without
+        // blocking the UI thread.
         std.log.info("info notification (no visible target): {s} — {s}", .{ title, message });
     }
 
@@ -4721,6 +4886,45 @@ fn postUpdateCheckCompletion(ui_thread_id: DWORD, completion: *UpdateCheckComple
     }
 }
 
+fn winrtToastActivationCallback(ctx: *anyopaque, launch: []const u8) void {
+    const self: *App = @ptrCast(@alignCast(ctx));
+    const ui_thread_id = @atomicLoad(DWORD, &self.ui_thread_id, .acquire);
+    if (ui_thread_id == 0) {
+        std.log.warn("dropping winrt toast activation before ui thread id is available", .{});
+        return;
+    }
+
+    const parsed = win32_toast_activation.parseLaunchArg(launch) catch |err| {
+        std.log.warn("dropping malformed winrt toast activation launch err={}", .{err});
+        return;
+    };
+
+    if (self.toast_activation_post_pending.swap(true, .acq_rel)) {
+        std.log.warn("dropping winrt toast activation while another activation is queued", .{});
+        return;
+    }
+
+    const activation = std.heap.page_allocator.create(win32_toast_activation.ActivationTarget) catch |err| {
+        std.log.warn("dropping winrt toast activation allocation failed err={}", .{err});
+        self.toast_activation_post_pending.store(false, .release);
+        return;
+    };
+    activation.* = parsed;
+
+    if (PostThreadMessageW(
+        ui_thread_id,
+        WM_WINHOSTTY_TOAST_ACTIVATION,
+        0,
+        @as(LPARAM, @bitCast(@as(usize, @intFromPtr(activation)))),
+    ) == 0) {
+        std.log.warn("dropping winrt toast activation post failed err={}", .{
+            windows.kernel32.GetLastError(),
+        });
+        std.heap.page_allocator.destroy(activation);
+        self.toast_activation_post_pending.store(false, .release);
+    }
+}
+
 const SearchStatus = struct {
     active: bool = false,
     needle: ?[]const u8 = null,
@@ -4730,6 +4934,166 @@ const SearchStatus = struct {
 
 /// Which caption button (integrated titlebar) the cursor is hovering.
 const CaptionButton = enum { none, minimize, maximize, close };
+
+const TitlebarButtonRole = enum {
+    none,
+    minimize,
+    maximize,
+    close,
+    new_tab,
+    dropdown,
+};
+
+const TitlebarGlyphKind = enum {
+    minimize,
+    maximize,
+    restore,
+    close,
+    new_tab,
+    dropdown,
+};
+
+const titlebar_hover_fade_ms: u16 = 150;
+
+const TitlebarHoverFade = struct {
+    active: bool = false,
+    started_ms: u64 = 0,
+    duration_ms: u16 = 0,
+
+    fn start(self: *TitlebarHoverFade, now_ms: u64, duration_ms: u16) void {
+        self.* = .{
+            .active = duration_ms > 0,
+            .started_ms = now_ms,
+            .duration_ms = duration_ms,
+        };
+    }
+
+    fn alphaAt(self: TitlebarHoverFade, now_ms: u64) f32 {
+        if (!self.active or self.duration_ms == 0) return 0.0;
+        if (now_ms <= self.started_ms) return 1.0;
+        const elapsed = now_ms - self.started_ms;
+        if (elapsed >= self.duration_ms) return 0.0;
+        const t = @as(f32, @floatFromInt(elapsed)) / @as(f32, @floatFromInt(self.duration_ms));
+        return 1.0 - std.math.clamp(t, 0.0, 1.0);
+    }
+
+    fn animating(self: TitlebarHoverFade, now_ms: u64) bool {
+        if (!self.active or self.duration_ms == 0) return false;
+        if (now_ms <= self.started_ms) return true;
+        return now_ms - self.started_ms < self.duration_ms;
+    }
+};
+
+const TitlebarButtonVisual = struct {
+    bg: ?u32 = null,
+    glyph: u32,
+};
+
+fn titlebarGlyphCodepoint(kind: TitlebarGlyphKind) u16 {
+    return switch (kind) {
+        .minimize => 0xE921,
+        .maximize => 0xE922,
+        .restore => 0xE923,
+        .close => 0xE8BB,
+        .new_tab => 0xE710,
+        .dropdown => 0xE70D,
+    };
+}
+
+fn titlebarGlyphText(kind: TitlebarGlyphKind) [*:0]const u16 {
+    return switch (kind) {
+        .minimize => titlebar_glyph_minimize,
+        .maximize => titlebar_glyph_maximize,
+        .restore => titlebar_glyph_restore,
+        .close => titlebar_glyph_close,
+        .new_tab => titlebar_glyph_new_tab,
+        .dropdown => titlebar_glyph_dropdown,
+    };
+}
+
+fn titlebarFallbackIcon(kind: TitlebarGlyphKind) win32_icons.Kind {
+    return switch (kind) {
+        .minimize => .minimize,
+        .maximize => .maximize,
+        .restore => .restore,
+        .close => .close,
+        .new_tab => .plus,
+        .dropdown => .arrow_down,
+    };
+}
+
+fn titlebarRoleFromCaption(button: CaptionButton) TitlebarButtonRole {
+    return switch (button) {
+        .none => .none,
+        .minimize => .minimize,
+        .maximize => .maximize,
+        .close => .close,
+    };
+}
+
+fn titlebarCaptionFromHitTest(ht: i32) CaptionButton {
+    return switch (ht) {
+        HTMINBUTTON => .minimize,
+        HTMAXBUTTON => .maximize,
+        HTCLOSE => .close,
+        else => .none,
+    };
+}
+
+fn captionButtonSysCommand(ht: i32, is_zoomed: bool) ?WPARAM {
+    return switch (ht) {
+        HTMINBUTTON => SC_MINIMIZE,
+        HTMAXBUTTON => if (is_zoomed) SC_RESTORE else SC_MAXIMIZE,
+        else => null,
+    };
+}
+
+fn titlebarSubtleFill(parent_bg: u32, is_dark: bool, pressed: bool) u32 {
+    const overlay = if (is_dark) rgb(0xFF, 0xFF, 0xFF) else rgb(0x00, 0x00, 0x00);
+    const alpha: f32 = if (pressed) 0.04 else 0.06;
+    return blendColorRGB(parent_bg, overlay, alpha);
+}
+
+fn titlebarButtonVisual(
+    theme: *const ThemeColors,
+    role: TitlebarButtonRole,
+    parent_bg: u32,
+    hover_alpha: f32,
+    pressed: bool,
+    high_contrast: bool,
+) TitlebarButtonVisual {
+    const active = pressed or hover_alpha > 0.0;
+    if (high_contrast) {
+        return .{
+            .bg = if (active) theme.button_active_bg else null,
+            .glyph = if (active) theme.button_active_fg else theme.text_primary,
+        };
+    }
+
+    const idle_glyph = switch (role) {
+        .new_tab, .dropdown => theme.button_chrome_fg,
+        else => theme.text_primary,
+    };
+    if (!active) return .{ .bg = null, .glyph = idle_glyph };
+
+    const target_bg = switch (role) {
+        .close => rgb(0xC4, 0x2B, 0x1C),
+        .minimize, .maximize, .new_tab, .dropdown => titlebarSubtleFill(parent_bg, theme.is_dark, pressed),
+        .none => parent_bg,
+    };
+    const target_glyph = switch (role) {
+        .close => if (pressed) blendColorRGB(target_bg, rgb(0xFF, 0xFF, 0xFF), 0.70) else rgb(0xFF, 0xFF, 0xFF),
+        .minimize, .maximize => theme.text_primary,
+        .new_tab, .dropdown => theme.text_primary,
+        .none => idle_glyph,
+    };
+
+    const alpha: f32 = if (pressed) 1.0 else std.math.clamp(hover_alpha, 0.0, 1.0);
+    return .{
+        .bg = blendColorRGB(parent_bg, target_bg, alpha),
+        .glyph = blendColorRGB(idle_glyph, target_glyph, alpha),
+    };
+}
 
 /// Deep-copy of one `apprt.ClipboardContent` entry so it can survive an
 /// async confirm-overlay roundtrip. Freed via `PendingClipboardOp.deinit`.
@@ -4742,9 +5106,7 @@ const OwnedClipboardContent = struct {
 /// `HostOverlayMode.confirm`. The owning `Surface` dupes all caller
 /// payload bytes into `core_app.alloc` when queuing the op so the
 /// confirm overlay's async callback sees valid data regardless of when
-/// the original caller's buffers go out of scope. See AGENTS.md:84 —
-/// this is the migration of the last live `MessageBoxW` out of the
-/// apprt.
+/// the original caller's buffers go out of scope.
 const PendingClipboardOp = union(enum) {
     /// Deferred paste. `request` tells the core path to complete once
     /// the user accepts; `data` is the duplicated payload.
@@ -4889,6 +5251,14 @@ const Tab = struct {
         return null;
     }
 
+    fn findSurfaceByCoreId(self: *const Tab, surface_id: u64) ?*Surface {
+        var it = self.tree.iterator();
+        while (it.next()) |entry| {
+            if (entry.view.core().id == surface_id) return entry.view;
+        }
+        return null;
+    }
+
     fn leafCount(self: *const Tab) usize {
         var count: usize = 0;
         var it = self.tree.iterator();
@@ -4998,6 +5368,8 @@ const Host = struct {
     current_dpi: u32 = 96,
     pending_dpi_update: bool = false,
     chrome_font: ?*anyopaque = null, // HFONT, owned
+    titlebar_caption_icon_font: ?*anyopaque = null, // HFONT, owned
+    titlebar_action_icon_font: ?*anyopaque = null, // HFONT, owned
 
     // Cached chrome paint strings — rebuilt only when their per-zone
     // dirty bits are set, so WM_PAINT can skip unrelated UTF-16 churn.
@@ -5047,10 +5419,13 @@ const Host = struct {
     /// `App.use_integrated_titlebar` — stays `.none` on Win10 / any
     /// build < 22000.
     caption_hover: CaptionButton = .none,
+    caption_pressed: CaptionButton = .none,
     /// Registered for WM_NCMOUSELEAVE via `TrackMouseEvent(TME_NONCLIENT
     /// | TME_LEAVE)` so we can clear `caption_hover` when the cursor
     /// exits the non-client area. Only re-armed when it becomes false.
     caption_track_armed: bool = false,
+    titlebar_hover_fade: TitlebarHoverFade = .{},
+    titlebar_hover_fade_role: TitlebarButtonRole = .none,
     /// Fade-OUT state for the tab the user JUST left, so rapid
     /// A → B hover transitions animate BOTH tabs concurrently
     /// (A fades out 1 → 0 while B fades in 0 → 1) instead of A
@@ -5184,6 +5559,15 @@ const Host = struct {
                 _ = InvalidateRect(prev_hwnd, null, 0);
             } else {
                 self.tab_close_prev_hwnd = null;
+            }
+        }
+        if (self.titlebar_hover_fade_role != .none) {
+            const role = self.titlebar_hover_fade_role;
+            self.invalidateTitlebarButtonRole(role);
+            if (!self.titlebar_hover_fade.animating(now)) {
+                self.titlebar_hover_fade = .{};
+                self.titlebar_hover_fade_role = .none;
+                self.invalidateTitlebarButtonRole(role);
             }
         }
         if (!still_alive) self.killTweenTimer();
@@ -5345,17 +5729,7 @@ const Host = struct {
 
         // wParam is the hit-test code returned by our WM_NCHITTEST.
         const ht: i32 = @intCast(@as(i64, @bitCast(wParam)));
-        const new_hover: CaptionButton = switch (ht) {
-            HTCLOSE => .close,
-            HTMAXBUTTON => .maximize,
-            HTMINBUTTON => .minimize,
-            else => .none,
-        };
-
-        if (self.caption_hover != new_hover) {
-            self.caption_hover = new_hover;
-            self.repaintTopChrome();
-        }
+        self.setCaptionHover(titlebarCaptionFromHitTest(ht));
 
         // Arm a one-shot WM_NCMOUSELEAVE so we can clear the hover
         // when the cursor exits the non-client area. Without this the
@@ -5377,10 +5751,8 @@ const Host = struct {
 
     fn handleNcMouseLeave(self: *Host) void {
         self.caption_track_armed = false;
-        if (self.caption_hover != .none) {
-            self.caption_hover = .none;
-            self.repaintTopChrome();
-        }
+        self.setCaptionHover(.none);
+        self.clearCaptionPressed();
     }
 
     /// Non-owning view over the palette command lists. Lifetime is tied
@@ -5720,6 +6092,8 @@ const Host = struct {
         }
         self.tween_sched.deinit();
 
+        self.destroyChildControls();
+
         if (self.banner_text) |value| self.app.core_app.alloc.free(value);
         if (self.overlay_completion_seed) |value| self.app.core_app.alloc.free(value);
         if (self.overlay_completion_value) |value| self.app.core_app.alloc.free(value);
@@ -5736,9 +6110,39 @@ const Host = struct {
         if (self.overlay_brush) |brush| _ = DeleteObject(brush);
         if (self.edit_brush) |brush| _ = DeleteObject(brush);
         if (self.chrome_font) |font| _ = DeleteObject(font);
+        if (self.titlebar_caption_icon_font) |font| _ = DeleteObject(font);
+        if (self.titlebar_action_icon_font) |font| _ = DeleteObject(font);
         for (self.tabs.items) |*tab| tab.deinit();
         self.tabs.deinit(self.app.core_app.alloc);
         self.* = undefined;
+    }
+
+    fn destroyChildControls(self: *Host) void {
+        if (self.hwnd) |hwnd| {
+            if (IsWindow(hwnd) != 0) {
+                _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+            }
+        }
+
+        destroyChildWindow(&self.overlay_label_hwnd);
+        destroySubclassedWindow(&self.overlay_edit_hwnd, &self.overlay_edit_prev_proc);
+        destroyChildWindow(&self.overlay_hint_hwnd);
+
+        const overlay_prev = self.overlay_button_prev_proc;
+        self.overlay_button_prev_proc = null;
+        destroySubclassedWindowWithPrev(&self.overlay_accept_hwnd, overlay_prev);
+        destroySubclassedWindowWithPrev(&self.overlay_cancel_hwnd, overlay_prev);
+
+        const chrome_prev = self.chrome_button_prev_proc;
+        self.chrome_button_prev_proc = null;
+        destroySubclassedWindowWithPrev(&self.new_tab_hwnd, chrome_prev);
+        destroySubclassedWindowWithPrev(&self.overflow_hwnd, chrome_prev);
+
+        destroyChildWindow(&self.palette_list_hwnd);
+
+        self.hovered_button_hwnd = null;
+        self.tab_close_hover_hwnd = null;
+        self.tab_close_prev_hwnd = null;
     }
 
     fn activeTab(self: *Host) ?*Tab {
@@ -6182,12 +6586,79 @@ const Host = struct {
         return self.hovered_button_hwnd != null and child == self.hovered_button_hwnd.?;
     }
 
+    fn titlebarActionButtonRole(self: *Host, child: HWND) TitlebarButtonRole {
+        if (!self.app.use_integrated_titlebar) return .none;
+        if (self.new_tab_hwnd != null and child == self.new_tab_hwnd.?) return .new_tab;
+        if (self.overflow_hwnd != null and child == self.overflow_hwnd.?) return .dropdown;
+        return .none;
+    }
+
+    fn titlebarHoverFadeDuration(self: *Host) u16 {
+        _ = self;
+        if (!clientAnimationsEnabled() or isHighContrastActive()) return 0;
+        return titlebar_hover_fade_ms;
+    }
+
+    fn invalidateTitlebarButtonRole(self: *Host, role: TitlebarButtonRole) void {
+        switch (role) {
+            .minimize, .maximize, .close => self.repaintTopChrome(),
+            .new_tab => {
+                if (self.new_tab_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
+            },
+            .dropdown => {
+                if (self.overflow_hwnd) |hwnd| _ = InvalidateRect(hwnd, null, 0);
+            },
+            .none => {},
+        }
+    }
+
+    fn startTitlebarHoverFade(self: *Host, role: TitlebarButtonRole) void {
+        if (role == .none) return;
+        const duration = self.titlebarHoverFadeDuration();
+        if (duration == 0) {
+            self.titlebar_hover_fade = .{};
+            self.titlebar_hover_fade_role = .none;
+            self.invalidateTitlebarButtonRole(role);
+            return;
+        }
+
+        self.titlebar_hover_fade.start(GetTickCount64(), duration);
+        self.titlebar_hover_fade_role = role;
+        self.invalidateTitlebarButtonRole(role);
+        _ = self.addTween(0.0, 1.0, duration, .{ 0.0, 0.0, 1.0, 1.0 });
+    }
+
+    fn titlebarHoverAlpha(self: *Host, role: TitlebarButtonRole, hovered: bool, now_ms: u64) f32 {
+        if (hovered) return 1.0;
+        if (self.titlebar_hover_fade_role == role) {
+            return self.titlebar_hover_fade.alphaAt(now_ms);
+        }
+        return 0.0;
+    }
+
+    fn setCaptionHover(self: *Host, next: CaptionButton) void {
+        if (self.caption_hover == next) return;
+        const previous_role = titlebarRoleFromCaption(self.caption_hover);
+        self.caption_hover = next;
+        if (previous_role != .none) self.startTitlebarHoverFade(previous_role);
+        self.repaintTopChrome();
+    }
+
+    fn clearCaptionPressed(self: *Host) void {
+        if (self.caption_pressed == .none) return;
+        self.caption_pressed = .none;
+        self.repaintTopChrome();
+    }
+
     fn setHoveredButton(self: *Host, child: ?HWND) void {
         if (self.hovered_button_hwnd == child) return;
         const previous = self.hovered_button_hwnd;
         self.hovered_button_hwnd = child;
         if (previous) |hwnd| _ = InvalidateRect(hwnd, null, 0);
         if (child) |hwnd| _ = InvalidateRect(hwnd, null, 0);
+
+        const previous_titlebar_role = if (previous) |h| self.titlebarActionButtonRole(h) else .none;
+        if (previous_titlebar_role != .none) self.startTitlebarHoverFade(previous_titlebar_role);
 
         // Tab close-button fade: when the hovered button transitions
         // into / out of a TAB button, drive CloseState + kick the
@@ -6329,7 +6800,7 @@ const Host = struct {
 
     fn present(self: *Host) void {
         const hwnd = self.hwnd orelse return;
-        _ = ShowWindow(hwnd, SW_SHOW);
+        _ = ShowWindow(hwnd, hostPresentShowCommand(IsZoomed(hwnd) != 0));
         _ = SetForegroundWindow(hwnd);
         _ = SetFocus(hwnd);
     }
@@ -7070,9 +7541,37 @@ const Host = struct {
         return CreateFontIndirectW(&lf);
     }
 
+    fn createTitlebarIconFont(self: *Host, logical_px: i32) ?*anyopaque {
+        return self.createTitlebarIconFontForFace(titlebar_icon_font_fluent, logical_px) orelse
+            self.createTitlebarIconFontForFace(titlebar_icon_font_mdl2, logical_px);
+    }
+
+    fn createTitlebarIconFontForFace(
+        self: *Host,
+        face: [*:0]const u16,
+        logical_px: i32,
+    ) ?*anyopaque {
+        var lf: LOGFONTW = .{};
+        lf.lfHeight = -self.scaled(logical_px);
+        lf.lfWeight = FW_NORMAL;
+        lf.lfQuality = CLEARTYPE_QUALITY;
+        const name = std.mem.span(face);
+        const copy_len = @min(name.len, LF_FACESIZE - 1);
+        @memcpy(lf.lfFaceName[0..copy_len], name[0..copy_len]);
+        return CreateFontIndirectW(&lf);
+    }
+
+    fn recreateTitlebarIconFonts(self: *Host) void {
+        if (self.titlebar_caption_icon_font) |old| _ = DeleteObject(old);
+        if (self.titlebar_action_icon_font) |old| _ = DeleteObject(old);
+        self.titlebar_caption_icon_font = self.createTitlebarIconFont(10);
+        self.titlebar_action_icon_font = self.createTitlebarIconFont(12);
+    }
+
     fn recreateChromeFont(self: *Host) void {
         if (self.chrome_font) |old| _ = DeleteObject(old);
         self.chrome_font = self.createChromeFont();
+        self.recreateTitlebarIconFonts();
         // Send WM_SETFONT to child controls
         if (self.chrome_font) |font| {
             if (self.overlay_edit_hwnd) |edit| _ = SendMessageW(edit, WM_SETFONT, @intFromPtr(font), 1);
@@ -7714,6 +8213,53 @@ const Host = struct {
         return surface.searchBarButtonActive(role);
     }
 
+    fn drawTitlebarActionButton(
+        self: *Host,
+        draw: *const DRAWITEMSTRUCT,
+        role: TitlebarButtonRole,
+        disabled: bool,
+        pressed: bool,
+        focused: bool,
+        hovered: bool,
+    ) void {
+        const theme = &self.app.resolved_theme;
+        const parent_bg = theme.chrome_bg;
+        const is_hc = isHighContrastActive();
+        fillSolidRect(draw.hDC, draw.rcItem, parent_bg);
+
+        var visual = titlebarButtonVisual(
+            theme,
+            role,
+            parent_bg,
+            self.titlebarHoverAlpha(role, hovered, GetTickCount64()),
+            pressed,
+            is_hc,
+        );
+        if (disabled) {
+            visual = .{ .bg = null, .glyph = theme.text_disabled };
+        }
+
+        if (visual.bg) |bg| {
+            drawRoundedRect(draw.hDC, draw.rcItem, bg, bg, self.scaled(4));
+        }
+        if (focused and !disabled) {
+            drawRoundedRect(
+                draw.hDC,
+                rectInset(draw.rcItem, self.scaled(2), self.scaled(2)),
+                visual.bg orelse parent_bg,
+                theme.button_focus_ring,
+                self.scaled(3),
+            );
+        }
+
+        const glyph: TitlebarGlyphKind = switch (role) {
+            .new_tab => .new_tab,
+            .dropdown => .dropdown,
+            else => return,
+        };
+        self.drawTitlebarGlyph(draw.hDC, draw.rcItem, glyph, visual.glyph, false);
+    }
+
     fn drawButton(self: *Host, draw: *const DRAWITEMSTRUCT) void {
         if (draw.CtlType != ODT_BUTTON) return;
         self.ensureThemeBrushes() catch return;
@@ -7743,6 +8289,18 @@ const Host = struct {
                 focused,
                 hovered,
                 active,
+            );
+            return;
+        }
+        const titlebar_role = self.titlebarActionButtonRole(draw.hwndItem);
+        if (titlebar_role != .none) {
+            self.drawTitlebarActionButton(
+                draw,
+                titlebar_role,
+                disabled,
+                pressed,
+                focused,
+                hovered,
             );
             return;
         }
@@ -8213,6 +8771,9 @@ const Host = struct {
     }
 
     fn rightButtonsWidth(self: *const Host) i32 {
+        if (self.app.use_integrated_titlebar) {
+            return self.scaled(host_titlebar_action_button_size) * 2 + self.scaled(12);
+        }
         return self.scaled(host_tab_small_button_width) + // new tab (+)
             self.scaled(host_tab_overflow_button_width) + // dropdown chevron (▾)
             self.scaled(12); // gap + margins
@@ -8913,25 +9474,38 @@ const Host = struct {
         // Right-side cluster: [+][▾] — new tab and dropdown chevron.
         // Shift left by the caption-buttons reservation (0 on Win10)
         // so the chevron doesn't land under the close button.
-        var button_x = width - self.scaled(8) - caption_buttons_w;
+        const titlebar_actions = self.app.use_integrated_titlebar;
+        const action_size = self.scaled(host_titlebar_action_button_size);
+        const action_y = @max(0, @divTrunc(self.tabBarHeight() - action_size, 2));
+        var button_x = width - self.scaled(if (titlebar_actions) 4 else 8) - caption_buttons_w;
         if (self.overflow_hwnd) |button_hwnd| {
-            const overflow_width = self.scaled(host_tab_overflow_button_width);
+            const overflow_width = if (titlebar_actions) action_size else self.scaled(host_tab_overflow_button_width);
             button_x -= overflow_width;
             changed.* = applyChildRect(
                 button_hwnd,
                 &self.overflow_placement,
-                childRect(button_x, button_y, overflow_width, button_height),
+                childRect(
+                    button_x,
+                    if (titlebar_actions) action_y else button_y,
+                    overflow_width,
+                    if (titlebar_actions) action_size else button_height,
+                ),
             ) or changed.*;
             changed.* = applyChildVisibility(button_hwnd, &self.overflow_placement, true) or changed.*;
         }
         button_x -= self.scaled(4);
         if (self.new_tab_hwnd) |button_hwnd| {
-            const new_tab_width = self.scaled(host_tab_small_button_width);
+            const new_tab_width = if (titlebar_actions) action_size else self.scaled(host_tab_small_button_width);
             button_x -= new_tab_width;
             changed.* = applyChildRect(
                 button_hwnd,
                 &self.new_tab_placement,
-                childRect(button_x, button_y, new_tab_width, button_height),
+                childRect(
+                    button_x,
+                    if (titlebar_actions) action_y else button_y,
+                    new_tab_width,
+                    if (titlebar_actions) action_size else button_height,
+                ),
             ) or changed.*;
             changed.* = applyChildVisibility(button_hwnd, &self.new_tab_placement, true) or changed.*;
         }
@@ -9215,24 +9789,84 @@ const Host = struct {
         }
     }
 
-    fn drawNativeCaptionButton(
+    /// Paint the 3 caption buttons (min / max-or-restore / close) at
+    /// the top-right of the tab row. Called from `paintChrome` only
+    /// when `App.use_integrated_titlebar` is true.
+    fn drawTitlebarGlyph(
         self: *Host,
         hdc: HDC,
         rect: RECT,
-        part_id: i32,
-        hovered: bool,
-    ) bool {
-        const hwnd = self.hwnd orelse return false;
-        const theme_handle = OpenThemeData(hwnd, WINDOW_THEME_CLASS) orelse return false;
-        defer _ = CloseThemeData(theme_handle);
-        const state_id: i32 = if (hovered) CBS_HOT else CBS_NORMAL;
-        return DrawThemeBackground(theme_handle, hdc, part_id, state_id, &rect, null) >= 0;
+        kind: TitlebarGlyphKind,
+        color: u32,
+        caption_button: bool,
+    ) void {
+        const hdc_nn: *anyopaque = hdc orelse return;
+        const font = if (caption_button)
+            self.titlebar_caption_icon_font
+        else
+            self.titlebar_action_icon_font;
+        const glyph_size = self.scaled(if (caption_button) 10 else 12);
+        var glyph_rect = centeredRect(rect, glyph_size, glyph_size);
+
+        if (font) |font_handle| {
+            if (SelectObject(hdc, font_handle)) |old_font| {
+                defer _ = SelectObject(hdc, old_font);
+                _ = SetBkMode(hdc, TRANSPARENT);
+                _ = SetTextColor(hdc, color);
+                if (DrawTextW(
+                    hdc,
+                    titlebarGlyphText(kind),
+                    1,
+                    &glyph_rect,
+                    DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
+                ) != 0) {
+                    return;
+                }
+            }
+        }
+
+        win32_icons.drawIcon(
+            titlebarFallbackIcon(kind),
+            hdc_nn,
+            .{
+                .left = glyph_rect.left,
+                .top = glyph_rect.top,
+                .right = glyph_rect.right,
+                .bottom = glyph_rect.bottom,
+            },
+            color,
+            true,
+        );
     }
 
-    /// Paint the 3 caption buttons (min / max-or-restore / close) at
-    /// the top-right of the tab row. Called from `paintChrome` only
-    /// when `App.use_integrated_titlebar` is true. Prefer the native
-    /// UxTheme path so glyphs and hover treatments match Windows.
+    fn paintCaptionButton(
+        self: *Host,
+        hdc: HDC,
+        rect: RECT,
+        role: TitlebarButtonRole,
+        glyph: TitlebarGlyphKind,
+        now_ms: u64,
+        high_contrast: bool,
+        theme: *const win32_theme.ThemeColors,
+    ) void {
+        const caption = switch (role) {
+            .minimize => CaptionButton.minimize,
+            .maximize => CaptionButton.maximize,
+            .close => CaptionButton.close,
+            else => CaptionButton.none,
+        };
+        const visual = titlebarButtonVisual(
+            theme,
+            role,
+            theme.chrome_bg,
+            self.titlebarHoverAlpha(role, self.caption_hover == caption, now_ms),
+            self.caption_pressed == caption,
+            high_contrast,
+        );
+        if (visual.bg) |bg| fillSolidRect(hdc, rect, bg);
+        self.drawTitlebarGlyph(hdc, rect, glyph, visual.glyph, true);
+    }
+
     fn paintCaptionButtons(
         self: *Host,
         hdc: HDC,
@@ -9242,9 +9876,6 @@ const Host = struct {
         const cb_w = self.scaled(host_caption_button_w);
         const cb_h = self.scaled(host_caption_button_h);
         if (cb_w <= 0 or cb_h <= 0) return;
-        // Caller already unwrapped BeginPaint; `drawIcon` takes a
-        // non-nullable `*anyopaque` so we coerce once here.
-        const hdc_nn: *anyopaque = hdc orelse return;
 
         const maximized = if (self.hwnd) |h| IsZoomed(h) != 0 else false;
         const right = client_rect.right;
@@ -9268,70 +9899,19 @@ const Host = struct {
             .bottom = cb_h,
         };
 
-        if (self.drawNativeCaptionButton(hdc, min_rect, WP_MINBUTTON, self.caption_hover == .minimize) and
-            self.drawNativeCaptionButton(
-                hdc,
-                max_rect,
-                if (maximized) WP_RESTOREBUTTON else WP_MAXBUTTON,
-                self.caption_hover == .maximize,
-            ) and
-            self.drawNativeCaptionButton(hdc, close_rect, WP_CLOSEBUTTON, self.caption_hover == .close))
-        {
-            return;
-        }
-
-        // Hover colours.
-        const close_hover_bg = rgb(0xC4, 0x2B, 0x1C);
-        const subtle_hover_bg = if (theme.is_dark)
-            adjustColor(theme.chrome_bg, 28, 28, 28)
-        else
-            adjustColor(theme.chrome_bg, -16, -16, -16);
-
-        const close_glyph_color = if (self.caption_hover == .close) rgb(0xFF, 0xFF, 0xFF) else theme.text_primary;
-        const min_glyph_color = theme.text_primary;
-        const max_glyph_color = theme.text_primary;
         const is_hc = isHighContrastActive();
-
-        const min_icon_rect: win32_icons.Rect = .{
-            .left = min_rect.left,
-            .top = min_rect.top,
-            .right = min_rect.right,
-            .bottom = min_rect.bottom,
-        };
-        const max_icon_rect: win32_icons.Rect = .{
-            .left = max_rect.left,
-            .top = max_rect.top,
-            .right = max_rect.right,
-            .bottom = max_rect.bottom,
-        };
-        const close_icon_rect: win32_icons.Rect = .{
-            .left = close_rect.left,
-            .top = close_rect.top,
-            .right = close_rect.right,
-            .bottom = close_rect.bottom,
-        };
-
-        // Min button.
-        if (self.caption_hover == .minimize) {
-            fillSolidRect(hdc, min_rect, subtle_hover_bg);
-        }
-        win32_icons.drawIcon(.minimize, hdc_nn, min_icon_rect, min_glyph_color, is_hc);
-
-        // Max / restore button.
-        if (self.caption_hover == .maximize) {
-            fillSolidRect(hdc, max_rect, subtle_hover_bg);
-        }
-        if (maximized) {
-            win32_icons.drawIcon(.restore, hdc_nn, max_icon_rect, max_glyph_color, is_hc);
-        } else {
-            win32_icons.drawIcon(.maximize, hdc_nn, max_icon_rect, max_glyph_color, is_hc);
-        }
-
-        // Close button.
-        if (self.caption_hover == .close) {
-            fillSolidRect(hdc, close_rect, close_hover_bg);
-        }
-        win32_icons.drawIcon(.close, hdc_nn, close_icon_rect, close_glyph_color, is_hc);
+        const now = GetTickCount64();
+        self.paintCaptionButton(hdc, min_rect, .minimize, .minimize, now, is_hc, theme);
+        self.paintCaptionButton(
+            hdc,
+            max_rect,
+            .maximize,
+            if (maximized) .restore else .maximize,
+            now,
+            is_hc,
+            theme,
+        );
+        self.paintCaptionButton(hdc, close_rect, .close, .close, now, is_hc, theme);
     }
 
     fn paintChrome(self: *Host) void {
@@ -9427,42 +10007,43 @@ const Host = struct {
                 else
                     adjustColor(theme.accent, 18, 18, 18),
             );
-            const cluster_left = @max(self.scaled(8), client_rect.right - self.rightButtonsWidth() - self.scaled(4));
-            const cluster_rect = RECT{
-                .left = cluster_left,
-                .top = self.scaled(4),
-                .right = client_rect.right - self.scaled(6),
-                .bottom = tab_h - self.scaled(4),
-            };
-            if (cluster_rect.right > cluster_rect.left and cluster_rect.bottom > cluster_rect.top) {
-                drawRoundedRect(
-                    hdc,
-                    cluster_rect,
-                    if (theme.is_dark)
-                        adjustColor(theme.chrome_bg, 8, 8, 10)
-                    else
-                        adjustColor(theme.chrome_bg, 6, 6, 6),
-                    if (theme.is_dark)
-                        adjustColor(theme.chrome_border, 10, 10, 12)
-                    else
-                        adjustColor(theme.chrome_border, -16, -16, -16),
-                    self.scaled(6),
-                );
-                if (cluster_left > self.scaled(14)) {
-                    fillSolidRect(hdc, .{
-                        .left = cluster_left - 1,
-                        .top = self.scaled(8),
-                        .right = cluster_left,
-                        .bottom = tab_h - self.scaled(8),
-                    }, theme.chrome_border);
+            if (!self.app.use_integrated_titlebar) {
+                const cluster_left = @max(self.scaled(8), client_rect.right - self.rightButtonsWidth() - self.scaled(4));
+                const cluster_rect = RECT{
+                    .left = cluster_left,
+                    .top = self.scaled(4),
+                    .right = client_rect.right - self.scaled(6),
+                    .bottom = tab_h - self.scaled(4),
+                };
+                if (cluster_rect.right > cluster_rect.left and cluster_rect.bottom > cluster_rect.top) {
+                    drawRoundedRect(
+                        hdc,
+                        cluster_rect,
+                        if (theme.is_dark)
+                            adjustColor(theme.chrome_bg, 8, 8, 10)
+                        else
+                            adjustColor(theme.chrome_bg, 6, 6, 6),
+                        if (theme.is_dark)
+                            adjustColor(theme.chrome_border, 10, 10, 12)
+                        else
+                            adjustColor(theme.chrome_border, -16, -16, -16),
+                        self.scaled(6),
+                    );
+                    if (cluster_left > self.scaled(14)) {
+                        fillSolidRect(hdc, .{
+                            .left = cluster_left - 1,
+                            .top = self.scaled(8),
+                            .right = cluster_left,
+                            .bottom = tab_h - self.scaled(8),
+                        }, theme.chrome_border);
+                    }
                 }
             }
             // Caption buttons (integrated titlebar only). Painted on
             // the parent HWND at the rightmost edge of the tab row;
-            // hit-tested via `win32_nc_layout.hitTest` + dispatched by
-            // DefWindowProc's WM_NCLBUTTONUP → WM_SYSCOMMAND path.
-            // Glyphs come from `win32_icons.drawIcon` so we don't have
-            // to select a Segoe Fluent Icons font.
+            // hit-tested via `win32_nc_layout.hitTest` and dispatched
+            // from our NC mouse handlers so Snap Layout hover remains
+            // intact while the visuals stay app-owned.
             if (self.app.use_integrated_titlebar) {
                 self.paintCaptionButtons(hdc, client_rect, theme);
             }
@@ -9631,10 +10212,9 @@ const Host = struct {
                     var badge_text_rect = badge_rect;
                     badge_text_rect.left += self.scaled(6);
                     badge_text_rect.right -= self.scaled(6);
-                    _ = DrawTextW(
+                    drawTextWz(
                         hdc,
-                        badge_w.ptr,
-                        @intCast(badge_w.len - 1),
+                        badge_w,
                         &badge_text_rect,
                         DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX,
                     );
@@ -9644,7 +10224,7 @@ const Host = struct {
             }
             _ = SetTextColor(hdc, overlay_label_color);
             if (self.cached_overlay_paint_label_w) |overlay_label_w| {
-                _ = TextOutW(hdc, overlay_label_x, overlay_rect.top + self.scaled(7), overlay_label_w.ptr, @intCast(overlay_label_w.len - 1));
+                textOutWz(hdc, overlay_label_x, overlay_rect.top + self.scaled(7), overlay_label_w);
             }
 
             const overlay_padding = self.scaled(host_overlay_padding);
@@ -9678,7 +10258,7 @@ const Host = struct {
                 .err => theme.error_fg,
             });
             if (self.cached_overlay_paint_feedback_w) |overlay_feedback_w| {
-                _ = TextOutW(hdc, self.scaled(host_overlay_padding) + self.scaled(10), overlay_rect.top + self.scaled(34), overlay_feedback_w.ptr, @intCast(overlay_feedback_w.len - 1));
+                textOutWz(hdc, self.scaled(host_overlay_padding) + self.scaled(10), overlay_rect.top + self.scaled(34), overlay_feedback_w);
             }
         }
 
@@ -9853,11 +10433,11 @@ const Host = struct {
                 _ = SetBkMode(hdc, TRANSPARENT);
                 if (self.cached_inspector_title_w) |title_w| {
                     _ = SetTextColor(hdc, theme.overlay_label_fg);
-                    _ = TextOutW(hdc, self.scaled(16), panel_rect.top + self.scaled(6), title_w.ptr, @intCast(title_w.len - 1));
+                    textOutWz(hdc, self.scaled(16), panel_rect.top + self.scaled(6), title_w);
                 }
                 if (self.cached_inspector_hint_w) |hint_w| {
                     _ = SetTextColor(hdc, theme.text_secondary);
-                    _ = TextOutW(hdc, self.scaled(16), panel_rect.top + self.scaled(22), hint_w.ptr, @intCast(hint_w.len - 1));
+                    textOutWz(hdc, self.scaled(16), panel_rect.top + self.scaled(22), hint_w);
                 }
             }
         }
@@ -10016,10 +10596,9 @@ const Host = struct {
                 _ = SetTextColor(hdc, theme.info_fg);
                 _ = notice;
                 if (self.cached_banner_w) |banner_w| {
-                    _ = DrawTextW(
+                    drawTextWz(
                         hdc,
-                        banner_w.ptr,
-                        @intCast(banner_w.len - 1),
+                        banner_w,
                         &text_rect,
                         DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
                     );
@@ -10074,7 +10653,7 @@ const Host = struct {
                     .err => theme.error_fg,
                 });
                 if (self.cached_banner_w) |banner_w| {
-                    _ = TextOutW(hdc, self.scaled(16), banner_y, banner_w.ptr, @intCast(banner_w.len - 1));
+                    textOutWz(hdc, self.scaled(16), banner_y, banner_w);
                 }
             }
         } else if (explicit_banner_text != null) {
@@ -10084,7 +10663,7 @@ const Host = struct {
                 .err => theme.error_fg,
             });
             if (self.cached_banner_w) |banner_w| {
-                _ = TextOutW(hdc, self.scaled(16), banner_y, banner_w.ptr, @intCast(banner_w.len - 1));
+                textOutWz(hdc, self.scaled(16), banner_y, banner_w);
             }
         }
         _ = SetTextColor(hdc, theme.text_primary);
@@ -10213,10 +10792,9 @@ const Host = struct {
                 var chip_text_rect = chip_rect;
                 chip_text_rect.left += self.scaled(6);
                 chip_text_rect.right -= launcherChipRightInset(pinned_slot_digit != null, true);
-                _ = DrawTextW(
+                drawTextWz(
                     hdc,
-                    chip_w.ptr,
-                    @intCast(chip_w.len - 1),
+                    chip_w,
                     &chip_text_rect,
                     DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
                 );
@@ -10295,10 +10873,9 @@ const Host = struct {
                     var chip_text_rect = chip_rect;
                     chip_text_rect.left += self.scaled(5);
                     chip_text_rect.right -= launcherChipRightInset(false, target_marker);
-                    _ = DrawTextW(
+                    drawTextWz(
                         hdc,
-                        chip_w.ptr,
-                        @intCast(chip_w.len - 1),
+                        chip_w,
                         &chip_text_rect,
                         DT_CENTER | DT_VCENTER | DT_SINGLELINE | DT_NOPREFIX | DT_END_ELLIPSIS,
                     );
@@ -10338,32 +10915,42 @@ const Host = struct {
 
         if (paint_status) {
             if (self.cached_status_w) |status_w| {
-                _ = TextOutW(hdc, status_x, status_y, status_w.ptr, @intCast(status_w.len - 1));
+                textOutWz(hdc, status_x, status_y, status_w);
             }
         }
         if (paint_status) {
             if (self.cached_detail_w) |detail_w| {
                 _ = SetTextColor(hdc, theme.text_secondary);
-                _ = TextOutW(hdc, status_x, status_y + self.scaled(18), detail_w.ptr, @intCast(detail_w.len - 1));
+                textOutWz(hdc, status_x, status_y + self.scaled(18), detail_w);
             }
         }
         self.chrome_repaint_dirty = false;
     }
 };
 
-fn destroySubclassedWindow(
+fn destroyChildWindow(hwnd_slot: *?HWND) void {
+    const hwnd = hwnd_slot.* orelse return;
+
+    hwnd_slot.* = null;
+    if (IsWindow(hwnd) == 0) return;
+
+    _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
+    _ = DestroyWindow(hwnd);
+}
+
+fn destroySubclassedWindowWithPrev(
     hwnd_slot: *?HWND,
-    prev_proc_slot: *?*const anyopaque,
+    prev_proc: ?*const anyopaque,
 ) void {
     const hwnd = hwnd_slot.* orelse return;
-    const prev_proc = prev_proc_slot.*;
 
     // Detach host state before destroying the control. DestroyWindow is
     // synchronous and can reenter our subclass proc during WM_DESTROY /
     // WM_NCDESTROY, so leaving the HWND discoverable via host tabs/buttons
     // risks callbacks touching half-torn state.
     hwnd_slot.* = null;
-    prev_proc_slot.* = null;
+    if (IsWindow(hwnd) == 0) return;
+
     _ = SetWindowLongPtrW(hwnd, GWLP_USERDATA, 0);
     if (prev_proc) |proc| {
         _ = SetWindowLongPtrW(
@@ -10373,6 +10960,15 @@ fn destroySubclassedWindow(
         );
     }
     _ = DestroyWindow(hwnd);
+}
+
+fn destroySubclassedWindow(
+    hwnd_slot: *?HWND,
+    prev_proc_slot: *?*const anyopaque,
+) void {
+    const prev_proc = prev_proc_slot.*;
+    prev_proc_slot.* = null;
+    destroySubclassedWindowWithPrev(hwnd_slot, prev_proc);
 }
 
 const SurfaceInitOptions = struct {
@@ -10630,6 +11226,14 @@ fn childRect(x: i32, y: i32, width: i32, height: i32) RECT {
     };
 }
 
+fn centeredRect(rect: RECT, width: i32, height: i32) RECT {
+    const outer_w = rect.right - rect.left;
+    const outer_h = rect.bottom - rect.top;
+    const left = rect.left + @divTrunc(outer_w - width, 2);
+    const top = rect.top + @divTrunc(outer_h - height, 2);
+    return childRect(left, top, width, height);
+}
+
 fn overlayEditFrameRect(
     width: i32,
     overlay_y: i32,
@@ -10867,10 +11471,9 @@ fn highContrastThemeFromSysColors() ThemeColors {
         .button_active_focus_ring = hi_fg,
         .button_accept_focus_ring = hi_fg,
 
-        // WCAG fix (plan §7.4): unfocused dividers use COLOR_WINDOWFRAME
+        // Unfocused dividers use COLOR_WINDOWFRAME
         // so multi-pane layouts stay visually separated; focused dividers
-        // use COLOR_HIGHLIGHT to preserve the focus cue. Previously both
-        // collapsed to hi_bg, which removed the focused/unfocused contrast.
+        // use COLOR_HIGHLIGHT to preserve the focus cue.
         .pane_divider = win_frame,
         .pane_divider_focused = hi_bg,
 
@@ -11061,6 +11664,23 @@ fn fillSolidRect(hdc: HDC, rect: RECT, color: u32) void {
     _ = FillRect(hdc, &rect, brush);
 }
 
+fn utf16GdiTextLen(text: [:0]const u16) i32 {
+    const max_len: usize = @intCast(std.math.maxInt(i32));
+    return @intCast(@min(text.len, max_len));
+}
+
+fn textOutWz(hdc: HDC, x: i32, y: i32, text: [:0]const u16) void {
+    const len = utf16GdiTextLen(text);
+    if (len == 0) return;
+    _ = TextOutW(hdc, x, y, text.ptr, len);
+}
+
+fn drawTextWz(hdc: HDC, text: [:0]const u16, rect: *RECT, format: UINT) void {
+    const len = utf16GdiTextLen(text);
+    if (len == 0) return;
+    _ = DrawTextW(hdc, text.ptr, len, rect, format);
+}
+
 /// Draw a single-line, left-aligned, vertically-centred, ellipsized
 /// string into the rect. Used by the palette list row painter.
 fn drawPaletteRowText(hdc: HDC, text: []const u8, rect: RECT, color: u32) void {
@@ -11137,18 +11757,8 @@ fn settingsOnClosedThunk(ctx: *anyopaque) void {
 }
 fn settingsNotifySuccessThunk(ctx: *anyopaque, title: []const u8, body: []const u8) void {
     const app: *App = @ptrCast(@alignCast(ctx));
-    // Telemetry: push to the in-app toast stack. The renderer consumes
-    // this when the toast-paint HWND lands; today it logs.
-    app.showToast(title, body, .success) catch |err| {
-        std.log.warn("settings: toast push failed err={}", .{err});
-    };
-
-    // Always show the in-app host banner. This is chrome feedback for
-    // a user-initiated action (the Save button) and it's NOT gated on
-    // `app-notifications.config-reload` — users who disable system /
-    // reload notifications still expect visible confirmation that
-    // their Save landed. Without this line, disabling the config the
-    // thunk returned silently after logging-only.
+    // Always show local chrome feedback for the Save button, even
+    // when system/reload notifications are disabled.
     const alloc = app.core_app.alloc;
     const banner_text = std.fmt.allocPrint(alloc, "{s}{s}{s}", .{
         title,
@@ -11165,20 +11775,17 @@ fn settingsNotifySuccessThunk(ctx: *anyopaque, title: []const u8, body: []const 
         break :blk app.showHostBanner(.app, .info, msg) catch false;
     } else false;
 
-    // System-level WinRT toast + MessageBox fallback. Gated on
-    // `app-notifications.config-reload` since Settings-save triggers
-    // a config reload under the hood; users who disabled reload
-    // notifications don't want a system toast on every Save either.
-    // EXCEPTION: when the banner couldn't render (no host surface),
-    // the user is in settings-only state and expects SOME visible
-    // confirmation of their Save click. Force the modal fallback so
-    // "save succeeded silently" can't happen.
+    // System-level WinRT toast + local fallback. Gated on
+    // `app-notifications.config-reload` because Settings save also
+    // reloads config; users who disabled reload notifications should
+    // not get a system toast on every Save. If no host banner can
+    // render, force the fallback so settings-only saves still show
+    // visible confirmation.
     if (!app.config.@"app-notifications".@"config-reload" and banner_shown) return;
 
-    // `showDesktopNotification` requires sentinel-terminated strings
-    // because it forwards to WinRT. Allocate a sentinel-terminated
-    // copy; on allocation failure, skip the visible path (telemetry
-    // + banner still captured the event).
+    // WinRT notification strings must be sentinel-terminated. On
+    // allocation failure, keep any banner already shown and skip the
+    // system path.
     const title_z = alloc.dupeZ(u8, title) catch return;
     defer alloc.free(title_z);
     const body_z = alloc.dupeZ(u8, body) catch return;
@@ -11186,6 +11793,25 @@ fn settingsNotifySuccessThunk(ctx: *anyopaque, title: []const u8, body: []const 
     app.showDesktopNotification(.app, title_z, body_z) catch |err| {
         std.log.warn("settings: desktop notification failed err={}", .{err});
     };
+}
+
+fn buildToastLaunchForSurface(
+    alloc: Allocator,
+    surface: *Surface,
+) Allocator.Error![]u8 {
+    const tab_id = if (surface.host) |host| blk: {
+        for (host.tabs.items) |*tab| {
+            if (tab.findHandle(surface) != null) break :blk tab.id;
+        }
+        break :blk null;
+    } else null;
+
+    return try win32_toast_activation.buildLaunchArg(alloc, .{
+        .surface_id = surface.core().id,
+        .tab_id = tab_id,
+        .window_id = surface.host_id,
+        .action = .focus,
+    });
 }
 
 /// Accept callback for the `confirm-close-surface` overlay. Fires
@@ -11200,10 +11826,8 @@ fn surfaceConfirmCloseAccept(userdata: ?*anyopaque) void {
 }
 
 /// Accept callback for a deferred paste confirm. Ownership of the
-/// duplicated payload passes to this function — we free it once core
-/// is done ingesting (which is synchronous inside
-/// `completeClipboardRequest`). Matches AGENTS.md:89 "snapshot the
-/// callback state before calling" — here the payload IS the state.
+/// duplicated payload passes here and is released after synchronous
+/// core ingestion.
 fn surfaceConfirmPasteAccept(userdata: ?*anyopaque) void {
     const ud = userdata orelse return;
     const surface: *Surface = @ptrCast(@alignCast(ud));
@@ -11404,77 +12028,57 @@ comptime {
     _ = win32_paste_protection.hasNewline;
     _ = win32_paste_protection.hasShellMetachar;
     _ = win32_paste_protection.hasMixedContent;
-    // Scrollbar geometry (P5.2). Consumed by the renderer's present
-    // path once the GL overlay lands.
+    // Scrollbar geometry helpers.
     _ = win32_scrollbar_geometry.ScrollbarState;
     _ = win32_scrollbar_geometry.trackRect;
     _ = win32_scrollbar_geometry.thumbRect;
     _ = win32_scrollbar_geometry.rowFromCursor;
     _ = win32_scrollbar_geometry.pointOverTrack;
     _ = win32_scrollbar_geometry.pointOverThumb;
-    // Integrated-titlebar NC layout (P5.1). Consumed by the host
-    // wndproc's WM_NCCALCSIZE / WM_NCHITTEST handlers on Win11.
+    // Integrated-titlebar NC layout helpers.
     _ = win32_nc_layout.calcNcClientRect;
     _ = win32_nc_layout.hitTest;
     _ = win32_nc_layout.captionButtonsRect;
     _ = win32_nc_layout.metricsDefault;
-    // Status-bar redesign (P5.7). Consumed by the Host's
-    // `paintChrome` status-bar pass when the new 28 px layout lands.
+    // Status-bar composition helpers.
     _ = win32_status_bar.composeFragments;
     _ = win32_status_bar.truncateToFit;
     _ = win32_status_bar.isDigitRun;
-    // Tab visual polish (P5.8). `CloseState` drives hover close-button
-    // fade; `UnderlineState` animates the focused-tab underline between
-    // tabs. Wire-up lands with the tab-strip paint rework.
+    // Tab visual-state helpers.
     _ = win32_tab_visual.CloseState;
     _ = win32_tab_visual.UnderlineState;
     _ = win32_tab_visual.easeInOutCubic;
     _ = win32_tab_visual.closeHitRect;
-    // Keyboard-focus-ring tracker (P5.9). Per-control subclass routes
-    // WM_KEYDOWN / mouse-input through `onKeyDown` / `onMouseInput`;
-    // WM_PAINT consults `shouldShowRing` + draws `ringRect`.
+    // Keyboard-focus-ring helpers.
     _ = win32_focus_ring.FocusRingTracker;
     _ = win32_focus_ring.ringRect;
     _ = win32_focus_ring.isDrawable;
 }
 
-/// Strip HTML tags for the CF_UNICODETEXT fallback when the core
-/// only supplies a `text/html` payload (e.g. `copy_to_clipboard:html`).
-/// This is a best-effort stripper — sufficient for plain consumers
-/// like Notepad / cmd.exe that would otherwise see raw `<span>` tags.
-/// Anything between `<` and `>` is dropped; everything else survives
-/// verbatim (including entity references — we don't decode them to
-/// avoid allocating a larger output for what's already a plain
-/// fallback). Returns a newly-allocated buffer owned by `alloc`.
-/// Scan the process argv for the first `--config-file=<path>` or
-/// `--config-file <path>` occurrence. Returns a newly-allocated
-/// absolute path owned by `alloc`, or null if no override was
-/// specified. Used by the settings save path to target the
-/// user-chosen config file instead of the per-user default. If
-/// multiple `--config-file` flags were passed, the first wins —
-/// the settings UI can't meaningfully edit multiple files at once,
-/// and picking the first matches how `Config.load` applies them in
-/// order.
-/// Walk argv for a `wgh://activate?…` entry. Returns the parsed
-/// target on hit, null otherwise. Tolerates malformed activation
-/// strings (logs, returns null) — cold-start activation is a
-/// best-effort UX feature, not a correctness channel.
+/// Scan argv for a `wgh://activate?...` entry. Malformed activation
+/// strings are swallowed so they cannot be misrouted as startup args.
 fn scanToastActivationArg(alloc: std.mem.Allocator) ?win32_toast_activation.ActivationTarget {
     const argv = std.process.argsAlloc(alloc) catch return null;
     defer std.process.argsFree(alloc, argv);
-    var i: usize = 1;
-    while (i < argv.len) : (i += 1) {
-        const arg = argv[i];
-        if (std.mem.startsWith(u8, arg, "wgh://")) {
-            return win32_toast_activation.parseLaunchArg(arg) catch |err| blk: {
-                std.log.warn("toast activation arg parse failed arg={s} err={}", .{ arg, err });
-                break :blk null;
-            };
-        }
-    }
-    return null;
+    return win32_toast_activation.scanLaunchArgs(argv[1..]);
 }
 
+fn scanForwardedToastActivation(
+    arguments: ?[]const [:0]const u8,
+) win32_toast_activation.ScanLaunchArgsResult {
+    const argv = arguments orelse return .none;
+    return win32_toast_activation.scanLaunchArgsDetailed(argv);
+}
+
+fn forwardedActivationExtraArgCount(arguments: ?[]const [:0]const u8) usize {
+    const argv = arguments orelse return 0;
+    if (win32_toast_activation.scanLaunchArgs(argv) == null) return 0;
+    return if (argv.len > 1) argv.len - 1 else 0;
+}
+
+/// Return the last CLI `--config-file` override as an absolute path.
+/// Settings save targets the last file because later config files
+/// override earlier ones.
 fn cliConfigFileOverride(alloc: std.mem.Allocator) !?[]u8 {
     const argv = std.process.argsAlloc(alloc) catch return null;
     defer std.process.argsFree(alloc, argv);
@@ -11522,18 +12126,6 @@ fn absolutizePath(alloc: std.mem.Allocator, path: []const u8) ![]u8 {
     return try std.fs.path.join(alloc, &.{ cwd, path });
 }
 
-/// Surgical settings-save text patcher. Preserves the target file's
-/// raw text — comments, blank lines, relative path directives, and
-/// fields we don't round-trip through the Config type all stay
-/// byte-identical. Only the GUI-edited field lines are rewritten;
-/// missing edited keys are appended at the end.
-///
-/// Line match: a line is considered a key-assignment for `<name>`
-/// when trimmed-left it starts with `<name>` followed by optional
-/// whitespace + `=`. Lines starting with `#` or `;` are comments
-/// and are never treated as assignments. Duplicate key lines in
-/// the source are all replaced (match-all) since `loadRecursiveFiles`
-/// semantics take the LAST value.
 /// Count the number of leading whitespace (space / tab) bytes.
 fn leadingIndentLen(line: []const u8) usize {
     var i: usize = 0;
@@ -11541,15 +12133,8 @@ fn leadingIndentLen(line: []const u8) usize {
     return i;
 }
 
-/// Extract the trailing inline comment from a `key = value # comment`
-/// line, preserving the `#` / `;` prefix. Returns empty slice when no
-/// comment is present or no `=` is found.
-///
-/// The scan starts AFTER the first `=` so a `#` or `;` that appears
-/// inside the key or surrounding whitespace isn't accidentally treated
-/// as a comment marker. Quoting inside value strings isn't tracked
-/// because config values are plain tokens (no shell-style quoting in
-/// this grammar); the first unquoted `#` / `;` after the `=` wins.
+/// Extract a trailing inline `#` / `;` comment from a key assignment.
+/// The scan starts after `=` to match the config grammar.
 fn trailingCommentOf(line: []const u8) []const u8 {
     const eq = std.mem.indexOfScalar(u8, line, '=') orelse return &.{};
     var i: usize = eq + 1;
@@ -11566,6 +12151,12 @@ fn trailingCommentOf(line: []const u8) []const u8 {
     return &.{};
 }
 
+/// Patch GUI-edited config keys while preserving unchanged source text.
+///
+/// A line matches `<name>` when its trimmed-left form starts with
+/// `<name>` followed by optional whitespace and `=`. Comment lines are
+/// ignored. Duplicate key lines preserve load semantics by rewriting
+/// only the last occurrence; missing edited keys are appended.
 fn patchOrAppendEdits(
     alloc: std.mem.Allocator,
     raw: []const u8,
@@ -11642,15 +12233,8 @@ fn patchOrAppendEdits(
                     if (payload.len > 0 and payload[payload.len - 1] == '\n') {
                         payload = payload[0 .. payload.len - 1];
                     }
-                    // Preserve leading indentation and trailing inline
-                    // comments from the original line. Users frequently
-                    // annotate overrides with `# …` on the same line
-                    // (`font-size = 14  # demo`); replacing the whole
-                    // line silently drops the comment. Split the
-                    // existing line at the first unquoted `#` / `;`
-                    // that comes AFTER the `=` — comments before `=`
-                    // are impossible (that'd make the line a comment
-                    // line, which we already skip).
+                    // Preserve indentation and trailing inline comments
+                    // from the original assignment.
                     const indent_end = leadingIndentLen(line);
                     const leading = line[0..indent_end];
                     const trailing = trailingCommentOf(line);
@@ -11690,6 +12274,9 @@ fn patchOrAppendEdits(
     }
 }
 
+/// Strip HTML tags for the CF_UNICODETEXT fallback when core only
+/// supplies `text/html`. Plain consumers get readable text; entity
+/// references are preserved verbatim.
 fn stripHtmlTags(alloc: std.mem.Allocator, html: []const u8) ![]u8 {
     var buf: std.ArrayList(u8) = .{};
     defer buf.deinit(alloc);
@@ -11698,19 +12285,12 @@ fn stripHtmlTags(alloc: std.mem.Allocator, html: []const u8) ![]u8 {
     while (i < html.len) {
         const c = html[i];
         if (c == '<') {
-            // Seek to the matching `>`; if not found, emit the `<`
-            // as literal content and continue scanning. Earlier code
-            // `break`ed here which dropped the entire remainder of a
-            // malformed fragment — plain-text consumers saw a
-            // truncated paste. Now we best-effort degrade by treating
-            // the unmatched `<` as a literal character.
             if (std.mem.indexOfScalarPos(u8, html, i, '>')) |end| {
                 i = end + 1;
                 continue;
             }
-            try buf.append(alloc, c);
-            i += 1;
-            continue;
+            try buf.appendSlice(alloc, html[i..]);
+            break;
         }
         try buf.append(alloc, c);
         i += 1;
@@ -11730,18 +12310,13 @@ test "stripHtmlTags drops tag brackets" {
 
 test "stripHtmlTags handles malformed (unclosed tag)" {
     const testing = std.testing;
-    // Previously `break`ed on unmatched `<`, dropping the remainder.
-    // The best-effort degrade now emits `<` as literal and continues.
     const out = try stripHtmlTags(testing.allocator, "pre<broken");
     defer testing.allocator.free(out);
     try testing.expectEqualStrings("pre<broken", out);
 }
 
-test "stripHtmlTags malformed in middle keeps tail" {
+test "stripHtmlTags malformed in middle preserves fallback tail" {
     const testing = std.testing;
-    // Regression: unmatched `<` at the start of a fragment must NOT
-    // truncate everything after it. Previously produced "hello "; now
-    // preserves the tail including the stray `<`.
     const out = try stripHtmlTags(testing.allocator, "hello <world tail");
     defer testing.allocator.free(out);
     try testing.expectEqualStrings("hello <world tail", out);
@@ -11787,10 +12362,7 @@ test "win32 appendOwnedString skips exact same-value reallocation" {
 }
 
 test "win32 appendOwnedString leaves target untouched on OOM" {
-    // Guard against the pre-refactor UAF where the old pointer was
-    // freed BEFORE allocating the new one: an OOM mid-call would
-    // leave `target.*` pointing at freed memory, which a subsequent
-    // `overlayEditText` / palette sync would read and crash on.
+    // OOM must leave `target.*` pointing at the existing allocation.
     const testing = std.testing;
     var arena: [64]u8 = undefined;
     var fixed: std.heap.FixedBufferAllocator = .init(&arena);
@@ -12424,21 +12996,22 @@ fn preferredProfileIndex(
 
 fn formatProgressStatus(
     alloc: Allocator,
-    value: terminal.osc.Command.ProgressReport,
+    value: win32_taskbar_progress.ProgressReport,
 ) !?[]u8 {
+    const progress = win32_taskbar_progress.clampPercent(value.progress);
     return switch (value.state) {
         .remove => null,
-        .set => if (value.progress) |progress|
-            try std.fmt.allocPrint(alloc, "progress:{d}%", .{progress})
+        .set => if (progress) |value_|
+            try std.fmt.allocPrint(alloc, "progress:{d}%", .{value_})
         else
             try alloc.dupe(u8, "progress"),
-        .@"error" => if (value.progress) |progress|
-            try std.fmt.allocPrint(alloc, "progress error:{d}%", .{progress})
+        .@"error" => if (progress) |value_|
+            try std.fmt.allocPrint(alloc, "progress error:{d}%", .{value_})
         else
             try alloc.dupe(u8, "progress error"),
         .indeterminate => try alloc.dupe(u8, "progress:busy"),
-        .pause => if (value.progress) |progress|
-            try std.fmt.allocPrint(alloc, "progress paused:{d}%", .{progress})
+        .pause => if (progress) |value_|
+            try std.fmt.allocPrint(alloc, "progress paused:{d}%", .{value_})
         else
             try alloc.dupe(u8, "progress paused"),
     };
@@ -14712,35 +15285,42 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
-        // Integrated-titlebar caption-button click dispatch. When the
-        // integrated-titlebar path is active, WM_NCCALCSIZE has zeroed
-        // the non-client top margin — DWM no longer "owns" the caption
-        // buttons, so DefWindowProc's WM_NCLBUTTONUP → WM_SYSCOMMAND
-        // translation doesn't fire for HTMINBUTTON / HTMAXBUTTON in
-        // some Windows builds. Close still works because DWM intercepts
-        // HTCLOSE earlier in the message path. Explicitly send
-        // WM_SYSCOMMAND(SC_*) on mouseup over the correct hit-test
-        // code so min / max / restore fire reliably.
+        // Integrated-titlebar caption-button click dispatch. The
+        // custom NC frame still returns HTMINBUTTON / HTMAXBUTTON for
+        // shell affordances such as Snap Layout hover, but it cannot
+        // rely on DefWindowProc owning the full caption-button mouse
+        // loop once WM_NCCALCSIZE has removed the top NC margin.
+        WM_NCLBUTTONDOWN => {
+            if (host) |v| {
+                if (v.app.use_integrated_titlebar) {
+                    const ht: i32 = @intCast(@as(i64, @bitCast(wParam)));
+                    v.caption_pressed = titlebarCaptionFromHitTest(ht);
+                    if (v.caption_pressed != .none) v.repaintTopChrome();
+                    if (captionButtonSysCommand(ht, IsZoomed(hwnd) != 0)) |cmd| {
+                        v.clearCaptionPressed();
+                        _ = SendMessageW(hwnd, WM_SYSCOMMAND, cmd, lParam);
+                        return 0;
+                    }
+                    if (ht == HTCLOSE) return 0;
+                }
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
+        },
         WM_NCLBUTTONUP => {
             if (host) |v| {
                 if (v.app.use_integrated_titlebar) {
                     const ht: i32 = @intCast(@as(i64, @bitCast(wParam)));
+                    if (captionButtonSysCommand(ht, IsZoomed(hwnd) != 0) != null) {
+                        v.clearCaptionPressed();
+                        return 0;
+                    }
                     switch (ht) {
-                        HTMINBUTTON => {
-                            _ = SendMessageW(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, lParam);
-                            return 0;
-                        },
-                        HTMAXBUTTON => {
-                            const is_zoomed = IsZoomed(hwnd) != 0;
-                            const cmd: WPARAM = if (is_zoomed) SC_RESTORE else SC_MAXIMIZE;
-                            _ = SendMessageW(hwnd, WM_SYSCOMMAND, cmd, lParam);
-                            return 0;
-                        },
                         HTCLOSE => {
+                            v.clearCaptionPressed();
                             _ = SendMessageW(hwnd, WM_SYSCOMMAND, SC_CLOSE, lParam);
                             return 0;
                         },
-                        else => {},
+                        else => v.clearCaptionPressed(),
                     }
                 }
             }
@@ -14774,8 +15354,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
         },
         // Fired by DWM when the user's accent color changes. Re-resolve
         // the theme so any accent-derived tokens pick up the new value
-        // without requiring a config reload. Additional accent-follow
-        // work lands with the config surface (see §7.3 of the plan).
+        // without requiring a config reload.
         WM_DWMCOLORIZATIONCOLORCHANGED => {
             if (host) |v| {
                 v.app.reconfigureTheme();
@@ -15094,8 +15673,9 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     // state here so the next NC re-entry re-arms
                     // `TrackMouseEvent` and hover paint stays correct.
                     v.caption_track_armed = false;
-                    if (v.caption_hover != .none) {
+                    if (v.caption_hover != .none or v.caption_pressed != .none) {
                         v.caption_hover = .none;
+                        v.caption_pressed = .none;
                         v.repaintTopChrome();
                     }
                 }
@@ -16300,6 +16880,7 @@ pub const Surface = struct {
     scrollbar_paint_cache: ?ScrollbarPaintKey = null,
     pwd: ?[:0]const u8 = null,
     progress_status: ?[:0]const u8 = null,
+    taskbar_progress: ?win32_taskbar_progress.ProgressReport = null,
     inspector_visible: bool = false,
     paint_pending: bool = false,
     live_resize_repaint_deferred: bool = false,
@@ -16307,13 +16888,8 @@ pub const Surface = struct {
     renderer_repaint_retry_pending: std.atomic.Value(bool) = .init(false),
     draw_in_progress: bool = false,
     ime_composing: bool = false,
-    /// Per-surface bounded undo stack (P6.5). Initialised empty in
-    /// `Surface.init` and drained in `deinit`. `undo` / `redo`
-    /// actions push snapshots here before executing destructive
-    /// operations (close_tab, clear_screen, reset, split_create).
-    /// The data structure is infrastructure; per-action snapshot
-    /// capture + replay lands with the action-side P6 pass. Caps
-    /// (16 entries / 8 MB) are enforced by the stack itself.
+    /// Per-surface bounded undo stack. Initialised empty in
+    /// `Surface.init`, drained in `deinit`, and capped by the stack.
     undo_stack: win32_undo.UndoStack = undefined,
     /// Per-pane docked search bar state. The pure state machine
     /// lives in `win32_search_bar.zig`; HWNDs below are the live
@@ -16358,7 +16934,7 @@ pub const Surface = struct {
     /// overlay is pending. Drained by `surfaceConfirmPasteAccept` /
     /// `surfaceConfirmWriteAccept` / the matching cancel callbacks,
     /// and by `Surface.destroyWindow` so a close-while-pending doesn't
-    /// leak. Migration of the last live `MessageBoxW` (AGENTS.md:84).
+    /// leak.
     pending_clipboard_op: ?PendingClipboardOp = null,
 
     fn searchBarButtonHwnd(self: *const Surface, role: SearchBarButtonRole) ?HWND {
@@ -16734,9 +17310,8 @@ pub const Surface = struct {
         // `str` is always owned by `core_app.alloc` — either taken
         // from `readClipboardText` (which returns `[:0]u8`) or a
         // fresh `dupeZ("")` fallback for the osc_52_read empty-clipboard
-        // case. Single-owner + single defer closes the leak Codex
-        // caught: the previous `defer if (text) |v| alloc.free(v)`
-        // didn't cover the fallback allocation.
+        // case. Single-owner + single defer ensures the fallback
+        // allocation is freed too.
         const str: [:0]u8 = (try self.readClipboardText()) orelse switch (state) {
             .paste => return false,
             .osc_52_read => try self.app.core_app.alloc.dupeZ(u8, ""),
@@ -18400,8 +18975,17 @@ pub const Surface = struct {
             .width = @intCast(size.width),
             .height = @intCast(size.height),
         };
-        if (self.fullscreen or self.restore_maximized) return;
+        if (self.fullscreen or
+            self.restore_maximized or
+            !shouldResizeHostForInitialSize(self.hostSurfaceCount())) return;
         try self.resizeClientArea(size.width, size.height);
+    }
+
+    fn hostSurfaceCount(self: *const Surface) usize {
+        const host = self.host orelse return 1;
+        var count: usize = 0;
+        for (host.tabs.items) |*tab| count += tab.leafCount();
+        return count;
     }
 
     fn resetWindowSize(self: *Surface) !void {
@@ -19316,9 +19900,13 @@ pub const Surface = struct {
         const alloc = self.app.core_app.alloc;
         const progress = try formatProgressStatus(alloc, value);
         defer if (progress) |owned| alloc.free(owned);
-        if (optionalOwnedStringEquals(self.progress_status, progress)) return;
-        try appendOwnedString(alloc, &self.progress_status, progress);
-        self.invalidateStatusBarState();
+        if (!optionalOwnedStringEquals(self.progress_status, progress)) {
+            try appendOwnedString(alloc, &self.progress_status, progress);
+            self.invalidateStatusBarState();
+        }
+
+        self.taskbar_progress = if (value.state == .remove) null else value;
+        self.app.syncTaskbarProgressForHost(self.host_id);
     }
 
     fn applyCursor(self: *Surface) bool {
@@ -19359,8 +19947,8 @@ pub const Surface = struct {
     /// accept `surfaceConfirmPasteAccept` completes the paste; on
     /// cancel `surfaceConfirmPasteCancel` frees the payload.
     ///
-    /// Replaces the synchronous `confirmClipboardRead() + MessageBoxW`
-    /// idiom — see AGENTS.md:84 / task #13.
+    /// Non-modal replacement for the old synchronous clipboard
+    /// confirmation path.
     fn requestPasteConfirm(
         self: *Surface,
         request: apprt.ClipboardRequest,
@@ -19378,9 +19966,8 @@ pub const Surface = struct {
         // Single errdefer — if showConfirm fails we free the buffer
         // and leave `pending_clipboard_op` untouched (still null from
         // the defensive clear above). Committing the op BEFORE
-        // showConfirm would produce a double-free via a second
-        // errdefer on success-commit-then-failure (Codex review bug
-        // #3 / #10).
+        // showConfirm would produce a double-free if the operation
+        // committed successfully and a later setup step failed.
         errdefer alloc.free(data_copy);
 
         try host.showConfirm(
@@ -19420,12 +20007,9 @@ pub const Surface = struct {
 
         const owned = try alloc.alloc(OwnedClipboardContent, contents.len);
         var filled: usize = 0;
-        // Outer errdefer frees fully-committed entries `[0..filled)`
-        // plus the backing slice. Per-iteration
-        // `errdefer alloc.free(mime_copy)` covers the partial case
-        // where the mime dup succeeds but the follow-on data dup
-        // fails — without it the mime dup would leak because
-        // `filled` hasn't advanced yet. Codex re-review bug.
+        // Outer errdefer frees committed entries plus the backing slice.
+        // Per-iteration errdefer covers the mime-only partial allocation
+        // before `filled` advances.
         errdefer {
             var i: usize = 0;
             while (i < filled) : (i += 1) {
@@ -19740,6 +20324,15 @@ test "win32 titlebar colors honor ghostty overrides" {
 
     try std.testing.expectEqual(rgb(1, 2, 3), titlebarCaptionColor(&theme, &config));
     try std.testing.expectEqual(rgb(4, 5, 6), titlebarTextColor(&theme, &config));
+}
+
+test "win32 integrated titlebar gates on Windows 11 builds" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!integratedTitlebarEnabledForBuild(0));
+    try std.testing.expect(!integratedTitlebarEnabledForBuild(OS_BUILD_WIN11_21H2 - 1));
+    try std.testing.expect(integratedTitlebarEnabledForBuild(OS_BUILD_WIN11_21H2));
+    try std.testing.expect(integratedTitlebarEnabledForBuild(OS_BUILD_WIN11_22H2));
 }
 
 test "win32 cursorPosFromLParam decodes signed coordinates" {
@@ -20095,6 +20688,68 @@ test "win32 shouldShowSurfaceImmediately only for new hosts" {
     try std.testing.expect(shouldShowSurfaceImmediately(null));
     try std.testing.expect(!shouldShowSurfaceImmediately(1));
     try std.testing.expect(!shouldShowSurfaceImmediately(99));
+}
+
+test "win32 shouldResizeHostForInitialSize only for single-surface hosts" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!shouldResizeHostForInitialSize(0));
+    try std.testing.expect(shouldResizeHostForInitialSize(1));
+    try std.testing.expect(!shouldResizeHostForInitialSize(2));
+    try std.testing.expect(!shouldResizeHostForInitialSize(8));
+}
+
+test "win32 hostPresentShowCommand preserves maximized state" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(SW_SHOW, hostPresentShowCommand(false));
+    try std.testing.expectEqual(SW_MAXIMIZE, hostPresentShowCommand(true));
+}
+
+test "win32 forwardedActivationExtraArgCount counts args bundled with activation" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const activation_only = [_][:0]const u8{"wgh://activate?surface=1"};
+    try std.testing.expectEqual(@as(usize, 0), forwardedActivationExtraArgCount(&activation_only));
+
+    const bundled = [_][:0]const u8{
+        "wgh://activate?surface=1",
+        "--config-file",
+        "manual.conf",
+    };
+    try std.testing.expectEqual(@as(usize, 2), forwardedActivationExtraArgCount(&bundled));
+
+    const malformed = [_][:0]const u8{"wgh://activate?surface=abc"};
+    try std.testing.expectEqual(@as(usize, 0), forwardedActivationExtraArgCount(&malformed));
+}
+
+test "win32 hostSurfaceCount tracks surfaces attached to one host" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var host: Host = undefined;
+    host.id = 42;
+    host.tabs = .empty;
+    host.active_tab = 0;
+    defer {
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var first: Surface = undefined;
+    first.host = &host;
+    first.host_id = host.id;
+
+    var second: Surface = undefined;
+    second.host = &host;
+    second.host_id = host.id;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &first));
+    try std.testing.expectEqual(@as(usize, 1), first.hostSurfaceCount());
+    try std.testing.expect(shouldResizeHostForInitialSize(first.hostSurfaceCount()));
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &second));
+    try std.testing.expectEqual(@as(usize, 2), first.hostSurfaceCount());
+    try std.testing.expect(!shouldResizeHostForInitialSize(first.hostSurfaceCount()));
 }
 
 test "win32 shouldDispatchOcclusion dispatches initial hidden state" {
@@ -20565,6 +21220,381 @@ test "win32 quickSlotFocusKeyAction maps painted quick slot focus keys" {
     try std.testing.expectEqual(QuickSlotFocusKeyAction.last, quickSlotFocusKeyAction(VK_END).?);
     try std.testing.expectEqual(QuickSlotFocusKeyAction.open, quickSlotFocusKeyAction(VK_RETURN).?);
     try std.testing.expect(quickSlotFocusKeyAction(VK_SPACE) == null);
+}
+
+test "win32 taskbar progress mapping preserves state and percent" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const mapped = win32_taskbar_progress.mapProgressReport(.{
+        .state = .pause,
+        .progress = 35,
+    });
+
+    try std.testing.expectEqual(win32_taskbar_progress.TBPF_PAUSED, mapped.flags);
+    try std.testing.expectEqual(@as(u64, 35), mapped.value.?.completed);
+    try std.testing.expectEqual(@as(u64, 100), mapped.value.?.total);
+}
+
+test "win32 taskbar progress mapping removes progress cleanly" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const mapped = win32_taskbar_progress.mapProgressReport(.{
+        .state = .remove,
+    });
+
+    try std.testing.expectEqual(win32_taskbar_progress.TBPF_NOPROGRESS, mapped.flags);
+    try std.testing.expect(mapped.value == null);
+}
+
+test "win32 taskbar progress mapping covers set error and indeterminate" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const normal = win32_taskbar_progress.mapProgressReport(.{
+        .state = .set,
+        .progress = 80,
+    });
+    try std.testing.expectEqual(win32_taskbar_progress.TBPF_NORMAL, normal.flags);
+    try std.testing.expectEqual(@as(u64, 80), normal.value.?.completed);
+    try std.testing.expectEqual(@as(u64, 100), normal.value.?.total);
+
+    const failed = win32_taskbar_progress.mapProgressReport(.{
+        .state = .@"error",
+        .progress = 12,
+    });
+    try std.testing.expectEqual(win32_taskbar_progress.TBPF_ERROR, failed.flags);
+    try std.testing.expectEqual(@as(u64, 12), failed.value.?.completed);
+    try std.testing.expectEqual(@as(u64, 100), failed.value.?.total);
+
+    const busy = win32_taskbar_progress.mapProgressReport(.{
+        .state = .indeterminate,
+    });
+    try std.testing.expectEqual(win32_taskbar_progress.TBPF_INDETERMINATE, busy.flags);
+    try std.testing.expect(busy.value == null);
+}
+
+test "win32 progress status and taskbar mapping clamp percent to shell range" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const report: terminal.osc.Command.ProgressReport = .{
+        .state = .set,
+        .progress = 255,
+    };
+
+    const mapped = win32_taskbar_progress.mapProgressReport(report);
+    try std.testing.expectEqual(@as(u64, 100), mapped.value.?.completed);
+    try std.testing.expectEqual(@as(u64, 100), mapped.value.?.total);
+
+    const status = try formatProgressStatus(std.testing.allocator, report);
+    defer if (status) |owned| std.testing.allocator.free(owned);
+    try std.testing.expectEqualStrings("progress:100%", status.?);
+}
+
+test "win32 activeSurfaceForHost isolates taskbar progress by host and tab" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var app: App = undefined;
+    app.hosts = .empty;
+    defer app.hosts.deinit(std.testing.allocator);
+
+    var host_a: Host = undefined;
+    host_a.id = 11;
+    host_a.tabs = .empty;
+    host_a.active_tab = 0;
+    defer {
+        for (host_a.tabs.items) |*tab| tab.deinit();
+        host_a.tabs.deinit(std.testing.allocator);
+    }
+
+    var host_b: Host = undefined;
+    host_b.id = 22;
+    host_b.tabs = .empty;
+    host_b.active_tab = 0;
+    defer {
+        for (host_b.tabs.items) |*tab| tab.deinit();
+        host_b.tabs.deinit(std.testing.allocator);
+    }
+
+    var host_a_progress: Surface = undefined;
+    host_a_progress.core_surface = undefined;
+    host_a_progress.core_surface.id = 1001;
+    host_a_progress.host = &host_a;
+    host_a_progress.host_id = host_a.id;
+    host_a_progress.taskbar_progress = .{ .state = .set, .progress = 30 };
+
+    var host_a_idle: Surface = undefined;
+    host_a_idle.core_surface = undefined;
+    host_a_idle.core_surface.id = 1002;
+    host_a_idle.host = &host_a;
+    host_a_idle.host_id = host_a.id;
+    host_a_idle.taskbar_progress = null;
+
+    var host_b_progress: Surface = undefined;
+    host_b_progress.core_surface = undefined;
+    host_b_progress.core_surface.id = 2001;
+    host_b_progress.host = &host_b;
+    host_b_progress.host_id = host_b.id;
+    host_b_progress.taskbar_progress = .{ .state = .@"error", .progress = 80 };
+
+    try host_a.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &host_a_progress));
+    try host_a.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &host_a_idle));
+    try host_b.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 3, &host_b_progress));
+    try app.hosts.append(std.testing.allocator, &host_a);
+    try app.hosts.append(std.testing.allocator, &host_b);
+
+    const host_a_report = app.activeSurfaceForHost(host_a.id).?.taskbar_progress.?;
+    try std.testing.expectEqual(win32_taskbar_progress.ProgressState.set, host_a_report.state);
+    try std.testing.expectEqual(@as(?u8, 30), host_a_report.progress);
+
+    const host_b_report = app.activeSurfaceForHost(host_b.id).?.taskbar_progress.?;
+    try std.testing.expectEqual(win32_taskbar_progress.ProgressState.@"error", host_b_report.state);
+    try std.testing.expectEqual(@as(?u8, 80), host_b_report.progress);
+
+    host_a.active_tab = 1;
+    try std.testing.expect(app.activeSurfaceForHost(host_a.id).?.taskbar_progress == null);
+
+    const host_b_after_tab_switch = app.activeSurfaceForHost(host_b.id).?.taskbar_progress.?;
+    try std.testing.expectEqual(win32_taskbar_progress.ProgressState.@"error", host_b_after_tab_switch.state);
+    try std.testing.expectEqual(@as(?u8, 80), host_b_after_tab_switch.progress);
+}
+
+test "win32 resolveToastActivationSurface prefers exact surface id" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var app: App = undefined;
+    app.windows = .empty;
+    app.hosts = .empty;
+    defer app.windows.deinit(std.testing.allocator);
+    defer app.hosts.deinit(std.testing.allocator);
+
+    var primary: Surface = undefined;
+    primary.core_surface = undefined;
+    primary.core_surface.id = 101;
+
+    var exact: Surface = undefined;
+    exact.core_surface = undefined;
+    exact.core_surface.id = 202;
+
+    try app.windows.append(std.testing.allocator, &primary);
+    try app.windows.append(std.testing.allocator, &exact);
+
+    const resolved = app.resolveToastActivationSurface(.{
+        .surface_id = 202,
+        .window_id = 999,
+        .action = .focus,
+    });
+    try std.testing.expectEqual(@as(?*Surface, &exact), resolved);
+}
+
+test "win32 resolveToastActivationSurface finds split pane by exact surface id" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var app: App = undefined;
+    app.windows = .empty;
+    app.hosts = .empty;
+    defer app.windows.deinit(std.testing.allocator);
+    defer app.hosts.deinit(std.testing.allocator);
+
+    var host: Host = undefined;
+    host.id = 66;
+    host.tabs = .empty;
+    host.active_tab = 0;
+    defer {
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var primary: Surface = undefined;
+    primary.core_surface = undefined;
+    primary.core_surface.id = 501;
+    primary.host = &host;
+    primary.host_id = host.id;
+
+    var split: Surface = undefined;
+    split.core_surface = undefined;
+    split.core_surface.id = 502;
+    split.host = &host;
+    split.host_id = host.id;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &primary));
+    const inserted = try SplitTreeSurface.init(std.testing.allocator, &split);
+    defer {
+        var cleanup = inserted;
+        cleanup.deinit();
+    }
+    var prev_tree = host.tabs.items[0].tree;
+    const next_tree = try prev_tree.split(
+        std.testing.allocator,
+        host.tabs.items[0].focused,
+        .right,
+        0.5,
+        &inserted,
+    );
+    host.tabs.items[0].tree = next_tree;
+    prev_tree.deinit();
+
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &primary);
+
+    const resolved = app.resolveToastActivationSurface(.{
+        .surface_id = 502,
+        .action = .focus,
+    });
+    try std.testing.expectEqual(@as(?*Surface, &split), resolved);
+}
+
+test "win32 resolveToastActivationSurface falls back to primary surface" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var app: App = undefined;
+    app.windows = .empty;
+    app.hosts = .empty;
+    defer app.windows.deinit(std.testing.allocator);
+    defer app.hosts.deinit(std.testing.allocator);
+
+    var host: Host = undefined;
+    host.id = 77;
+    host.tabs = .empty;
+    host.active_tab = 0;
+    defer {
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var primary: Surface = undefined;
+    primary.core_surface = undefined;
+    primary.core_surface.id = 303;
+    primary.host = &host;
+    primary.host_id = host.id;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &primary));
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &primary);
+
+    const resolved = app.resolveToastActivationSurface(.{
+        .surface_id = 999,
+        .window_id = 999,
+        .action = .focus,
+    });
+    try std.testing.expectEqual(@as(?*Surface, &primary), resolved);
+}
+
+test "win32 resolveToastActivationSurface prefers requested host tab when surface is stale" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var app: App = undefined;
+    app.windows = .empty;
+    app.hosts = .empty;
+    defer app.windows.deinit(std.testing.allocator);
+    defer app.hosts.deinit(std.testing.allocator);
+
+    var host: Host = undefined;
+    host.id = 88;
+    host.tabs = .empty;
+    host.active_tab = 0;
+    defer {
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var tab0_surface: Surface = undefined;
+    tab0_surface.core_surface = undefined;
+    tab0_surface.core_surface.id = 401;
+    tab0_surface.host = &host;
+    tab0_surface.host_id = host.id;
+
+    var tab1_surface: Surface = undefined;
+    tab1_surface.core_surface = undefined;
+    tab1_surface.core_surface.id = 402;
+    tab1_surface.host = &host;
+    tab1_surface.host_id = host.id;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &tab0_surface));
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &tab1_surface));
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &tab0_surface);
+    try app.windows.append(std.testing.allocator, &tab1_surface);
+
+    const resolved = app.resolveToastActivationSurface(.{
+        .surface_id = 999,
+        .tab_id = 2,
+        .window_id = host.id,
+        .action = .focus,
+    });
+    try std.testing.expectEqual(@as(?*Surface, &tab1_surface), resolved);
+}
+
+test "win32 buildToastLaunchForSurface includes host tab id" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var host: Host = undefined;
+    host.id = 91;
+    host.tabs = .empty;
+    host.active_tab = 0;
+    defer {
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface: Surface = undefined;
+    surface.core_surface = undefined;
+    surface.core_surface.id = 555;
+    surface.host = &host;
+    surface.host_id = host.id;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 44, &surface));
+
+    const launch = try buildToastLaunchForSurface(std.testing.allocator, &surface);
+    defer std.testing.allocator.free(launch);
+
+    const parsed = try win32_toast_activation.parseLaunchArg(launch);
+    try std.testing.expectEqual(@as(?u64, 555), parsed.surface_id);
+    try std.testing.expectEqual(@as(?u32, 44), parsed.tab_id);
+    try std.testing.expectEqual(@as(?u32, host.id), parsed.window_id);
+    try std.testing.expectEqual(@as(?win32_toast_activation.Action, .focus), parsed.action);
+}
+
+test "win32 commandFinishPlan enforces threshold and focus policy" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var cfg = try configpkg.Config.default(std.testing.allocator);
+    defer cfg.deinit();
+    cfg.@"notify-on-command-finish" = .unfocused;
+    cfg.@"notify-on-command-finish-action" = .{ .bell = true, .notify = true };
+    cfg.@"notify-on-command-finish-after" = .{ .duration = 5 * std.time.ns_per_s };
+
+    const focused_plan = App.commandFinishPlan(cfg.@"notify-on-command-finish", cfg.@"notify-on-command-finish-action", cfg.@"desktop-notifications", cfg.@"notify-on-command-finish-after", true, .{
+        .duration = 6 * std.time.ns_per_s,
+    });
+    try std.testing.expectEqual(false, focused_plan.bell);
+    try std.testing.expectEqual(false, focused_plan.notify);
+
+    const unfocused_plan = App.commandFinishPlan(cfg.@"notify-on-command-finish", cfg.@"notify-on-command-finish-action", cfg.@"desktop-notifications", cfg.@"notify-on-command-finish-after", false, .{
+        .duration = 6 * std.time.ns_per_s,
+    });
+    try std.testing.expectEqual(true, unfocused_plan.bell);
+    try std.testing.expectEqual(true, unfocused_plan.notify);
+
+    const short_plan = App.commandFinishPlan(cfg.@"notify-on-command-finish", cfg.@"notify-on-command-finish-action", cfg.@"desktop-notifications", cfg.@"notify-on-command-finish-after", false, .{
+        .duration = 4 * std.time.ns_per_s,
+    });
+    try std.testing.expectEqual(false, short_plan.bell);
+    try std.testing.expectEqual(false, short_plan.notify);
+}
+
+test "win32 commandFinishPlan disables desktop notify when desktop notifications are off" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var cfg = try configpkg.Config.default(std.testing.allocator);
+    defer cfg.deinit();
+    cfg.@"notify-on-command-finish" = .always;
+    cfg.@"notify-on-command-finish-action" = .{ .bell = true, .notify = true };
+    cfg.@"desktop-notifications" = false;
+
+    const plan = App.commandFinishPlan(cfg.@"notify-on-command-finish", cfg.@"notify-on-command-finish-action", cfg.@"desktop-notifications", cfg.@"notify-on-command-finish-after", false, .{
+        .duration = 10 * std.time.ns_per_s,
+    });
+    try std.testing.expectEqual(true, plan.bell);
+    try std.testing.expectEqual(false, plan.notify);
 }
 
 test "win32 profileOpenTargetFromModifiers prefers split then window" {
@@ -22206,6 +23236,19 @@ test "win32 overlay edit child rect preserves frame border" {
     try std.testing.expect(child.bottom < frame.bottom);
 }
 
+test "win32 GDI text length accepts empty sentinel slices" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const alloc = std.testing.allocator;
+    const empty = try std.unicode.utf8ToUtf16LeAllocZ(alloc, "");
+    defer alloc.free(empty);
+    try std.testing.expectEqual(@as(i32, 0), utf16GdiTextLen(empty));
+
+    const confirm = try std.unicode.utf8ToUtf16LeAllocZ(alloc, "Confirm");
+    defer alloc.free(confirm);
+    try std.testing.expectEqual(@as(i32, 7), utf16GdiTextLen(confirm));
+}
+
 test "win32 command palette hides duplicate accept button" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
@@ -22584,6 +23627,74 @@ test "win32 tab button mouse-up only closes when released in close zone" {
         TabButtonMouseUpAction.none,
         tabButtonMouseUpAction(null, false, 40, 100, 3),
     );
+}
+
+test "win32 captionButtonSysCommand maps integrated titlebar buttons" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(@as(?WPARAM, SC_MINIMIZE), captionButtonSysCommand(HTMINBUTTON, false));
+    try std.testing.expectEqual(@as(?WPARAM, SC_MINIMIZE), captionButtonSysCommand(HTMINBUTTON, true));
+    try std.testing.expectEqual(@as(?WPARAM, SC_MAXIMIZE), captionButtonSysCommand(HTMAXBUTTON, false));
+    try std.testing.expectEqual(@as(?WPARAM, SC_RESTORE), captionButtonSysCommand(HTMAXBUTTON, true));
+}
+
+test "win32 captionButtonSysCommand ignores non minimize/maximize hit tests" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(@as(?WPARAM, null), captionButtonSysCommand(HTCLIENT, false));
+    try std.testing.expectEqual(@as(?WPARAM, null), captionButtonSysCommand(HTCAPTION, false));
+    try std.testing.expectEqual(@as(?WPARAM, null), captionButtonSysCommand(HTCLOSE, false));
+}
+
+test "win32 titlebar glyph mapping uses Win11 glyph codepoints" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expectEqual(@as(u16, 0xE921), titlebarGlyphCodepoint(.minimize));
+    try std.testing.expectEqual(@as(u16, 0xE922), titlebarGlyphCodepoint(.maximize));
+    try std.testing.expectEqual(@as(u16, 0xE923), titlebarGlyphCodepoint(.restore));
+    try std.testing.expectEqual(@as(u16, 0xE8BB), titlebarGlyphCodepoint(.close));
+    try std.testing.expectEqual(@as(u16, 0xE710), titlebarGlyphCodepoint(.new_tab));
+    try std.testing.expectEqual(@as(u16, 0xE70D), titlebarGlyphCodepoint(.dropdown));
+}
+
+test "win32 titlebar hover fade decays linearly and snaps at zero duration" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var fade: TitlebarHoverFade = .{};
+    fade.start(1_000, titlebar_hover_fade_ms);
+    try std.testing.expectApproxEqAbs(@as(f32, 1.0), fade.alphaAt(1_000), 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.5), fade.alphaAt(1_075), 0.001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0), fade.alphaAt(1_150), 0.001);
+    try std.testing.expect(!fade.animating(1_150));
+
+    fade.start(2_000, 0);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.0), fade.alphaAt(2_000), 0.001);
+    try std.testing.expect(!fade.animating(2_000));
+}
+
+test "win32 titlebar visual helper returns native idle hover and high contrast states" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const theme = darkTheme();
+    const idle_caption = titlebarButtonVisual(&theme, .minimize, theme.chrome_bg, 0.0, false, false);
+    try std.testing.expect(idle_caption.bg == null);
+    try std.testing.expectEqual(theme.text_primary, idle_caption.glyph);
+
+    const idle_action = titlebarButtonVisual(&theme, .new_tab, theme.chrome_bg, 0.0, false, false);
+    try std.testing.expect(idle_action.bg == null);
+    try std.testing.expectEqual(theme.button_chrome_fg, idle_action.glyph);
+
+    const max_hover = titlebarButtonVisual(&theme, .maximize, theme.chrome_bg, 1.0, false, false);
+    try std.testing.expect(max_hover.bg != null);
+    try std.testing.expect(max_hover.bg.? != theme.chrome_bg);
+
+    const close_hover = titlebarButtonVisual(&theme, .close, theme.chrome_bg, 1.0, false, false);
+    try std.testing.expectEqual(rgb(0xC4, 0x2B, 0x1C), close_hover.bg.?);
+    try std.testing.expectEqual(rgb(0xFF, 0xFF, 0xFF), close_hover.glyph);
+
+    const hc_close = titlebarButtonVisual(&theme, .close, theme.chrome_bg, 1.0, false, true);
+    try std.testing.expectEqual(theme.button_active_bg, hc_close.bg.?);
+    try std.testing.expectEqual(theme.button_active_fg, hc_close.glyph);
 }
 
 test "win32 desiredMoveIndex wraps tab order" {

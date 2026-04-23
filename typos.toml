@@ -6,7 +6,6 @@ extend-exclude = [
   "build.zig.zon.txt",
   "build.zig.zon.json",
   # Build artifacts
-  "macos/build/*",
   "zig-out/*",
   # vendored code
   "vendor/*",
@@ -23,7 +22,6 @@ extend-exclude = [
   # Images
   "*.png",
   "*.ico",
-  "*.icns",
   # Valgrind nonsense
   "valgrind.supp",
   # Fuzz corpus (binary test inputs)
@@ -31,7 +29,6 @@ extend-exclude = [
   # Other
   "*.pdf",
   "*.data",
-  "*.xib",
   "src/cli/lorem_ipsum.txt",
 ]
 

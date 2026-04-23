@@ -2,8 +2,8 @@ const std = @import("std");
 const build_options = @import("terminal_options");
 const assert = @import("../quirks.zig").inlineAssert;
 const Allocator = std.mem.Allocator;
-const terminal = @import("main.zig");
-const DCS = terminal.DCS;
+const DCS = @import("Parser.zig").Action.DCS;
+const tmux = if (build_options.tmux_control_mode) @import("tmux.zig") else struct {};
 
 const log = std.log.scoped(.terminal_dcs);
 
@@ -127,9 +127,9 @@ pub const Handler = struct {
             .ignore,
             => {},
 
-            .tmux => |*tmux| if (comptime build_options.tmux_control_mode) {
+            .tmux => |*tmux_state| if (comptime build_options.tmux_control_mode) {
                 return .{
-                    .tmux = (try tmux.put(byte)) orelse return null,
+                    .tmux = (try tmux_state.put(byte)) orelse return null,
                 };
             } else unreachable,
 
@@ -213,7 +213,7 @@ pub const Command = union(enum) {
 
     /// Tmux control mode
     tmux: if (build_options.tmux_control_mode)
-        terminal.tmux.ControlNotification
+        tmux.ControlNotification
     else
         void,
 
@@ -276,7 +276,7 @@ const State = union(enum) {
 
     /// Tmux control mode: https://github.com/tmux/tmux/wiki/Control-Mode
     tmux: if (build_options.tmux_control_mode)
-        terminal.tmux.ControlParser
+        tmux.ControlParser
     else
         void,
 

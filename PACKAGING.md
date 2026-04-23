@@ -36,7 +36,7 @@ zig build -Demit-exe=true
 ```
 
 If Zig cannot hydrate its dependency cache automatically in your environment,
-seed it first:
+seed the Windows build dependency cache first:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/fetch-zig-deps.ps1

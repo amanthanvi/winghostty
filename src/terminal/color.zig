@@ -598,7 +598,11 @@ pub const RGB = packed struct(u24) {
         // Check for X11 named colors. We allow whitespace around the edges
         // of the color because Kitty allows whitespace. This is not part of
         // any spec I could find.
-        if (x11_color.map.get(std.mem.trim(u8, value, " "))) |rgb| return rgb;
+        if (x11_color.map.get(std.mem.trim(u8, value, " "))) |rgb| return .{
+            .r = rgb.r,
+            .g = rgb.g,
+            .b = rgb.b,
+        };
 
         if (value.len < "rgb:a/a/a".len or !std.mem.eql(u8, value[0..3], "rgb")) {
             @branchHint(.cold);

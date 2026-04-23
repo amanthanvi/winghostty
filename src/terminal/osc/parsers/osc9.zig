@@ -1,10 +1,7 @@
 const std = @import("std");
 
-const Parser = @import("../../osc.zig").Parser;
-const Command = @import("../../osc.zig").Command;
-
 /// Parse OSC 9, which could be an iTerm2 notification or a ConEmu extension.
-pub fn parse(parser: *Parser, _: ?u8) ?*Command {
+pub fn parse(parser: anytype, _: ?u8) ?*@TypeOf(parser.command) {
     const cap = if (parser.capture) |*c| c else {
         parser.state = .invalid;
         return null;
@@ -288,7 +285,7 @@ pub fn parse(parser: *Parser, _: ?u8) ?*Command {
 test "OSC 9: show desktop notification" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;Hello world";
     for (input) |ch| p.next(ch);
@@ -302,7 +299,7 @@ test "OSC 9: show desktop notification" {
 test "OSC 9: show single character desktop notification" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;H";
     for (input) |ch| p.next(ch);
@@ -316,7 +313,7 @@ test "OSC 9: show single character desktop notification" {
 test "OSC 9;1: ConEmu sleep" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;1;420";
     for (input) |ch| p.next(ch);
@@ -330,7 +327,7 @@ test "OSC 9;1: ConEmu sleep" {
 test "OSC 9;1: ConEmu sleep with no value default to 100ms" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;1;";
     for (input) |ch| p.next(ch);
@@ -344,7 +341,7 @@ test "OSC 9;1: ConEmu sleep with no value default to 100ms" {
 test "OSC 9;1: conemu sleep cannot exceed 10000ms" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;1;12345";
     for (input) |ch| p.next(ch);
@@ -358,7 +355,7 @@ test "OSC 9;1: conemu sleep cannot exceed 10000ms" {
 test "OSC 9;1: conemu sleep invalid input" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;1;foo";
     for (input) |ch| p.next(ch);
@@ -372,7 +369,7 @@ test "OSC 9;1: conemu sleep invalid input" {
 test "OSC 9;1: conemu sleep -> desktop notification 1" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;1";
     for (input) |ch| p.next(ch);
@@ -386,7 +383,7 @@ test "OSC 9;1: conemu sleep -> desktop notification 1" {
 test "OSC 9;1: conemu sleep -> desktop notification 2" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;1a";
     for (input) |ch| p.next(ch);
@@ -400,7 +397,7 @@ test "OSC 9;1: conemu sleep -> desktop notification 2" {
 test "OSC 9;2: ConEmu message box" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;2;hello world";
     for (input) |ch| p.next(ch);
@@ -413,7 +410,7 @@ test "OSC 9;2: ConEmu message box" {
 test "OSC 9;2: ConEmu message box invalid input" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;2";
     for (input) |ch| p.next(ch);
@@ -426,7 +423,7 @@ test "OSC 9;2: ConEmu message box invalid input" {
 test "OSC 9;2: ConEmu message box empty message" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;2;";
     for (input) |ch| p.next(ch);
@@ -439,7 +436,7 @@ test "OSC 9;2: ConEmu message box empty message" {
 test "OSC 9;2: ConEmu message box spaces only message" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;2;   ";
     for (input) |ch| p.next(ch);
@@ -452,7 +449,7 @@ test "OSC 9;2: ConEmu message box spaces only message" {
 test "OSC 9;2: message box -> desktop notification 1" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;2";
     for (input) |ch| p.next(ch);
@@ -466,7 +463,7 @@ test "OSC 9;2: message box -> desktop notification 1" {
 test "OSC 9;2: message box -> desktop notification 2" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;2a";
     for (input) |ch| p.next(ch);
@@ -480,7 +477,7 @@ test "OSC 9;2: message box -> desktop notification 2" {
 test "OSC 9;3: ConEmu change tab title" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;3;foo bar";
     for (input) |ch| p.next(ch);
@@ -493,21 +490,21 @@ test "OSC 9;3: ConEmu change tab title" {
 test "OSC 9;3: ConEmu change tab title reset" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;3;";
     for (input) |ch| p.next(ch);
 
     const cmd = p.end('\x1b').?.*;
 
-    const expected_command: Command = .{ .conemu_change_tab_title = .reset };
+    const expected_command: @import("../../osc.zig").Command = .{ .conemu_change_tab_title = .reset };
     try testing.expectEqual(expected_command, cmd);
 }
 
 test "OSC 9;3: ConEmu change tab title spaces only" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;3;   ";
     for (input) |ch| p.next(ch);
@@ -521,7 +518,7 @@ test "OSC 9;3: ConEmu change tab title spaces only" {
 test "OSC 9;3: change tab title -> desktop notification 1" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;3";
     for (input) |ch| p.next(ch);
@@ -535,7 +532,7 @@ test "OSC 9;3: change tab title -> desktop notification 1" {
 test "OSC 9;3: message box -> desktop notification 2" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;3a";
     for (input) |ch| p.next(ch);
@@ -549,7 +546,7 @@ test "OSC 9;3: message box -> desktop notification 2" {
 test "OSC 9;4: ConEmu progress set" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;4;1;100";
     for (input) |ch| p.next(ch);
@@ -563,7 +560,7 @@ test "OSC 9;4: ConEmu progress set" {
 test "OSC 9;4: ConEmu progress set overflow" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;4;1;900";
     for (input) |ch| p.next(ch);
@@ -577,7 +574,7 @@ test "OSC 9;4: ConEmu progress set overflow" {
 test "OSC 9;4: ConEmu progress set single digit" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;4;1;9";
     for (input) |ch| p.next(ch);
@@ -591,7 +588,7 @@ test "OSC 9;4: ConEmu progress set single digit" {
 test "OSC 9;4: ConEmu progress set double digit" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;4;1;94";
     for (input) |ch| p.next(ch);
@@ -605,7 +602,7 @@ test "OSC 9;4: ConEmu progress set double digit" {
 test "OSC 9;4: ConEmu progress set extra semicolon ignored" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;4;1;100";
     for (input) |ch| p.next(ch);
@@ -619,7 +616,7 @@ test "OSC 9;4: ConEmu progress set extra semicolon ignored" {
 test "OSC 9;4: ConEmu progress remove with no progress" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;4;0;";
     for (input) |ch| p.next(ch);
@@ -633,7 +630,7 @@ test "OSC 9;4: ConEmu progress remove with no progress" {
 test "OSC 9;4: ConEmu progress remove with double semicolon" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;4;0;;";
     for (input) |ch| p.next(ch);
@@ -647,7 +644,7 @@ test "OSC 9;4: ConEmu progress remove with double semicolon" {
 test "OSC 9;4: ConEmu progress remove ignores progress" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;4;0;100";
     for (input) |ch| p.next(ch);
@@ -661,7 +658,7 @@ test "OSC 9;4: ConEmu progress remove ignores progress" {
 test "OSC 9;4: ConEmu progress remove extra semicolon" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;4;0;100;";
     for (input) |ch| p.next(ch);
@@ -674,7 +671,7 @@ test "OSC 9;4: ConEmu progress remove extra semicolon" {
 test "OSC 9;4: ConEmu progress error" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;4;2";
     for (input) |ch| p.next(ch);
@@ -688,7 +685,7 @@ test "OSC 9;4: ConEmu progress error" {
 test "OSC 9;4: ConEmu progress error with progress" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;4;2;100";
     for (input) |ch| p.next(ch);
@@ -702,7 +699,7 @@ test "OSC 9;4: ConEmu progress error with progress" {
 test "OSC 9;4: progress pause" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;4;4";
     for (input) |ch| p.next(ch);
@@ -716,7 +713,7 @@ test "OSC 9;4: progress pause" {
 test "OSC 9;4: ConEmu progress pause with progress" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;4;4;100";
     for (input) |ch| p.next(ch);
@@ -730,7 +727,7 @@ test "OSC 9;4: ConEmu progress pause with progress" {
 test "OSC 9;4: progress -> desktop notification 1" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;4";
     for (input) |ch| p.next(ch);
@@ -744,7 +741,7 @@ test "OSC 9;4: progress -> desktop notification 1" {
 test "OSC 9;4: progress -> desktop notification 2" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;4;";
     for (input) |ch| p.next(ch);
@@ -758,7 +755,7 @@ test "OSC 9;4: progress -> desktop notification 2" {
 test "OSC 9;4: progress -> desktop notification 3" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;4;5";
     for (input) |ch| p.next(ch);
@@ -772,7 +769,7 @@ test "OSC 9;4: progress -> desktop notification 3" {
 test "OSC 9;4: progress -> desktop notification 4" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;4;5a";
     for (input) |ch| p.next(ch);
@@ -786,7 +783,7 @@ test "OSC 9;4: progress -> desktop notification 4" {
 test "OSC 9;5: ConEmu wait input" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;5";
     for (input) |ch| p.next(ch);
@@ -798,7 +795,7 @@ test "OSC 9;5: ConEmu wait input" {
 test "OSC 9;5: ConEmu wait ignores trailing characters" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "9;5;foo";
     for (input) |ch| p.next(ch);
@@ -810,7 +807,7 @@ test "OSC 9;5: ConEmu wait ignores trailing characters" {
 test "OSC 9;6: ConEmu guimacro 1" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;6;a";
@@ -824,7 +821,7 @@ test "OSC 9;6: ConEmu guimacro 1" {
 test "OSC: 9;6: ConEmu guimacro 2" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;6;ab";
@@ -838,7 +835,7 @@ test "OSC: 9;6: ConEmu guimacro 2" {
 test "OSC: 9;6: ConEmu guimacro 3 incomplete -> desktop notification" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;6";
@@ -852,7 +849,7 @@ test "OSC: 9;6: ConEmu guimacro 3 incomplete -> desktop notification" {
 test "OSC: 9;7: ConEmu run process 1" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;7;ab";
@@ -866,7 +863,7 @@ test "OSC: 9;7: ConEmu run process 1" {
 test "OSC: 9;7: ConEmu run process 2" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;7;";
@@ -880,7 +877,7 @@ test "OSC: 9;7: ConEmu run process 2" {
 test "OSC: 9;7: ConEmu run process incomplete -> desktop notification" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;7";
@@ -894,7 +891,7 @@ test "OSC: 9;7: ConEmu run process incomplete -> desktop notification" {
 test "OSC: 9;8: ConEmu output environment variable 1" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;8;ab";
@@ -908,7 +905,7 @@ test "OSC: 9;8: ConEmu output environment variable 1" {
 test "OSC: 9;8: ConEmu output environment variable 2" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;8;";
@@ -922,7 +919,7 @@ test "OSC: 9;8: ConEmu output environment variable 2" {
 test "OSC: 9;8: ConEmu output environment variable incomplete -> desktop notification" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;8";
@@ -936,7 +933,7 @@ test "OSC: 9;8: ConEmu output environment variable incomplete -> desktop notific
 test "OSC: 9;9: ConEmu set current working directory" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;9;ab";
@@ -950,7 +947,7 @@ test "OSC: 9;9: ConEmu set current working directory" {
 test "OSC: 9;9: ConEmu set current working directory incomplete -> desktop notification" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;9";
@@ -964,7 +961,7 @@ test "OSC: 9;9: ConEmu set current working directory incomplete -> desktop notif
 test "OSC: 9;10: ConEmu xterm keyboard and output emulation 1" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;10";
@@ -981,7 +978,7 @@ test "OSC: 9;10: ConEmu xterm keyboard and output emulation 1" {
 test "OSC: 9;10: ConEmu xterm keyboard and output emulation 2" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;10;0";
@@ -998,7 +995,7 @@ test "OSC: 9;10: ConEmu xterm keyboard and output emulation 2" {
 test "OSC: 9;10: ConEmu xterm keyboard and output emulation 3" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;10;1";
@@ -1015,7 +1012,7 @@ test "OSC: 9;10: ConEmu xterm keyboard and output emulation 3" {
 test "OSC: 9;10: ConEmu xterm keyboard and output emulation 4" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;10;2";
@@ -1031,7 +1028,7 @@ test "OSC: 9;10: ConEmu xterm keyboard and output emulation 4" {
 test "OSC: 9;10: ConEmu xterm keyboard and output emulation 5" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;10;3";
@@ -1047,7 +1044,7 @@ test "OSC: 9;10: ConEmu xterm keyboard and output emulation 5" {
 test "OSC: 9;10: ConEmu xterm keyboard and output emulation 6" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;10;4";
@@ -1061,7 +1058,7 @@ test "OSC: 9;10: ConEmu xterm keyboard and output emulation 6" {
 test "OSC: 9;10: ConEmu xterm keyboard and output emulation 7" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;10;";
@@ -1075,7 +1072,7 @@ test "OSC: 9;10: ConEmu xterm keyboard and output emulation 7" {
 test "OSC: 9;10: ConEmu xterm keyboard and output emulation 8" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;10;abc";
@@ -1089,7 +1086,7 @@ test "OSC: 9;10: ConEmu xterm keyboard and output emulation 8" {
 test "OSC: 9;11: ConEmu comment" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;11;ab";
@@ -1103,7 +1100,7 @@ test "OSC: 9;11: ConEmu comment" {
 test "OSC: 9;11: ConEmu comment incomplete -> desktop notification" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;11";
@@ -1117,7 +1114,7 @@ test "OSC: 9;11: ConEmu comment incomplete -> desktop notification" {
 test "OSC: 9;12: ConEmu mark prompt start 1" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;12";
@@ -1130,7 +1127,7 @@ test "OSC: 9;12: ConEmu mark prompt start 1" {
 test "OSC: 9;12: ConEmu mark prompt start 2" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "9;12;abc";

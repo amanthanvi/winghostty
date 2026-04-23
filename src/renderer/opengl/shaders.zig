@@ -81,7 +81,7 @@ const PipelineCollection = t: {
     } });
 };
 
-/// This contains the state for the shaders used by the Metal renderer.
+/// This contains the state for the shaders used by the OpenGL renderer.
 pub const Shaders = struct {
     /// Collection of available render pipelines.
     pipelines: PipelineCollection,
@@ -210,7 +210,7 @@ pub const Uniforms = extern struct {
         /// an `*_srgb` pixel format, which means the shaders need to
         /// output linear RGB colors rather than gamma encoded colors,
         /// since blending will be performed in linear space and then
-        /// Metal itself will re-encode the colors for storage.
+        /// the framebuffer will re-encode the colors for storage.
         use_linear_blending: bool,
 
         /// Enables a weight correction step that makes text rendered

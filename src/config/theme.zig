@@ -3,7 +3,7 @@ const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const global_state = &@import("../global.zig").state;
 const internal_os = @import("../os/main.zig");
-const cli = @import("../cli.zig");
+const cli_diags = @import("../cli/diagnostics.zig");
 
 /// Location of possible themes. The order of this enum matters because it
 /// defines the priority of theme search (from top to bottom).
@@ -110,7 +110,7 @@ pub const LocationIterator = struct {
 pub fn open(
     arena_alloc: Allocator,
     theme: []const u8,
-    diags: *cli.DiagnosticList,
+    diags: *cli_diags.DiagnosticList,
 ) error{OutOfMemory}!?struct {
     path: []const u8,
     file: std.fs.File,
@@ -250,7 +250,7 @@ pub fn open(
 pub fn openAbsolute(
     arena_alloc: Allocator,
     theme: []const u8,
-    diags: *cli.DiagnosticList,
+    diags: *cli_diags.DiagnosticList,
 ) error{OutOfMemory}!?std.fs.File {
     return std.fs.openFileAbsolute(theme, .{}) catch |err| {
         switch (err) {

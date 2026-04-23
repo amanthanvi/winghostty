@@ -3,7 +3,7 @@
 const GhosttyFrameData = @This();
 
 const std = @import("std");
-const DistResource = @import("GhosttyDist.zig").Resource;
+const DistResource = @import("DistResource.zig").Resource;
 
 /// The output path for the compressed framedata zig file
 output: std.Build.LazyPath,

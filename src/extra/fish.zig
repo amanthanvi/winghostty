@@ -2,7 +2,8 @@
 const std = @import("std");
 
 const Config = @import("../config/Config.zig");
-const Action = @import("../cli.zig").ghostty.Action;
+const ghostty = @import("../cli.zig").ghostty;
+const Action = ghostty.Action;
 const help_strings = @import("help_strings");
 
 /// A fish completions configuration that contains all the available commands
@@ -108,7 +109,7 @@ fn writeCompletions(writer: *std.Io.Writer) !void {
         if (std.mem.eql(u8, "help", field.name)) continue;
         if (std.mem.eql(u8, "version", field.name)) continue;
 
-        const options = @field(Action, field.name).options();
+        const options = ghostty.options(@field(Action, field.name));
         for (@typeInfo(options).@"struct".fields) |opt| {
             if (opt.name[0] == '_') continue;
             try writer.writeAll("complete -c ghostty -n \"__fish_seen_subcommand_from +" ++ field.name ++ "\" -l ");

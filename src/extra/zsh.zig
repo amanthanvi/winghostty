@@ -1,7 +1,8 @@
 const std = @import("std");
 
 const Config = @import("../config/Config.zig");
-const Action = @import("../cli.zig").ghostty.Action;
+const ghostty = @import("../cli.zig").ghostty;
+const Action = ghostty.Action;
 
 /// A zsh completions configuration that contains all the available commands
 /// and options.
@@ -165,7 +166,7 @@ fn writeZshCompletions(writer: *std.Io.Writer) !void {
     {
         const padding = "        ";
         for (@typeInfo(Action).@"enum".fields) |field| {
-            const options = @field(Action, field.name).options();
+            const options = ghostty.options(@field(Action, field.name));
             // assumes options will never be created with only <_name> members
             if (@typeInfo(options).@"struct".fields.len == 0) continue;
 

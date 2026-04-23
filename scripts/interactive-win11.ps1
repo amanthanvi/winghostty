@@ -13,6 +13,8 @@ if ($Rebuild -and $NoBuild) {
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $launcherPath = if ($PSCommandPath) { $PSCommandPath } else { $MyInvocation.MyCommand.Path }
+$libPath = Join-Path $PSScriptRoot 'interactive-win11-lib.ps1'
+. $libPath
 
 if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_BOOTSTRAPPED) {
     $forwardedArgs = @()
@@ -21,45 +23,25 @@ if (-not $env:WINGHOSTTY_INTERACTIVE_WIN11_BOOTSTRAPPED) {
     if ($OpenShell) { $forwardedArgs += '-OpenShell' }
     if ($NoBuild) { $forwardedArgs += '-NoBuild' }
 
-    $bootstrapCmd = Join-Path $PSScriptRoot 'dev-windows.cmd'
-    $exitCode = 0
-    $env:WINGHOSTTY_INTERACTIVE_WIN11_BOOTSTRAPPED = '1'
-
-    Push-Location $repoRoot
-    try {
-        & $bootstrapCmd powershell.exe -ExecutionPolicy Bypass -File $launcherPath @forwardedArgs
-        if ($null -ne $LASTEXITCODE) {
-            $exitCode = $LASTEXITCODE
-        }
-    }
-    finally {
-        Pop-Location
-        Remove-Item Env:WINGHOSTTY_INTERACTIVE_WIN11_BOOTSTRAPPED -ErrorAction SilentlyContinue
-    }
-
-    exit $exitCode
+    $bootstrapExitCode = 0
+    Invoke-InteractiveWin11Bootstrap `
+        -RepoRoot $repoRoot `
+        -LauncherPath $launcherPath `
+        -EnvironmentVariable 'WINGHOSTTY_INTERACTIVE_WIN11_BOOTSTRAPPED' `
+        -ArgumentList $forwardedArgs `
+        -ExitCode ([ref] $bootstrapExitCode)
+    exit $bootstrapExitCode
 }
 
-$libPath = Join-Path $PSScriptRoot 'interactive-win11-lib.ps1'
-. $libPath
-
-$repoRoot = Get-InteractiveWin11NormalizedPath -Path $repoRoot
-$layout = Get-InteractiveWin11SandboxLayout -RepoRoot $repoRoot
-
-if ($ResetState) {
-    Reset-InteractiveWin11Sandbox -Layout $layout
-}
-
-New-InteractiveWin11Sandbox -Layout $layout
-
-$sandboxEnv = Get-InteractiveWin11Environment -Layout $layout
-foreach ($entry in $sandboxEnv.GetEnumerator()) {
-    [System.Environment]::SetEnvironmentVariable([string] $entry.Key, [string] $entry.Value, 'Process')
-}
+$harness = Initialize-InteractiveWin11Sandbox -RepoRoot $repoRoot -SandboxName 'interactive' -ResetState:$ResetState
+$repoRoot = $harness.RepoRoot
+$layout = $harness.Layout
+$sandboxEnv = $harness.Environment
 
 if ($OpenShell) {
     Write-Host "RepoRoot: $($layout.RepoRoot)"
     Write-Host "WorktreeId: $($layout.WorktreeId)"
+    Write-Host "SandboxId: $($layout.SandboxId)"
     Write-Host "SandboxRoot: $($layout.SandboxRoot)"
     foreach ($entry in $sandboxEnv.GetEnumerator()) {
         Write-Host "$($entry.Key)=$($entry.Value)"
@@ -76,25 +58,15 @@ if ($OpenShell) {
     exit 0
 }
 
-$exePath = Get-InteractiveWin11NormalizedPath -Path (Join-Path $repoRoot 'zig-out\bin\winghostty.exe')
-$launchAction = Get-InteractiveWin11LaunchAction -ExePath $exePath -Rebuild:$Rebuild -NoBuild:$NoBuild
+$exePath = Get-InteractiveWin11ExePath -RepoRoot $repoRoot
+$buildInputs = Get-InteractiveWin11DefaultBuildInputs -RepoRoot $repoRoot
+$launchAction = Get-InteractiveWin11LaunchAction -ExePath $exePath -Rebuild:$Rebuild -NoBuild:$NoBuild -BuildInputs $buildInputs
 $launchArgs = Get-InteractiveWin11LaunchArguments -Layout $layout
 
 if ($launchAction -eq 'build') {
-    Push-Location $repoRoot
-    try {
-        & zig build -Demit-exe=true
-        if ($LASTEXITCODE -ne 0) {
-            throw "zig build -Demit-exe=true failed with exit code $LASTEXITCODE"
-        }
-    }
-    finally {
-        Pop-Location
-    }
+    Invoke-InteractiveWin11Build -RepoRoot $repoRoot
 }
 
-if (-not [System.IO.File]::Exists($exePath)) {
-    throw "Missing winghostty.exe at $exePath"
-}
+Assert-InteractiveWin11ExeExists -ExePath $exePath
 
 Start-Process -FilePath $exePath -ArgumentList $launchArgs -WorkingDirectory $repoRoot | Out-Null

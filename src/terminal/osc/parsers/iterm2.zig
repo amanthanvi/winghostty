@@ -3,9 +3,6 @@ const std = @import("std");
 const assert = @import("../../../quirks.zig").inlineAssert;
 const simd = @import("../../../simd/main.zig");
 
-const Parser = @import("../../osc.zig").Parser;
-const Command = @import("../../osc.zig").Command;
-
 const log = std.log.scoped(.osc_iterm2);
 
 const Key = enum {
@@ -63,7 +60,7 @@ const map: Map = .initComptime(
 
 /// Parse OSC 1337
 /// https://iterm2.com/documentation-escape-codes.html
-pub fn parse(parser: *Parser, _: ?u8) ?*Command {
+pub fn parse(parser: anytype, _: ?u8) ?*@TypeOf(parser.command) {
     assert(parser.state == .@"1337");
 
     const cap = if (parser.capture) |*c| c else {
@@ -200,7 +197,7 @@ pub fn parse(parser: *Parser, _: ?u8) ?*Command {
 test "OSC: 1337: test valid unimplemented key with no value" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;SetBadgeFormat";
@@ -212,7 +209,7 @@ test "OSC: 1337: test valid unimplemented key with no value" {
 test "OSC: 1337: test valid unimplemented key with empty value" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;SetBadgeFormat=";
@@ -224,7 +221,7 @@ test "OSC: 1337: test valid unimplemented key with empty value" {
 test "OSC: 1337: test valid unimplemented key with non-empty value" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;SetBadgeFormat=abc123";
@@ -236,7 +233,7 @@ test "OSC: 1337: test valid unimplemented key with non-empty value" {
 test "OSC: 1337: test valid key with lower case and with no value" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;setbadgeformat";
@@ -248,7 +245,7 @@ test "OSC: 1337: test valid key with lower case and with no value" {
 test "OSC: 1337: test valid key with lower case and with empty value" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;setbadgeformat=";
@@ -260,7 +257,7 @@ test "OSC: 1337: test valid key with lower case and with empty value" {
 test "OSC: 1337: test valid key with lower case and with non-empty value" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;setbadgeformat=abc123";
@@ -272,7 +269,7 @@ test "OSC: 1337: test valid key with lower case and with non-empty value" {
 test "OSC: 1337: test invalid key with no value" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;BobrKurwa";
@@ -284,7 +281,7 @@ test "OSC: 1337: test invalid key with no value" {
 test "OSC: 1337: test invalid key with empty value" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;BobrKurwa=";
@@ -296,7 +293,7 @@ test "OSC: 1337: test invalid key with empty value" {
 test "OSC: 1337: test invalid key with non-empty value" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;BobrKurwa=abc123";
@@ -308,7 +305,7 @@ test "OSC: 1337: test invalid key with non-empty value" {
 test "OSC: 1337: test Copy with no value" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;Copy";
@@ -320,7 +317,7 @@ test "OSC: 1337: test Copy with no value" {
 test "OSC: 1337: test Copy with empty value" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;Copy=";
@@ -332,7 +329,7 @@ test "OSC: 1337: test Copy with empty value" {
 test "OSC: 1337: test Copy with only prefix colon" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;Copy=:";
@@ -344,7 +341,7 @@ test "OSC: 1337: test Copy with only prefix colon" {
 test "OSC: 1337: test Copy with question mark" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;Copy=:?";
@@ -360,7 +357,7 @@ test "OSC: 1337: test Copy with non-empty value that is invalid base64" {
 
     // const testing = std.testing;
 
-    // var p: Parser = .init(testing.allocator);
+    // var p = @import("../../osc.zig").Parser.init(testing.allocator);
     // defer p.deinit();
 
     // const input = "1337;Copy=:abc123";
@@ -372,7 +369,7 @@ test "OSC: 1337: test Copy with non-empty value that is invalid base64" {
 test "OSC: 1337: test Copy with non-empty value that is valid base64 but not prefixed with a colon" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;Copy=YWJjMTIz";
@@ -384,7 +381,7 @@ test "OSC: 1337: test Copy with non-empty value that is valid base64 but not pre
 test "OSC: 1337: test Copy with non-empty value that is valid base64" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;Copy=:YWJjMTIz";
@@ -399,7 +396,7 @@ test "OSC: 1337: test Copy with non-empty value that is valid base64" {
 test "OSC: 1337: test CurrentDir with no value" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;CurrentDir";
@@ -411,7 +408,7 @@ test "OSC: 1337: test CurrentDir with no value" {
 test "OSC: 1337: test CurrentDir with empty value" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;CurrentDir=";
@@ -423,7 +420,7 @@ test "OSC: 1337: test CurrentDir with empty value" {
 test "OSC: 1337: test CurrentDir with non-empty value" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "1337;CurrentDir=abc123";

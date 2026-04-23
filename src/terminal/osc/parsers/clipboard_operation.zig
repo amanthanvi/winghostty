@@ -2,11 +2,8 @@ const std = @import("std");
 
 const assert = @import("../../../quirks.zig").inlineAssert;
 
-const Parser = @import("../../osc.zig").Parser;
-const Command = @import("../../osc.zig").Command;
-
 /// Parse OSC 52
-pub fn parse(parser: *Parser, _: ?u8) ?*Command {
+pub fn parse(parser: anytype, _: ?u8) ?*@TypeOf(parser.command) {
     assert(parser.state == .@"52");
     const cap = if (parser.capture) |*c| c else {
         parser.state = .invalid;
@@ -50,7 +47,7 @@ pub fn parse(parser: *Parser, _: ?u8) ?*Command {
 test "OSC 52: get/set clipboard" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "52;s;?";
     for (input) |ch| p.next(ch);
@@ -64,7 +61,7 @@ test "OSC 52: get/set clipboard" {
 test "OSC 52: get/set clipboard (optional parameter)" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "52;;?";
     for (input) |ch| p.next(ch);
@@ -78,7 +75,7 @@ test "OSC 52: get/set clipboard (optional parameter)" {
 test "OSC 52: get/set clipboard with allocator" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "52;s;?";
@@ -93,7 +90,7 @@ test "OSC 52: get/set clipboard with allocator" {
 test "OSC 52: clear clipboard" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
     defer p.deinit();
 
     const input = "52;;";

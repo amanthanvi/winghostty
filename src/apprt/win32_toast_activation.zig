@@ -6,8 +6,8 @@
 //!
 //! Format: `wgh://activate?surface={id}&tab={id}&window={id}&action={action}`
 //!
-//! This module is pure parsing — no Win32 API dependencies. Wire-up
-//! (reading argv, dispatching to App) happens in `win32.zig`.
+//! This module is pure parsing with no Win32 API dependency. `win32.zig`
+//! owns argv scanning and App dispatch.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -16,21 +16,15 @@ const scheme = "wgh://activate?";
 
 pub const Action = enum {
     focus,
-    close,
-    custom,
 
     fn fromString(s: []const u8) ?Action {
         if (std.mem.eql(u8, s, "focus")) return .focus;
-        if (std.mem.eql(u8, s, "close")) return .close;
-        if (std.mem.eql(u8, s, "custom")) return .custom;
         return null;
     }
 
     fn toString(self: Action) []const u8 {
         return switch (self) {
             .focus => "focus",
-            .close => "close",
-            .custom => "custom",
         };
     }
 };
@@ -54,6 +48,12 @@ pub const ParseError = error{
     InvalidNumber,
     Empty,
     Malformed,
+};
+
+pub const ScanLaunchArgsResult = union(enum) {
+    none,
+    malformed,
+    activation: ActivationTarget,
 };
 
 /// Parse a `wgh://activate?key=val&...` launch string into an ActivationTarget.
@@ -84,12 +84,35 @@ pub fn parseLaunchArg(launch: []const u8) ParseError!ActivationTarget {
             target.window_id = std.fmt.parseInt(u32, val, 10) catch return error.InvalidNumber;
         } else if (std.mem.eql(u8, key, "action")) {
             target.action = Action.fromString(val);
-            // Unknown action token treated as null (forward-compat).
+            // Unknown action tokens are ignored for forward compatibility.
         }
-        // Unknown keys silently ignored (forward-compat).
+        // Unknown keys are ignored for forward compatibility.
     }
 
     return target;
+}
+
+/// Scan argv-like input for the first toast activation argument.
+/// Returns null when absent or malformed.
+pub fn scanLaunchArgs(args: []const []const u8) ?ActivationTarget {
+    return switch (scanLaunchArgsDetailed(args)) {
+        .none, .malformed => null,
+        .activation => |target| target,
+    };
+}
+
+/// Scan argv-like input for the first toast activation argument.
+/// Returns an explicit malformed tag so callers can swallow bad
+/// activation argv instead of misrouting it into startup arg parsing.
+pub fn scanLaunchArgsDetailed(args: []const []const u8) ScanLaunchArgsResult {
+    for (args) |arg| {
+        if (!std.mem.startsWith(u8, arg, scheme)) continue;
+        return .{
+            .activation = parseLaunchArg(arg) catch return .malformed,
+        };
+    }
+
+    return .none;
 }
 
 /// Build a `wgh://activate?...` launch string from an ActivationTarget.
@@ -137,10 +160,6 @@ fn appendInt(comptime T: type, buf: *std.ArrayListUnmanaged(u8), alloc: Allocato
     try buf.appendSlice(alloc, s);
 }
 
-// ---------------------------------------------------------------------------
-// Tests
-// ---------------------------------------------------------------------------
-
 test "parse surface only" {
     const t = try parseLaunchArg("wgh://activate?surface=42");
     try std.testing.expectEqual(@as(?u64, 42), t.surface_id);
@@ -160,11 +179,6 @@ test "parse all fields" {
 test "parse unknown key ignored (forward-compat)" {
     const t = try parseLaunchArg("wgh://activate?surface=1&foo=bar");
     try std.testing.expectEqual(@as(?u64, 1), t.surface_id);
-}
-
-test "parse action close" {
-    const t = try parseLaunchArg("wgh://activate?action=close");
-    try std.testing.expectEqual(@as(?Action, .close), t.action);
 }
 
 test "parse invalid number" {
@@ -187,7 +201,7 @@ test "round-trip build then parse" {
         .surface_id = 999,
         .tab_id = 7,
         .window_id = 3,
-        .action = .close,
+        .action = .focus,
     };
 
     const built = try buildLaunchArg(std.testing.allocator, original);
@@ -208,4 +222,48 @@ test "build omits null fields" {
 test "parse malformed missing equals" {
     const result = parseLaunchArg("wgh://activate?noequals");
     try std.testing.expectError(error.Malformed, result);
+}
+
+test "scan launch args finds activation among startup argv" {
+    const args = [_][]const u8{
+        "--working-directory=C:/Users/amant",
+        "wgh://activate?surface=77&window=5&action=focus",
+        "--title=Build",
+    };
+
+    const target = scanLaunchArgs(&args).?;
+    try std.testing.expectEqual(@as(?u64, 77), target.surface_id);
+    try std.testing.expectEqual(@as(?u32, 5), target.window_id);
+    try std.testing.expectEqual(@as(?Action, .focus), target.action);
+}
+
+test "scan launch args ignores malformed activation values" {
+    const args = [_][]const u8{
+        "--working-directory=C:/Users/amant",
+        "wgh://activate?surface=abc",
+        "--title=Build",
+    };
+
+    try std.testing.expect(scanLaunchArgs(&args) == null);
+}
+
+test "scan launch args detailed reports malformed activation" {
+    const args = [_][]const u8{
+        "--working-directory=C:/Users/amant",
+        "wgh://activate?surface=abc",
+        "--title=Build",
+    };
+
+    try std.testing.expect(scanLaunchArgsDetailed(&args) == .malformed);
+}
+
+test "scan launch args ignores non-activation wgh urls" {
+    const args = [_][]const u8{
+        "wgh://open?surface=abc",
+        "--working-directory=C:/Users/amant",
+        "wgh://activate?surface=88",
+    };
+
+    const target = scanLaunchArgs(&args).?;
+    try std.testing.expectEqual(@as(?u64, 88), target.surface_id);
 }

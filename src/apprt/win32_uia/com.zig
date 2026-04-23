@@ -21,7 +21,6 @@ pub const S_FALSE: HRESULT = 1;
 pub const E_NOTIMPL: HRESULT = @bitCast(@as(u32, 0x80004001));
 pub const E_POINTER: HRESULT = @bitCast(@as(u32, 0x80004003));
 pub const E_NOINTERFACE: HRESULT = @bitCast(@as(u32, 0x80004002));
-pub const E_FAIL: HRESULT = @bitCast(@as(u32, 0x80004005));
 
 // COM GUIDs (IID = interface ID).
 pub const IID_IUnknown = GUID.parse("{00000000-0000-0000-C000-000000000046}");
@@ -30,22 +29,12 @@ pub const IID_IRawElementProviderSimple = GUID.parse("{D6DD68D1-86FD-4332-8666-9
 /// UIA object IDs passed as WM_GETOBJECT.lParam by the system / client.
 /// These are negative in the Windows headers; cast to LPARAM via bitcast.
 pub const UiaRootObjectId: LPARAM = -25;
-pub const UiaAppendRuntimeId: LPARAM = 3;
 
 /// ProviderOptions flags for IRawElementProviderSimple::get_ProviderOptions.
-pub const ProviderOptions_ClientSideProvider: i32 = 0x1;
 pub const ProviderOptions_ServerSideProvider: i32 = 0x2;
-pub const ProviderOptions_NonClientAreaProvider: i32 = 0x4;
-pub const ProviderOptions_OverrideProvider: i32 = 0x8;
-pub const ProviderOptions_ProviderOwnsSetFocus: i32 = 0x10;
-pub const ProviderOptions_UseComThreading: i32 = 0x20;
-pub const ProviderOptions_RefuseNonClientSupport: i32 = 0x40;
-pub const ProviderOptions_HasNativeIAccessible: i32 = 0x80;
-pub const ProviderOptions_UseClientCoordinates: i32 = 0x100;
 
 /// VARIANT variant-type tags that we actually emit.
 pub const VT_EMPTY: u16 = 0;
-pub const VT_NULL: u16 = 1;
 pub const VT_I4: u16 = 3;
 pub const VT_BSTR: u16 = 8;
 pub const VT_BOOL: u16 = 11;

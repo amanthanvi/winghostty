@@ -1,6 +1,6 @@
 const std = @import("std");
 const wasm = @import("../os/wasm.zig");
-const cli = @import("../cli.zig");
+const args = @import("../cli/args.zig");
 const alloc = wasm.alloc;
 
 const Config = @import("Config.zig");
@@ -43,8 +43,8 @@ export fn config_load_string(
 
 fn config_load_string_(self: *Config, str: []const u8) !void {
     var fbs = std.io.fixedBufferStream(str);
-    var iter = cli.args.lineIterator(fbs.reader());
-    try cli.args.parse(Config, alloc, self, &iter);
+    var iter = args.lineIterator(fbs.reader());
+    try args.parse(Config, alloc, self, &iter);
 }
 
 export fn config_finalize(self: *Config) void {

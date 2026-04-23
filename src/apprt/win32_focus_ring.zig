@@ -23,6 +23,7 @@
 //! and `ringRect()` to decide whether and where to stroke.
 
 const std = @import("std");
+const geometry = @import("win32_geometry.zig");
 
 // ---------------------------------------------------------------------------
 // Mode + FocusRingTracker
@@ -76,20 +77,7 @@ pub const FocusRingTracker = struct {
 // Rect + ring-rect layout helpers
 // ---------------------------------------------------------------------------
 
-pub const Rect = extern struct {
-    left: i32,
-    top: i32,
-    right: i32,
-    bottom: i32,
-
-    pub fn width(self: Rect) i32 {
-        return self.right - self.left;
-    }
-
-    pub fn height(self: Rect) i32 {
-        return self.bottom - self.top;
-    }
-};
+pub const Rect = geometry.Rect;
 
 /// Default inset in pixels for the focus ring stroke centre line.
 pub const default_inset_px: i32 = 2;

@@ -1,5 +1,6 @@
 #define AppName "winghostty"
 #define AppId "io.github.amanthanvi.winghostty"
+#define AppUserModelId "com.ghostty.winghostty"
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0-dev"
 #endif
@@ -43,9 +44,9 @@ Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked
 Source: "{#StageDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
-Name: "{group}\winghostty"; Filename: "{app}\winghostty.exe"
+Name: "{group}\winghostty"; Filename: "{app}\winghostty.exe"; AppUserModelID: "{#AppUserModelId}"
 Name: "{group}\Uninstall winghostty"; Filename: "{uninstallexe}"
-Name: "{autodesktop}\winghostty"; Filename: "{app}\winghostty.exe"; Tasks: desktopicon
+Name: "{autodesktop}\winghostty"; Filename: "{app}\winghostty.exe"; Tasks: desktopicon; AppUserModelID: "{#AppUserModelId}"
 
 [Run]
 Filename: "{app}\winghostty.exe"; Description: "Launch winghostty"; Flags: nowait postinstall skipifsilent

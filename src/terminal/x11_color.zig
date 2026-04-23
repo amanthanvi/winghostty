@@ -1,6 +1,11 @@
 const std = @import("std");
 const assert = @import("../quirks.zig").inlineAssert;
-const RGB = @import("color.zig").RGB;
+
+pub const RGB = packed struct(u24) {
+    r: u8 = 0,
+    g: u8 = 0,
+    b: u8 = 0,
+};
 
 /// The map of all available X11 colors.
 pub const map = colorMap();

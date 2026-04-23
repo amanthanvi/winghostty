@@ -122,7 +122,7 @@ pub fn step(self: *Self, s: Step) void {
         gl.clear(gl.c.GL_COLOR_BUFFER_BIT);
     };
 
-    // Bind the uniform buffer we bind at index 1 to align with Metal.
+    // Bind the uniform buffer at the shader layout's conventional binding point.
     if (s.uniforms) |ubo| {
         _ = ubo.bindBase(.uniform, 1) catch return;
     }

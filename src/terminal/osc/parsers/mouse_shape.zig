@@ -2,11 +2,8 @@ const std = @import("std");
 
 const assert = @import("../../../quirks.zig").inlineAssert;
 
-const Parser = @import("../../osc.zig").Parser;
-const Command = @import("../../osc.zig").Command;
-
 // Parse OSC 22
-pub fn parse(parser: *Parser, _: ?u8) ?*Command {
+pub fn parse(parser: anytype, _: ?u8) ?*@TypeOf(parser.command) {
     assert(parser.state == .@"22");
     const cap = if (parser.capture) |*c| c else {
         parser.state = .invalid;
@@ -28,7 +25,7 @@ pub fn parse(parser: *Parser, _: ?u8) ?*Command {
 test "OSC 22: pointer cursor" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "22;pointer";
     for (input) |ch| p.next(ch);

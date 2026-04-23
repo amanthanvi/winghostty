@@ -1,4 +1,9 @@
-<h1 align="center">winghostty</h1>
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="images/winghostty-flag.svg" />
+    <img src="images/winghostty-flag-light.svg" alt="Winghostty" width="320" />
+  </picture>
+</p>
 
 <p align="center">
   <em>A Windows terminal emulator that reuses Ghostty's terminal core under a native Win32 front end.</em>
@@ -214,7 +219,7 @@ zig build -Demit-exe=true
 Output: `zig-out\bin\winghostty.exe`.
 
 If Zig cannot reach `deps.files.ghostty.org` directly in your environment,
-seed the dependency cache first:
+seed the Windows build dependency cache first:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File scripts/fetch-zig-deps.ps1

@@ -5,8 +5,6 @@ const std = @import("std");
 
 const assert = @import("../../../quirks.zig").inlineAssert;
 
-const Parser = @import("../../osc.zig").Parser;
-const Command = @import("../../osc.zig").Command;
 const encoding = @import("../encoding.zig");
 const lib = @import("../../lib.zig");
 
@@ -68,7 +66,7 @@ pub const OSC = struct {
     }
 };
 
-pub fn parse(parser: *Parser, _: ?u8) ?*Command {
+pub fn parse(parser: anytype, _: ?u8) ?*@TypeOf(parser.command) {
     assert(parser.state == .@"66");
 
     const cap = if (parser.capture) |*c| c else {
@@ -148,7 +146,7 @@ pub fn parse(parser: *Parser, _: ?u8) ?*Command {
 test "OSC 66: empty parameters" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "66;;bobr";
     for (input) |ch| p.next(ch);
@@ -162,7 +160,7 @@ test "OSC 66: empty parameters" {
 test "OSC 66: single parameter" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "66;s=2;kurwa";
     for (input) |ch| p.next(ch);
@@ -176,7 +174,7 @@ test "OSC 66: single parameter" {
 test "OSC 66: multiple parameters" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "66;s=2:w=7:n=13:d=15:v=1:h=2;long";
     for (input) |ch| p.next(ch);
@@ -195,7 +193,7 @@ test "OSC 66: multiple parameters" {
 test "OSC 66: scale is zero" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "66;s=0;nope";
     for (input) |ch| p.next(ch);
@@ -208,7 +206,7 @@ test "OSC 66: scale is zero" {
 test "OSC 66: invalid parameters" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     for ("66;w=8:v=3:n=16;") |ch| p.next(ch);
     const cmd = p.end('\x1b').?.*;
@@ -222,7 +220,7 @@ test "OSC 66: invalid parameters" {
 test "OSC 66: UTF-8" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "66;;👻魑魅魍魉ゴースッティ";
     for (input) |ch| p.next(ch);
@@ -235,7 +233,7 @@ test "OSC 66: UTF-8" {
 test "OSC 66: unsafe UTF-8" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "66;;\n";
     for (input) |ch| p.next(ch);
@@ -246,7 +244,7 @@ test "OSC 66: unsafe UTF-8" {
 test "OSC 66: overlong UTF-8" {
     const testing = std.testing;
 
-    var p: Parser = .init(null);
+    var p = @import("../../osc.zig").Parser.init(null);
 
     const input = "66;;" ++ "bobr" ** 1025;
     for (input) |ch| p.next(ch);

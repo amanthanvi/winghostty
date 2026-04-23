@@ -1,7 +1,9 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const build_config = @import("build_config.zig");
-const cli = @import("cli.zig");
+const cli_action = @import("cli/action.zig");
+const cli_args = @import("cli/args.zig");
+const cli_ghostty_action = @import("cli/ghostty_action.zig");
 const internal_os = @import("os/main.zig");
 const fontconfig = if (build_config.font_backend.hasFontconfig())
     @import("fontconfig")
@@ -13,8 +15,10 @@ else
     };
 const harfbuzz = @import("harfbuzz");
 const oni = @import("oniguruma");
+const glslang = if (build_config.custom_shaders) @import("glslang") else struct {
+    pub fn init() !void {}
+};
 const crash = @import("crash/main.zig");
-const renderer = @import("renderer.zig");
 const apprt = @import("apprt.zig");
 
 /// We export the xev backend we want to use so that the rest of
@@ -36,7 +40,7 @@ pub const GlobalState = struct {
 
     gpa: ?GPA,
     alloc: std.mem.Allocator,
-    action: ?cli.ghostty.Action,
+    action: ?cli_ghostty_action.Action,
     logging: Logging,
     rlimits: ResourceLimits = .{},
 
@@ -56,14 +60,6 @@ pub const GlobalState = struct {
 
     /// Initialize the global state.
     pub fn init(self: *GlobalState) !void {
-        // const start = try std.time.Instant.now();
-        // const start_micro = std.time.microTimestamp();
-        // defer {
-        //     const end = std.time.Instant.now() catch unreachable;
-        //     // "[updateFrame critical time] <START us>\t<TIME_TAKEN us>"
-        //     std.log.err("[global init time] start={}us duration={}ns", .{ start_micro, end.since(start) / std.time.ns_per_us });
-        // }
-
         // Initialize ourself to nothing so we don't have any extra state.
         // IMPORTANT: this MUST be initialized before any log output because
         // the log function uses the global state.
@@ -102,8 +98,8 @@ pub const GlobalState = struct {
             unreachable;
 
         // We first try to parse any action that we may be executing.
-        self.action = try cli.action.detectArgs(
-            cli.ghostty.Action,
+        self.action = try cli_action.detectArgs(
+            cli_ghostty_action.Action,
             self.alloc,
         );
 
@@ -112,14 +108,11 @@ pub const GlobalState = struct {
         // output.
         if (self.action != null) self.logging.stderr = false;
 
-        // I don't love the env var name but I don't have it in my heart
-        // to parse CLI args 3 times (once for actions, once for config,
-        // maybe once for logging) so for now this is an easy way to do
-        // this. Env vars are useful for logging too because they are
-        // easy to set.
+        // Logging uses an env var because action/config parsing already
+        // consumes CLI args before logging is initialized.
         if ((try internal_os.getenv(self.alloc, "GHOSTTY_LOG"))) |v| {
             defer v.deinit(self.alloc);
-            self.logging = cli.args.parsePackedStruct(Logging, v.value) catch .{};
+            self.logging = cli_args.parsePackedStruct(Logging, v.value) catch .{};
         }
 
         // Setup our signal handlers before logging
@@ -142,7 +135,7 @@ pub const GlobalState = struct {
         if (comptime build_config.font_backend.hasFontconfig()) {
             std.log.info("dependency fontconfig={d}", .{fontconfig.version()});
         }
-        std.log.info("renderer={}", .{renderer.Renderer});
+        std.log.info("renderer={}", .{build_config.renderer});
         std.log.info("event backend={t}", .{xev.backend});
 
         // As early as possible, initialize our resource limits.
@@ -156,21 +149,12 @@ pub const GlobalState = struct {
             );
         };
 
-        // const sentrylib = @import("sentry");
-        // if (sentrylib.captureEvent(sentrylib.Value.initMessageEvent(
-        //     .info,
-        //     null,
-        //     "hello, world",
-        // ))) |uuid| {
-        //     std.log.warn("uuid={s}", .{uuid.string()});
-        // } else std.log.warn("failed to capture event", .{});
-
         // We need to make sure the process locale is set properly. Locale
         // affects a lot of behaviors in a shell.
         try internal_os.ensureLocale(self.alloc);
 
         // Initialize custom shader support, if it is compiled in.
-        try renderer.shadertoy.init();
+        try glslang.init();
 
         // Initialize oniguruma for regex
         try oni.init(&.{oni.Encoding.utf8});
@@ -213,11 +197,8 @@ pub const GlobalState = struct {
             .flags = 0,
         };
 
-        // We ignore SIGPIPE because it is a common signal we may get
-        // due to how we implement termio. When a terminal is closed we
-        // often write to a broken pipe to exit the read thread. This should
-        // be fixed one day but for now this helps make this a bit more
-        // robust.
+        // Closed terminals can produce SIGPIPE while the read thread is
+        // unwinding; normal shutdown paths handle the exit.
         p.sigaction(p.SIG.PIPE, &sa, null);
     }
 };

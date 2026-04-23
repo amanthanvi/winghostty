@@ -1,5 +1,8 @@
 $ErrorActionPreference = "Stop"
 
+# Seeds the dependency subset used by the Windows build. Generated
+# build.zig.zon metadata may still list inactive platform packages.
+
 $systemDrive = if ($env:SystemDrive) { $env:SystemDrive } else { "C:" }
 $userHome = if ($env:USERPROFILE) {
     $env:USERPROFILE
@@ -31,17 +34,9 @@ $deps = @(
     @{ Url = "https://deps.files.ghostty.org/libxev-34fa50878aec6e5fa8f532867001ab3c36fae23e.tar.gz"; File = "libxev-34fa50878aec6e5fa8f532867001ab3c36fae23e.tar.gz" },
     @{ Url = "https://deps.files.ghostty.org/vaxis-7dbb9fd3122e4ffad262dd7c151d80d863b68558.tar.gz"; File = "vaxis-7dbb9fd3122e4ffad262dd7c151d80d863b68558.tar.gz" },
     @{ Url = "https://deps.files.ghostty.org/z2d-0.10.0-j5P_Hu-6FgBsZNgwphIqh17jDnj8_yPtD8yzjO6PpHRQ.tar.gz"; File = "z2d-0.10.0-j5P_Hu-6FgBsZNgwphIqh17jDnj8_yPtD8yzjO6PpHRQ.tar.gz" },
-    @{ Url = "https://deps.files.ghostty.org/zig_objc-f356ed02833f0f1b8e84d50bed9e807bf7cdc0ae.tar.gz"; File = "zig_objc-f356ed02833f0f1b8e84d50bed9e807bf7cdc0ae.tar.gz" },
     @{ Url = "https://deps.files.ghostty.org/zig_js-04db83c617da1956ac5adc1cb9ba1e434c1cb6fd.tar.gz"; File = "zig_js-04db83c617da1956ac5adc1cb9ba1e434c1cb6fd.tar.gz" },
     @{ Url = "https://deps.files.ghostty.org/uucode-0.2.0-ZZjBPqZVVABQepOqZHR7vV_NcaN-wats0IB6o-Exj6m9.tar.gz"; File = "uucode-0.2.0-ZZjBPqZVVABQepOqZHR7vV_NcaN-wats0IB6o-Exj6m9.tar.gz" },
-    @{ Url = "https://deps.files.ghostty.org/zig_wayland-1b5c038ec10da20ed3a15b0b2a6db1c21383e8ea.tar.gz"; File = "zig_wayland-1b5c038ec10da20ed3a15b0b2a6db1c21383e8ea.tar.gz" },
     @{ Url = "https://deps.files.ghostty.org/zf-3c52637b7e937c5ae61fd679717da3e276765b23.tar.gz"; File = "zf-3c52637b7e937c5ae61fd679717da3e276765b23.tar.gz" },
-    @{ Url = "https://github.com/ivanstepanovftw/zigimg/archive/d7b7ab0ba0899643831ef042bd73289510b39906.tar.gz"; File = "zigimg-d7b7ab0ba0899643831ef042bd73289510b39906.tar.gz" },
-    @{ Url = "https://mirrors.lug.mtu.edu/gentoo/distfiles/59/uucode-0.1.0-ZZjBPj96QADXyt5sqwBJUnhaDYs_qBeeKijZvlRa0eqM.tar.gz"; File = "uucode-0.1.0-ZZjBPj96QADXyt5sqwBJUnhaDYs_qBeeKijZvlRa0eqM.tar.gz" },
-    @{ Url = "https://deps.files.ghostty.org/gobject-2025-11-08-23-1.tar.zst"; File = "gobject-2025-11-08-23-1.tar.zst" },
-    @{ Url = "https://deps.files.ghostty.org/wayland-9cb3d7aa9dc995ffafdbdef7ab86a949d0fb0e7d.tar.gz"; File = "wayland-9cb3d7aa9dc995ffafdbdef7ab86a949d0fb0e7d.tar.gz" },
-    @{ Url = "https://gitlab.freedesktop.org/wayland/wayland-protocols/-/archive/1.47/wayland-protocols-1.47.tar.gz"; File = "wayland-protocols-1.47.tar.gz"; Optional = $true },
-    @{ Url = "https://deps.files.ghostty.org/plasma_wayland_protocols-12207e0851c12acdeee0991e893e0132fc87bb763969a585dc16ecca33e88334c566.tar.gz"; File = "plasma_wayland_protocols-12207e0851c12acdeee0991e893e0132fc87bb763969a585dc16ecca33e88334c566.tar.gz" },
     @{ Url = "https://deps.files.ghostty.org/JetBrainsMono-2.304.tar.gz"; File = "JetBrainsMono-2.304.tar.gz" },
     @{ Url = "https://deps.files.ghostty.org/NerdFontsSymbolsOnly-3.4.0.tar.gz"; File = "NerdFontsSymbolsOnly-3.4.0.tar.gz" },
     @{ Url = "https://deps.files.ghostty.org/ghostty-themes-release-20260323-152405-a2c7b60.tgz"; File = "ghostty-themes-release-20260323-152405-a2c7b60.tgz" },
@@ -51,8 +46,6 @@ $deps = @(
     @{ Url = "https://deps.files.ghostty.org/fontconfig-2.14.2.tar.gz"; File = "fontconfig-2.14.2.tar.gz" },
     @{ Url = "https://deps.files.ghostty.org/freetype-1220b81f6ecfb3fd222f76cf9106fecfa6554ab07ec7fdc4124b9bb063ae2adf969d.tar.gz"; File = "freetype-1220b81f6ecfb3fd222f76cf9106fecfa6554ab07ec7fdc4124b9bb063ae2adf969d.tar.gz" },
     @{ Url = "https://deps.files.ghostty.org/glslang-12201278a1a05c0ce0b6eb6026c65cd3e9247aa041b1c260324bf29cee559dd23ba1.tar.gz"; File = "glslang-12201278a1a05c0ce0b6eb6026c65cd3e9247aa041b1c260324bf29cee559dd23ba1.tar.gz" },
-    @{ Url = "https://deps.files.ghostty.org/gtk4-layer-shell-1.1.0.tar.gz"; File = "gtk4-layer-shell-1.1.0.tar.gz" },
-    @{ Url = "https://deps.files.ghostty.org/wayland-protocols-258d8f88f2c8c25a830c6316f87d23ce1a0f12d9.tar.gz"; File = "wayland-protocols-258d8f88f2c8c25a830c6316f87d23ce1a0f12d9.tar.gz" },
     @{ Url = "https://deps.files.ghostty.org/harfbuzz-11.0.0.tar.xz"; File = "harfbuzz-11.0.0.tar.xz" },
     @{ Url = "https://deps.files.ghostty.org/highway-66486a10623fa0d72fe91260f96c892e41aceb06.tar.gz"; File = "highway-66486a10623fa0d72fe91260f96c892e41aceb06.tar.gz" },
     @{ Url = "https://deps.files.ghostty.org/gettext-0.24.tar.gz"; File = "gettext-0.24.tar.gz" },

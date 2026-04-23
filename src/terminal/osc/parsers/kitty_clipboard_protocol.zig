@@ -7,9 +7,7 @@ const build_options = @import("terminal_options");
 
 const assert = @import("../../../quirks.zig").inlineAssert;
 
-const Parser = @import("../../osc.zig").Parser;
-const Command = @import("../../osc.zig").Command;
-const Terminator = @import("../../osc.zig").Terminator;
+const Terminator = @import("../terminator.zig").Terminator;
 const encoding = @import("../encoding.zig");
 
 const log = std.log.scoped(.kitty_clipboard_protocol);
@@ -149,7 +147,7 @@ fn parseIdentifier(str: []const u8) ?[]const u8 {
     return null;
 }
 
-pub fn parse(parser: *Parser, terminator_ch: ?u8) ?*Command {
+pub fn parse(parser: anytype, terminator_ch: ?u8) ?*@TypeOf(parser.command) {
     assert(parser.state == .@"5522");
 
     const cap = if (parser.capture) |*c| c else {
@@ -178,7 +176,7 @@ pub fn parse(parser: *Parser, terminator_ch: ?u8) ?*Command {
 test "OSC: 5522: empty metadata and missing payload" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;";
@@ -201,7 +199,7 @@ test "OSC: 5522: empty metadata and missing payload" {
 test "OSC: 5522: empty metadata and empty payload" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;;";
@@ -224,7 +222,7 @@ test "OSC: 5522: empty metadata and empty payload" {
 test "OSC: 5522: non-empty metadata and payload" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;type=read;dGV4dC9wbGFpbg==";
@@ -247,7 +245,7 @@ test "OSC: 5522: non-empty metadata and payload" {
 test "OSC: 5522: empty id" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;id=";
@@ -261,7 +259,7 @@ test "OSC: 5522: empty id" {
 test "OSC: 5522: valid id" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;id=5c076ad9-d36f-4705-847b-d4dbf356cc0d";
@@ -275,7 +273,7 @@ test "OSC: 5522: valid id" {
 test "OSC: 5522: invalid id" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;id=*42*";
@@ -289,7 +287,7 @@ test "OSC: 5522: invalid id" {
 test "OSC: 5522: invalid status" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;status=BOBR";
@@ -303,7 +301,7 @@ test "OSC: 5522: invalid status" {
 test "OSC: 5522: valid status" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;status=DONE";
@@ -317,7 +315,7 @@ test "OSC: 5522: valid status" {
 test "OSC: 5522: invalid location" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;loc=bobr";
@@ -331,7 +329,7 @@ test "OSC: 5522: invalid location" {
 test "OSC: 5522: valid location" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;loc=primary";
@@ -345,7 +343,7 @@ test "OSC: 5522: valid location" {
 test "OSC: 5522: password 1" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;pw=R2hvc3R0eQ==:name=Qk9CUiBLVVJXQQ==";
@@ -360,7 +358,7 @@ test "OSC: 5522: password 1" {
 test "OSC: 5522: password 2" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;password=R2hvc3R0eQ==";
@@ -374,7 +372,7 @@ test "OSC: 5522: password 2" {
 test "OSC: 5522: example 1" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;type=read:status=OK";
@@ -396,7 +394,7 @@ test "OSC: 5522: example 1" {
 test "OSC: 5522: example 2" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;type=read:mime=dGV4dC9wbGFpbg==;R2hvc3R0eQ==";
@@ -418,7 +416,7 @@ test "OSC: 5522: example 2" {
 test "OSC: 5522: example 3" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;type=read:status=OK";
@@ -440,7 +438,7 @@ test "OSC: 5522: example 3" {
 test "OSC: 5522: example 4" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;type=write";
@@ -462,7 +460,7 @@ test "OSC: 5522: example 4" {
 test "OSC: 5522: example 5" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;type=wdata:mime=dGV4dC9wbGFpbg==;R2hvc3R0eQ==";
@@ -484,7 +482,7 @@ test "OSC: 5522: example 5" {
 test "OSC: 5522: example 6" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;type=wdata";
@@ -506,7 +504,7 @@ test "OSC: 5522: example 6" {
 test "OSC: 5522: example 7" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;type=write:status=DONE";
@@ -528,7 +526,7 @@ test "OSC: 5522: example 7" {
 test "OSC: 5522: example 8" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;type=write:status=EPERM";
@@ -550,7 +548,7 @@ test "OSC: 5522: example 8" {
 test "OSC: 5522: example 9" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;type=walias:mime=dGV4dC9wbGFpbg==;dGV4dC9odG1sIGFwcGxpY2F0aW9uL2pzb24=";
@@ -572,7 +570,7 @@ test "OSC: 5522: example 9" {
 test "OSC: 5522: example 10" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;type=read:status=OK:password=Qk9CUiBLVVJXQQ==";
@@ -594,7 +592,7 @@ test "OSC: 5522: example 10" {
 test "OSC: 5522: example 11" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;type=read:status=DATA:mime=dGV4dC9wbGFpbg==";
@@ -616,7 +614,7 @@ test "OSC: 5522: example 11" {
 test "OSC: 5522: example 12" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;type=read:mime=dGV4dC9wbGFpbg==:password=Qk9CUiBLVVJXQQ==";
@@ -638,7 +636,7 @@ test "OSC: 5522: example 12" {
 test "OSC: 5522: example 13" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;type=read:status=OK";
@@ -660,7 +658,7 @@ test "OSC: 5522: example 13" {
 test "OSC: 5522: example 14" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;type=read:status=DATA:mime=dGV4dC9wbGFpbg==;Qk9CUiBLVVJXQQ==";
@@ -682,7 +680,7 @@ test "OSC: 5522: example 14" {
 test "OSC: 5522: example 15" {
     const testing = std.testing;
 
-    var p: Parser = .init(testing.allocator);
+    var p = @import("../../osc.zig").Parser.init(testing.allocator);
     defer p.deinit();
 
     const input = "5522;type=read:status=OK";

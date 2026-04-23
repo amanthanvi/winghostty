@@ -173,6 +173,11 @@ readonly: bool = false,
 /// the wall clock time that has elapsed between timestamps.
 command_timer: ?std.time.Instant = null,
 
+/// Last terminal progress report, retained so re-enabling progress-style
+/// can restore the current native progress surface without waiting for
+/// another OSC 9;4 update.
+last_progress_report: ?terminal.osc.Command.ProgressReport = null,
+
 /// Search state
 search: ?Search = null,
 search_generation: std.atomic.Value(u64) = .init(0),
@@ -345,6 +350,7 @@ const DerivedConfig = struct {
     links: []DerivedConfig.Link,
     link_previews: configpkg.LinkPreviews,
     scroll_to_bottom: configpkg.Config.ScrollToBottom,
+    progress_style: bool,
     notify_on_command_finish: configpkg.Config.NotifyOnCommandFinish,
     notify_on_command_finish_action: configpkg.Config.NotifyOnCommandFinishAction,
     notify_on_command_finish_after: Duration,
@@ -422,6 +428,7 @@ const DerivedConfig = struct {
             .links = links,
             .link_previews = config.@"link-previews",
             .scroll_to_bottom = config.@"scroll-to-bottom",
+            .progress_style = config.@"progress-style",
             .notify_on_command_finish = config.@"notify-on-command-finish",
             .notify_on_command_finish_action = config.@"notify-on-command-finish-action",
             .notify_on_command_finish_after = config.@"notify-on-command-finish-after",
@@ -1103,6 +1110,8 @@ pub fn handleMessage(self: *Surface, msg: Message) !void {
         },
 
         .progress_report => |v| {
+            self.last_progress_report = v;
+            if (!self.config.progress_style) return;
             _ = self.rt_app.performAction(
                 .{ .surface = self },
                 .progress_report,
@@ -1801,6 +1810,7 @@ pub fn updateConfig(
     const config: *const configpkg.Config = if (config_) |*c| c else original;
 
     // Update our new derived config immediately
+    const had_progress_style = self.config.progress_style;
     const derived = DerivedConfig.init(self.alloc, config) catch |err| {
         // If the derivation fails then we just log and return. We don't
         // hard fail in this case because we don't want to error the surface
@@ -1810,6 +1820,20 @@ pub fn updateConfig(
     };
     self.config.deinit();
     self.config = derived;
+
+    if (progressReportForConfigTransition(
+        had_progress_style,
+        self.config.progress_style,
+        self.last_progress_report,
+    )) |report| {
+        _ = self.rt_app.performAction(
+            .{ .surface = self },
+            .progress_report,
+            report,
+        ) catch |err| {
+            log.warn("failed to sync progress after progress-style change err={}", .{err});
+        };
+    }
 
     // If our mouse is hidden but we disabled mouse hiding, then show it again.
     if (!self.config.mouse_hide_while_typing and self.mouse.hidden) {
@@ -1884,6 +1908,45 @@ pub fn updateConfig(
         .config_change,
         .{ .config = config },
     );
+}
+
+fn progressReportForConfigTransition(
+    had_progress_style: bool,
+    has_progress_style: bool,
+    last_report: ?terminal.osc.Command.ProgressReport,
+) ?terminal.osc.Command.ProgressReport {
+    if (had_progress_style and !has_progress_style) {
+        return .{ .state = .remove };
+    }
+
+    if (!had_progress_style and has_progress_style) {
+        return last_report;
+    }
+
+    return null;
+}
+
+test "progress-style disable clears native progress" {
+    const report = progressReportForConfigTransition(
+        true,
+        false,
+        .{ .state = .set, .progress = 50 },
+    ).?;
+    try std.testing.expectEqual(terminal.osc.Command.ProgressReport.State.remove, report.state);
+    try std.testing.expect(report.progress == null);
+}
+
+test "progress-style enable replays retained progress report" {
+    const report = progressReportForConfigTransition(
+        false,
+        true,
+        .{ .state = .set, .progress = 50 },
+    ).?;
+    try std.testing.expectEqual(terminal.osc.Command.ProgressReport.State.set, report.state);
+    try std.testing.expectEqual(@as(?u8, 50), report.progress);
+
+    try std.testing.expect(progressReportForConfigTransition(false, true, null) == null);
+    try std.testing.expect(progressReportForConfigTransition(true, true, .{ .state = .set }) == null);
 }
 
 const InitialSizeError = error{
@@ -3388,10 +3451,14 @@ pub fn focusCallback(self: *Surface, focused: bool) !void {
 
         // Release the full key first
         if (pressed_key.key != .unidentified) {
-            assert(self.keyCallback(pressed_key) catch |err| err: {
+            const effect = self.keyCallback(pressed_key) catch |err| err: {
                 log.warn("error releasing key on focus loss err={}", .{err});
                 break :err .ignored;
-            } != .closed);
+            };
+            if (effect == .closed) {
+                log.warn("key release on focus loss closed the surface", .{});
+                return;
+            }
         }
 
         // Release any modifiers if set
@@ -3417,10 +3484,14 @@ pub fn focusCallback(self: *Surface, focused: bool) !void {
                     };
                     pressed_key.key = @field(input.Key, keyname ++ "_" ++ side);
                     if (pressed_key.key != original_key) {
-                        assert(self.keyCallback(pressed_key) catch |err| err: {
+                        const effect = self.keyCallback(pressed_key) catch |err| err: {
                             log.warn("error releasing key on focus loss err={}", .{err});
                             break :err .ignored;
-                        } != .closed);
+                        };
+                        if (effect == .closed) {
+                            log.warn("modifier release on focus loss closed the surface", .{});
+                            return;
+                        }
                     }
                 }
             }

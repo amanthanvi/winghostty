@@ -2,12 +2,20 @@ pub const String = extern struct {
     ptr: [*]const u8,
     len: usize,
 
-    pub fn init(zig: anytype) String {
-        return switch (@TypeOf(zig)) {
-            []u8, []const u8 => .{
-                .ptr = zig.ptr,
-                .len = zig.len,
-            },
+    pub fn init(zig: []const u8) String {
+        return .{
+            .ptr = zig.ptr,
+            .len = zig.len,
         };
     }
 };
+
+test "String init accepts byte slices" {
+    var mutable = [_]u8{ 'h', 'i' };
+    const mut = String.init(mutable[0..]);
+    try @import("std").testing.expectEqual(@as(usize, 2), mut.len);
+
+    const const_slice: []const u8 = "hello";
+    const constant = String.init(const_slice);
+    try @import("std").testing.expectEqual(@as(usize, 5), constant.len);
+}

@@ -17,6 +17,7 @@
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
+const cf_html = @import("win32_clipboard_html.zig");
 
 // ---------------------------------------------------------------------------
 // Modifier flags
@@ -205,13 +206,10 @@ const end_marker = "<!--EndFragment-->";
 /// entire envelope — `Version:0.9\r\n…` — into the terminal instead
 /// of the selected fragment.
 pub fn extractHtmlFragment(raw: []const u8) []const u8 {
-    // Numeric-offset path (spec-mandatory). The header is a sequence
-    // of ASCII `Key:value\r\n` lines before the first `<`. We look
-    // for `StartFragment:` and `EndFragment:` followed by a decimal
-    // byte offset into the full CF_HTML payload. Both offsets are
-    // 10-digit zero-padded in the canonical form, but we parse any
-    // decimal integer to be lenient.
-    if (parseCfHtmlHeader(raw)) |range| {
+    // Numeric-offset path (spec-mandatory). Canonical CF_HTML uses
+    // zero-padded 10-digit offsets, but the shared parser is lenient
+    // about whitespace and digit width for drag sources that are not.
+    if (cf_html.fragmentRange(raw)) |range| {
         if (range.start <= range.end and range.end <= raw.len) {
             return raw[range.start..range.end];
         }
@@ -225,25 +223,6 @@ pub fn extractHtmlFragment(raw: []const u8) []const u8 {
         return raw[frag_start..];
     }
     return raw;
-}
-
-/// Parse `StartFragment:<n>` / `EndFragment:<n>` from a CF_HTML
-/// header. Returns null when either field is absent or unparseable.
-/// The scan is case-sensitive (the spec emits these keys verbatim).
-fn parseCfHtmlHeader(raw: []const u8) ?struct { start: usize, end: usize } {
-    const start = parseHeaderU32(raw, "StartFragment:") orelse return null;
-    const end = parseHeaderU32(raw, "EndFragment:") orelse return null;
-    return .{ .start = start, .end = end };
-}
-
-fn parseHeaderU32(raw: []const u8, key: []const u8) ?usize {
-    const idx = std.mem.indexOf(u8, raw, key) orelse return null;
-    var p: usize = idx + key.len;
-    while (p < raw.len and (raw[p] == ' ' or raw[p] == '\t')) : (p += 1) {}
-    const digit_start = p;
-    while (p < raw.len and raw[p] >= '0' and raw[p] <= '9') : (p += 1) {}
-    if (p == digit_start) return null;
-    return std.fmt.parseInt(usize, raw[digit_start..p], 10) catch null;
 }
 
 // ===========================================================================

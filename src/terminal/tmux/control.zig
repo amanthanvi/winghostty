@@ -199,14 +199,9 @@ pub const Parser = struct {
         // The notification MUST exist because we guard entering the notification
         // state on seeing at least a '%'.
         if (std.mem.eql(u8, cmd, "%begin")) {
-            // We don't use the rest of the tokens for now because tmux
-            // claims to guarantee that begin/end are always in order and
-            // never intermixed. In the future, we should probably validate
-            // this.
-            // TODO(tmuxcc): do this before merge?
-
             // Move to block state because we expect a corresponding end/error
-            // and want to accumulate the data.
+            // and want to accumulate the data. tmux guarantees command blocks
+            // are ordered and not interleaved, so the command token is enough.
             self.state = .block;
             self.buffer.clearRetainingCapacity();
             return null;

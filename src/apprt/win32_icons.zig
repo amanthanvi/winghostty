@@ -21,23 +21,11 @@
 //! in-file via `std.testing`.
 
 const std = @import("std");
+const geometry = @import("win32_geometry.zig");
 
 // -- Public types -----------------------------------------------------------
 
-pub const Rect = extern struct {
-    left: i32,
-    top: i32,
-    right: i32,
-    bottom: i32,
-
-    pub fn width(self: Rect) i32 {
-        return self.right - self.left;
-    }
-
-    pub fn height(self: Rect) i32 {
-        return self.bottom - self.top;
-    }
-};
+pub const Rect = geometry.Rect;
 
 pub const Kind = enum {
     close,
@@ -64,10 +52,7 @@ pub const Kind = enum {
 
 // -- Win32 GDI externs ------------------------------------------------------
 
-const POINT = extern struct {
-    x: i32,
-    y: i32,
-};
+const POINT = geometry.Point;
 
 const HDC = *anyopaque;
 
