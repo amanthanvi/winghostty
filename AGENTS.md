@@ -40,6 +40,7 @@ This fork has removed the upstream `macos/` Xcode app and the
 
 ## Self-Correction Log
 
+- 2026-04-23: Zig's Win32 resource cache can stay stale when only `dist/windows/winghostty.ico` changes. Feed an icon-content hash flag into resource compilation before trusting Explorer/taskbar icon validation.
 - 2026-04-22: A PE icon resource alone does not guarantee Win32 runtime/taskbar icon identity. Top-level window classes must register `hIcon`/`hIconSm`, windows should receive `WM_SETICON`, and the AUMID registry `IconUri` must track the current exe path or Explorer/Action Center can keep showing stale shell icons.
 - 2026-04-22: Win32 integrated-titlebar min/max buttons must dispatch `WM_SYSCOMMAND` from `WM_NCLBUTTONDOWN` and swallow the matching up; after `WM_NCCALCSIZE` removes the top NC margin, mouse-up translation can require a second click. Avoid UxTheme `WINDOW` caption-button painting in custom chrome because it produces legacy glyphs.
 - 2026-04-22: Interactive Win11 composite validation must perform one upfront build whenever tracked inputs are newer than `zig-out\bin\winghostty.exe`, not only for explicit `-Rebuild`; otherwise parallel child harnesses can race rebuilding the same Zig cache.
