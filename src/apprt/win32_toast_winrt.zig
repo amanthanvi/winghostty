@@ -3,8 +3,8 @@
 //! The runtime loads combase.dll dynamically and calls WinRT through raw
 //! COM vtables so callers can fall back to host-local notification
 //! surfaces when WinRT is unavailable. `App.init` owns
-//! CoInitializeEx(STA); this layer only balances RoInitialize when it
-//! returns S_OK.
+//! CoInitializeEx(STA); this layer balances RoInitialize calls that return
+//! S_OK or S_FALSE.
 
 const std = @import("std");
 const Allocator = std.mem.Allocator;
@@ -324,6 +324,10 @@ pub fn isRoInitSuccess(hr: HRESULT) bool {
     return hr == S_OK or hr == S_FALSE or hr == RPC_E_CHANGED_MODE;
 }
 
+fn roInitializeNeedsUninitialize(hr: HRESULT) bool {
+    return hr == S_OK or hr == S_FALSE;
+}
+
 fn notificationSettingFromInt(value: i32) ?NotificationSetting {
     return switch (value) {
         @intFromEnum(NotificationSetting.Enabled) => .Enabled,
@@ -464,10 +468,11 @@ pub const WinrtToast = struct {
 
         const ro_hr = fns.ro_init(RO_INIT_SINGLETHREADED);
         const ro_initialized = isRoInitSuccess(ro_hr);
+        const ro_uninit_needed = roInitializeNeedsUninitialize(ro_hr);
         if (!ro_initialized and ro_hr < 0 and ro_hr != RPC_E_CHANGED_MODE) {
             return InitError.WinrtUnavailable;
         }
-        errdefer if (ro_initialized and ro_hr == S_OK) fns.ro_uninit();
+        errdefer if (ro_uninit_needed) fns.ro_uninit();
 
         const manager_hs = try createHString(&fns, toast_manager_class);
         defer _ = fns.delete_string(manager_hs);
@@ -494,7 +499,7 @@ pub const WinrtToast = struct {
             .fns = fns,
             .notifier = IToastNotifier.fromRaw(notifier_raw.?),
             .aumid_hs = aumid_hs.?,
-            .ro_initialized = ro_initialized and (ro_hr == S_OK),
+            .ro_initialized = ro_uninit_needed,
         };
     }
 
@@ -853,12 +858,14 @@ test "WinrtToast COM interface wrappers have vtbl pointer at offset 0" {
     try std.testing.expectEqual(@as(usize, 0), @offsetOf(IXmlDocumentIO, "vtbl"));
 }
 
-test "WinrtToast init/deinit flag tracking - ro_initialized false prevents RoUninitialize" {
+test "WinrtToast RoInitialize success and teardown tracking" {
     try std.testing.expect(isRoInitSuccess(S_OK));
-
     try std.testing.expect(isRoInitSuccess(S_FALSE));
-
     try std.testing.expect(isRoInitSuccess(RPC_E_CHANGED_MODE));
+
+    try std.testing.expect(roInitializeNeedsUninitialize(S_OK));
+    try std.testing.expect(roInitializeNeedsUninitialize(S_FALSE));
+    try std.testing.expect(!roInitializeNeedsUninitialize(RPC_E_CHANGED_MODE));
 }
 
 test "WinrtToast ComInterface wrapper size equals pointer size" {

@@ -8,7 +8,6 @@ $ErrorActionPreference = 'Stop'
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $suiteLogDir = Join-Path $env:TEMP ("winghostty-interactive-win11-suite-{0}" -f $PID)
 New-Item -ItemType Directory -Force -Path $suiteLogDir | Out-Null
-$devWindowsCmd = Join-Path $repoRoot 'scripts\dev-windows.cmd'
 $libPath = Join-Path $repoRoot 'scripts\interactive-win11-lib.ps1'
 . $libPath
 
@@ -41,16 +40,7 @@ class InteractiveWin11HarnessRun {
 }
 
 function Invoke-SuiteBuild {
-    Push-Location $repoRoot
-    try {
-        & cmd /c $devWindowsCmd zig build -Demit-exe=true
-        if ($LASTEXITCODE -ne 0) {
-            throw "suite rebuild failed with exit code $LASTEXITCODE"
-        }
-    }
-    finally {
-        Pop-Location
-    }
+    Invoke-InteractiveWin11Build -RepoRoot $repoRoot
 }
 
 function Invoke-SuiteBuildIfNeeded {
@@ -165,7 +155,8 @@ Invoke-Harness -ScriptName 'interactive-win11-smoke.ps1' -TimeoutSeconds 10 -Pas
 )
 
 $maxTimeoutSeconds = ($parallelRuns | ForEach-Object { $_.TimeoutSeconds } | Measure-Object -Maximum).Maximum
-$parallelDeadline = (Get-Date).AddSeconds($maxTimeoutSeconds + 10)
+$overallTimeoutSeconds = $maxTimeoutSeconds + 10
+$parallelDeadline = (Get-Date).AddSeconds($overallTimeoutSeconds)
 
 foreach ($run in $parallelRuns) {
     $remainingMilliseconds = [int][Math]::Ceiling(($parallelDeadline - (Get-Date)).TotalMilliseconds)
@@ -178,7 +169,7 @@ foreach ($run in $parallelRuns) {
             }
         }
         throw @"
-$($run.Script) timed out after $($run.TimeoutSeconds) seconds
+$($run.Script) timed out before suite deadline (${overallTimeoutSeconds}s overall; nominal harness timeout $($run.TimeoutSeconds)s)
 stdout ($($run.Stdout)):
 $(Get-HarnessLog -Path $run.Stdout)
 
