@@ -343,6 +343,9 @@ fn iidEqual(a: *const GUID, b: *const GUID) bool {
     return std.mem.eql(u8, std.mem.asBytes(a), std.mem.asBytes(b));
 }
 
+/// Callback invoked when a toast with a launch attribute is clicked.
+/// `launch` is handler-owned and valid only for the callback duration;
+/// copy it before returning if the data must be retained.
 pub const ActivationCallback = *const fn (ctx: *anyopaque, launch: []const u8) void;
 
 const ToastActivatedHandlerInterface = extern struct {
@@ -441,6 +444,7 @@ const ToastActivationHandler = struct {
         _: ?*anyopaque,
     ) callconv(.winapi) HRESULT {
         const self = fromBase(base);
+        // The callback must copy launch if it needs to retain the value.
         self.callback(self.ctx, self.launch);
         return S_OK;
     }
@@ -583,14 +587,12 @@ pub const WinrtToast = struct {
         }
 
         if (launch) |value| {
-            const callback = self.activation_callback orelse {
-                std.log.warn("winrt toast activation callback missing for launch toast", .{});
+            if (self.activation_callback == null or self.activation_ctx == null) {
+                std.log.warn("winrt toast activation callback/context missing for launch toast", .{});
                 return ShowError.ActivationFailed;
-            };
-            const ctx = self.activation_ctx orelse {
-                std.log.warn("winrt toast activation context missing for launch toast", .{});
-                return ShowError.ActivationFailed;
-            };
+            }
+            const callback = self.activation_callback.?;
+            const ctx = self.activation_ctx.?;
             const handler = ToastActivationHandler.create(value, callback, ctx) catch return ShowError.OutOfMemory;
             var token: i64 = 0;
             const add_hr = notification.vtbl.add_Activated(notification.asRaw(), &handler.base, &token);

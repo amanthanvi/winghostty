@@ -598,6 +598,11 @@ test "buildInjectedArgv: skips empty flag names" {
     try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
 }
 
+test "buildInjectedArgv: skips empty slash flag names" {
+    const argv = [_][]const u8{ "pwsh.exe", "/:Get-Date" };
+    try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);
+}
+
 test "buildInjectedArgv: skips positional script path after prefix flags" {
     const argv = [_][]const u8{ "pwsh.exe", "-NoProfile", ".\\script.ps1" };
     try std.testing.expect((try buildInjectedArgv(std.testing.allocator, &argv, "C:\\int.ps1")) == null);

@@ -164,9 +164,13 @@ Invoke-Harness -ScriptName 'interactive-win11-smoke.ps1' -TimeoutSeconds 10 -Pas
     Start-Harness -ScriptName 'interactive-win11-progress.ps1' -TimeoutSeconds 20
 )
 
+$maxTimeoutSeconds = ($parallelRuns | ForEach-Object { $_.TimeoutSeconds } | Measure-Object -Maximum).Maximum
+$parallelDeadline = (Get-Date).AddSeconds($maxTimeoutSeconds + 10)
+
 foreach ($run in $parallelRuns) {
-    $waitMilliseconds = ($run.TimeoutSeconds + 5) * 1000
-    if (-not $run.Process.WaitForExit($waitMilliseconds)) {
+    $remainingMilliseconds = [int][Math]::Ceiling(($parallelDeadline - (Get-Date)).TotalMilliseconds)
+    if ($remainingMilliseconds -le 0) { $remainingMilliseconds = 1 }
+    if (-not $run.Process.WaitForExit($remainingMilliseconds)) {
         foreach ($other in $parallelRuns) {
             if (-not $other.Process.HasExited) {
                 Stop-Process -Id $other.Process.Id -Force -ErrorAction SilentlyContinue
