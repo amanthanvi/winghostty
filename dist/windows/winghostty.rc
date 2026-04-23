@@ -5,8 +5,8 @@ LANGUAGE 0, 0
 RT_MANIFEST 24 "winghostty.manifest"
 
 #define ID_ICON_GHOSTTY 1
-// Zig's resource cache keys the .rc file, so keep this reference explicit
-// when changing the packaged application icon.
+// GhosttyExe.zig passes an icon-content hash define so .ico-only changes
+// invalidate Zig's cached resource compilation.
 ID_ICON_GHOSTTY ICON "winghostty.ico"
 
 VS_VERSION_INFO VERSIONINFO

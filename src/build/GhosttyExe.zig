@@ -53,6 +53,7 @@ pub fn init(b: *std.Build, cfg: *const Config, deps: *const SharedDeps) !Ghostty
             exe.subsystem = .Windows;
             exe.addWin32ResourceFile(.{
                 .file = b.path("dist/windows/winghostty.rc"),
+                .flags = &.{try win32IconResourceStamp(b)},
             });
         },
 
@@ -74,4 +75,19 @@ pub fn install(self: *const Ghostty) void {
 fn checkNixShell(exe: *std.Build.Step.Compile, cfg: *const Config) !void {
     _ = exe;
     _ = cfg;
+}
+
+fn win32IconResourceStamp(b: *std.Build) ![]const u8 {
+    const icon_bytes = try std.fs.cwd().readFileAlloc(
+        b.allocator,
+        "dist/windows/winghostty.ico",
+        1024 * 1024,
+    );
+    defer b.allocator.free(icon_bytes);
+
+    return try std.fmt.allocPrint(
+        b.allocator,
+        "/DWINGHOSTTY_ICON_HASH_{x}",
+        .{std.hash.Wyhash.hash(0, icon_bytes)},
+    );
 }
