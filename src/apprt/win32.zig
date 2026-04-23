@@ -12289,6 +12289,7 @@ fn stripHtmlTags(alloc: std.mem.Allocator, html: []const u8) ![]u8 {
                 i = end + 1;
                 continue;
             }
+            try buf.appendSlice(alloc, html[i..]);
             break;
         }
         try buf.append(alloc, c);
@@ -12311,14 +12312,14 @@ test "stripHtmlTags handles malformed (unclosed tag)" {
     const testing = std.testing;
     const out = try stripHtmlTags(testing.allocator, "pre<broken");
     defer testing.allocator.free(out);
-    try testing.expectEqualStrings("pre", out);
+    try testing.expectEqualStrings("pre<broken", out);
 }
 
-test "stripHtmlTags malformed in middle truncates fallback" {
+test "stripHtmlTags malformed in middle preserves fallback tail" {
     const testing = std.testing;
     const out = try stripHtmlTags(testing.allocator, "hello <world tail");
     defer testing.allocator.free(out);
-    try testing.expectEqualStrings("hello ", out);
+    try testing.expectEqualStrings("hello <world tail", out);
 }
 
 test "stripHtmlTags preserves plain text" {
