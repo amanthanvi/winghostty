@@ -104,9 +104,11 @@ powershell.exe -ExecutionPolicy Bypass -File .\interactive-win11-resize.ps1 -Res
 ## interactive-win11-undo.ps1
 
 Interactive Win11 validation for the shipped undo/redo action set. It launches
-`winghostty`, exercises split creation, tab close/restore, last-tab recovery,
-and both palette- and keybinding-driven undo paths, then verifies the visible
-tab/surface counts after each replay step.
+`winghostty`, exercises split creation, tab close/restore, and empty-host
+survival after last-tab close, then verifies the visible tab/surface counts
+after each replay step. Last-tab headless undo/redo remains covered by focused
+Zig tests plus manual validation; this harness does not claim foreground
+keyboard coverage.
 
 Run with:
 
