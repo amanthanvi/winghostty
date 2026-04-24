@@ -85,13 +85,24 @@ is in **[docs/status.md](docs/status.md)**.
 
 ## Install
 
-Download the latest build from **[Releases](https://github.com/amanthanvi/winghostty/releases)**:
+Latest stable release:
+**[winghostty 1.3.106](https://github.com/amanthanvi/winghostty/releases/tag/v1.3.106)**,
+published 2026-04-24.
+
+Download directly from **[Releases](https://github.com/amanthanvi/winghostty/releases)**:
 
 | File | Use when |
 | --- | --- |
-| `winghostty-<version>-windows-x64-setup.exe` | You want a normal install with a Start menu entry. |
-| `winghostty-<version>-windows-x64-portable.zip` | You want to run without installing. |
-| `SHA256SUMS.txt` | Verifying downloads. |
+| [`winghostty-1.3.106-windows-x64-setup.exe`](https://github.com/amanthanvi/winghostty/releases/download/v1.3.106/winghostty-1.3.106-windows-x64-setup.exe) | You want a normal install with a Start menu entry. |
+| [`winghostty-1.3.106-windows-x64-portable.zip`](https://github.com/amanthanvi/winghostty/releases/download/v1.3.106/winghostty-1.3.106-windows-x64-portable.zip) | You want to run without installing. |
+| [`SHA256SUMS.txt`](https://github.com/amanthanvi/winghostty/releases/download/v1.3.106/SHA256SUMS.txt) | Verifying downloads. |
+
+Scoop users can install from the fork-owned bucket:
+
+```powershell
+scoop bucket add winghostty https://github.com/amanthanvi/scoop-winghostty
+scoop install winghostty/winghostty
+```
 
 On first run, Windows SmartScreen may say *"Windows protected your PC"*.
 Click **More info** → **Run anyway**. Releases are unsigned right now; code
