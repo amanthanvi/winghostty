@@ -18261,7 +18261,7 @@ pub const Surface = struct {
 
         self.undo_stack.discardExpired(self.app.undoCutoffTimestampMs());
         const state_bytes = try self.captureTerminalStateBytes();
-        errdefer self.app.core_app.alloc.free(state_bytes);
+        // Ownership moves into `entry` below.
 
         var entry: win32_undo.Entry = .{
             .kind = kind,
