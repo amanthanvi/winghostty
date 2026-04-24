@@ -33,8 +33,8 @@ produces:
 1. An Inno Setup installer
 2. A portable ZIP
 3. SHA256 checksums for published assets
-4. A release icon asset used by Chocolatey metadata
-5. Generated Chocolatey and Scoop package-manager metadata
+4. A release icon asset
+5. Generated Scoop package-manager metadata
 
 Unsigned releases are allowed. SmartScreen friction is expected until code
 signing is added.
@@ -76,7 +76,6 @@ powershell -ExecutionPolicy Bypass -File scripts/package-package-managers.ps1 `
 
 This emits:
 
-- `dist/artifacts/winghostty-<version>-windows-x64/package-managers/chocolatey/`
 - `dist/artifacts/winghostty-<version>-windows-x64/package-managers/scoop/`
 - `dist/artifacts/winghostty-<version>-windows-x64/package-managers/metadata.json`
 
@@ -95,18 +94,18 @@ notes all agree on the current upstream base.
 - Repo variable: `WINGET_PACKAGE_IDENTIFIER`
 - Current automation path: `wingetcreate update ... --submit`
 
-The first WinGet submission still needs a human bootstrap check. The
-`wingetcreate new` path remains interactive even when it can infer defaults, so
-the workflow only uses the truthful non-interactive update path after the
-package already exists in `microsoft/winget-pkgs`.
+As of `wingetcreate v1.12.8.0`, the `new` command still prompts for required
+fields such as `PackageIdentifier` and fails in a non-interactive shell when
+they are missing. Keep CI on the truthful `update` path after the package
+already exists in `microsoft/winget-pkgs`.
 
-### Chocolatey
+For the first bootstrap, run `wingetcreate token -s` once locally, then submit
+the current installer interactively with:
 
-- Secret: `CHOCOLATEY_API_KEY`
-- Publish target: `https://push.chocolatey.org/`
-
-Chocolatey Community is happiest on the new numeric release tags. Plain semver
-releases pass through unchanged.
+```powershell
+wingetcreate new --out "$env:TEMP\wingetcreate-bootstrap" --no-open `
+  https://github.com/amanthanvi/winghostty/releases/download/v<version>/winghostty-<version>-windows-x64-setup.exe
+```
 
 ### Scoop
 

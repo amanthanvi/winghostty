@@ -40,6 +40,7 @@ This fork has removed the upstream `macos/` Xcode app and the
 
 ## Self-Correction Log
 
+- 2026-04-24: `wingetcreate new` still prompts for required fields such as `PackageIdentifier` and crashes in non-interactive shells when they are missing; keep WinGet CI on the truthful `update --submit` path until bootstrap can be supplied non-interactively.
 - 2026-04-24: winghostty release tags should stay on plain semver with `major.minor` tracking the Ghostty upstream line and `patch` owned by the fork (`1.3.100`, `1.3.101`, ...); keep the exact upstream base in `dist/windows/release-metadata.json` instead of leaking it into the public tag.
 - 2026-04-24: Installing `wingetcreate` from the MSIX bundle on a clean Windows runner also requires the `Microsoft.VCLibs.x64.14.00.Desktop.appx` framework package first; skipping that dependency makes the WinGet publish path flaky.
 - 2026-04-24: Win32 host-structural and per-surface local undo entries can share the same `GetTickCount64()` millisecond; cross-stack undo/redo selection needs a monotonic sequence tie-breaker or same-tick actions replay out of LIFO order.

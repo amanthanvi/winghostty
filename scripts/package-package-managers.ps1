@@ -17,8 +17,6 @@ param(
 
     [string]$WingetPackageIdentifier = "AmanThanvi.winghostty",
 
-    [string]$ChocolateyPackageId = "winghostty",
-
     [string]$ScoopPackageName = "winghostty"
 )
 
@@ -47,12 +45,7 @@ $iconPath = Join-Path $artifactRootPath $iconName
 $releaseBaseUrl = "https://github.com/$Repo/releases/download/$tagValue"
 $projectUrl = "https://github.com/$Repo"
 $releaseUrl = "$projectUrl/releases/tag/$tagValue"
-$licenseUrl = "$projectUrl/blob/$tagValue/LICENSE"
-$docsUrl = "$projectUrl/blob/$tagValue/docs/getting-started.md"
-$bugTrackerUrl = "$projectUrl/issues"
 $iconUrl = "$releaseBaseUrl/$iconName"
-$packageTitle = "winghostty terminal"
-$packageSummary = "Native Win32 terminal emulator built on Ghostty's terminal core."
 $packageDescription = @"
 winghostty is a Windows terminal emulator that reuses Ghostty's terminal core under a native Win32 front end.
 "@.Trim()
@@ -110,28 +103,6 @@ function Get-AssetChecksum {
     return $checksum
 }
 
-function ConvertTo-ChocolateyVersion {
-    param([string]$InputVersion)
-
-    if ($InputVersion -match '^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)$') {
-        return "$($Matches.major).$($Matches.minor).$($Matches.patch)"
-    }
-
-    if ($InputVersion -match '^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)\.(?<build>\d+)$') {
-        return "$($Matches.major).$($Matches.minor).$($Matches.patch).$($Matches.build)"
-    }
-
-    if ($InputVersion -match '^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)-winghostty(?<build>\d+)$') {
-        return "$($Matches.major).$($Matches.minor).$($Matches.patch).$($Matches.build)"
-    }
-
-    if ($InputVersion -match '^(?<major>\d+)\.(?<minor>\d+)\.(?<patch>\d+)-winghostty\.(?<build>\d+)$') {
-        return "$($Matches.major).$($Matches.minor).$($Matches.patch).$($Matches.build)"
-    }
-
-    throw "Unsupported Chocolatey version format '$InputVersion'. Prefer plain <major>.<minor>.<patch> release tags. Legacy winghostty suffix forms are still accepted for transition."
-}
-
 function Get-VersionLine {
     param([string]$InputVersion)
 
@@ -152,7 +123,6 @@ foreach ($requiredPath in $requiredPaths) {
 $checksumMap = Get-ChecksumMap -Path $checksumsPath
 $setupSha256 = Get-AssetChecksum -ChecksumMap $checksumMap -AssetName $setupName -AssetPath $setupPath
 $portableSha256 = Get-AssetChecksum -ChecksumMap $checksumMap -AssetName $portableName -AssetPath $portablePath
-$chocolateyVersion = ConvertTo-ChocolateyVersion -InputVersion $Version
 $versionLine = Get-VersionLine -InputVersion $Version
 
 if ($UpstreamBaseVersion) {
@@ -164,120 +134,11 @@ if ($UpstreamBaseVersion) {
 
 Reset-Directory -Path $outputRootPath
 
-$chocolateyRoot = Join-Path $outputRootPath "chocolatey"
-$chocolateyTools = Join-Path $chocolateyRoot "tools"
 $scoopRoot = Join-Path $outputRootPath "scoop"
 $metadataPath = Join-Path $outputRootPath "metadata.json"
-$nuspecPath = Join-Path $chocolateyRoot "$ChocolateyPackageId.nuspec"
-$installScriptPath = Join-Path $chocolateyTools "chocolateyInstall.ps1"
-$uninstallScriptPath = Join-Path $chocolateyTools "chocolateyUninstall.ps1"
-$verificationPath = Join-Path $chocolateyTools "VERIFICATION.txt"
 $scoopManifestPath = Join-Path $scoopRoot "$ScoopPackageName.json"
 
-New-Item -ItemType Directory -Path $chocolateyTools -Force | Out-Null
 New-Item -ItemType Directory -Path $scoopRoot -Force | Out-Null
-
-$nuspec = @"
-<?xml version="1.0" encoding="utf-8"?>
-<package xmlns="http://schemas.microsoft.com/packaging/2015/06/nuspec.xsd">
-  <metadata>
-    <id>$ChocolateyPackageId</id>
-    <version>$chocolateyVersion</version>
-    <title>$packageTitle</title>
-    <authors>Aman Thanvi</authors>
-    <owners>Aman Thanvi</owners>
-    <licenseUrl>$licenseUrl</licenseUrl>
-    <projectUrl>$projectUrl</projectUrl>
-    <packageSourceUrl>$projectUrl</packageSourceUrl>
-    <docsUrl>$docsUrl</docsUrl>
-    <bugTrackerUrl>$bugTrackerUrl</bugTrackerUrl>
-    <releaseNotes>$releaseUrl</releaseNotes>
-    <iconUrl>$iconUrl</iconUrl>
-    <requireLicenseAcceptance>false</requireLicenseAcceptance>
-    <summary>$packageSummary</summary>
-    <description>$packageDescription</description>
-    <tags>terminal console ghostty win32 windows shell</tags>
-  </metadata>
-</package>
-"@
-Set-Content -LiteralPath $nuspecPath -Value $nuspec
-
-$installScript = @'
-$packageArgs = @{
-    packageName    = '__PACKAGE_ID__'
-    fileType       = 'exe'
-    silentArgs     = '/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-'
-    url64bit       = '__INSTALLER_URL__'
-    checksum64     = '__INSTALLER_SHA256__'
-    checksumType64 = 'sha256'
-    validExitCodes = @(0)
-}
-
-Install-ChocolateyPackage @packageArgs
-'@
-$installScript = $installScript.Replace("__PACKAGE_ID__", $ChocolateyPackageId)
-$installScript = $installScript.Replace("__INSTALLER_URL__", "$releaseBaseUrl/$setupName")
-$installScript = $installScript.Replace("__INSTALLER_SHA256__", $setupSha256)
-Set-Content -LiteralPath $installScriptPath -Value $installScript
-
-$uninstallScript = @'
-$packageName = '__PACKAGE_ID__'
-$softwareName = 'winghostty'
-$validExitCodes = @(0)
-[array]$keys = Get-UninstallRegistryKey -SoftwareName $softwareName
-
-if ($keys.Count -eq 0) {
-    Write-Warning "$packageName has already been uninstalled by another process."
-    return
-}
-
-if ($keys.Count -gt 1) {
-    throw "Expected one uninstall entry for $softwareName, found $([int]$keys.Count)."
-}
-
-$uninstallString = if ($keys[0].QuietUninstallString) {
-    $keys[0].QuietUninstallString
-} else {
-    "$([string]$keys[0].UninstallString) /VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP-"
-}
-
-if ($uninstallString -match '^\s*"([^"]+)"\s*(.*)$') {
-    $file = $Matches[1]
-    $silentArgs = $Matches[2]
-} elseif ($uninstallString -match '^\s*([^\s]+)\s*(.*)$') {
-    $file = $Matches[1]
-    $silentArgs = $Matches[2]
-} else {
-    throw "Unable to parse uninstall command: $uninstallString"
-}
-
-Uninstall-ChocolateyPackage -PackageName $packageName `
-    -FileType 'exe' `
-    -SilentArgs $silentArgs.Trim() `
-    -File $file `
-    -ValidExitCodes $validExitCodes
-'@
-$uninstallScript = $uninstallScript.Replace("__PACKAGE_ID__", $ChocolateyPackageId)
-Set-Content -LiteralPath $uninstallScriptPath -Value $uninstallScript
-
-$verification = @"
-VERIFICATION
-Verification is intended to assist package moderators and reviewers.
-
-Installer
-1. Download $releaseBaseUrl/$setupName
-2. Run Get-FileHash -Algorithm SHA256 $setupName
-3. Confirm the hash equals $setupSha256
-
-Portable ZIP
-1. Download $releaseBaseUrl/$portableName
-2. Run Get-FileHash -Algorithm SHA256 $portableName
-3. Confirm the hash equals $portableSha256
-
-Project source
-$projectUrl
-"@
-Set-Content -LiteralPath $verificationPath -Value $verification
 
 $scoopManifest = [ordered]@{
     version      = $Version
@@ -328,13 +189,6 @@ $metadata = [ordered]@{
         version           = $Version
         installerUrl      = "$releaseBaseUrl/$setupName"
     }
-    chocolatey = [ordered]@{
-        packageId   = $ChocolateyPackageId
-        version     = $chocolateyVersion
-        packageDir  = $chocolateyRoot
-        nuspecPath  = $nuspecPath
-        installerUrl = "$releaseBaseUrl/$setupName"
-    }
     scoop      = [ordered]@{
         packageName   = $ScoopPackageName
         manifestPath  = $scoopManifestPath
@@ -354,6 +208,5 @@ if ($FirstForkPatch -gt 0) {
 
 Set-Content -LiteralPath $metadataPath -Value ($metadata | ConvertTo-Json -Depth 8)
 
-Write-Host "Chocolatey package root: $chocolateyRoot"
 Write-Host "Scoop manifest         : $scoopManifestPath"
 Write-Host "Metadata               : $metadataPath"
