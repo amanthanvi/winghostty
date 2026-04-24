@@ -1,5 +1,5 @@
 const std = @import("std");
-const windows_shell = @import("../config/windows_shell.zig");
+const ProfileKind = @import("../config/windows_shell_types.zig").ProfileKind;
 
 /// Pack r/g/b bytes into a Win32 COLORREF (0x00BBGGRR).
 pub fn rgb(r: u8, g: u8, b: u8) u32 {
@@ -160,8 +160,8 @@ pub const ThemeMetrics = struct {
     height_titlebar: u16 = 40, // integrated titlebar total
     height_overlay: u16 = 58, // command palette / search
     height_inspector: u16 = 42,
-    height_status: u16 = 42, // will slim to 28 in P5
-    height_search_bar: u16 = 40, // future docked search (P5)
+    height_status: u16 = 42, // status row
+    height_search_bar: u16 = 40, // docked search row
 
     // Overlay geometry (px).
     overlay_padding: u16 = 12,
@@ -511,7 +511,7 @@ pub fn overlayEditBorderColor(mode: HostOverlayMode, focused: bool, is_dark: boo
 
 // ── Profile chrome accents ──────────────────────────────────────────────
 
-pub fn profileChromeAccent(kind: windows_shell.ProfileKind, is_dark: bool) ProfileChromeAccent {
+pub fn profileChromeAccent(kind: ProfileKind, is_dark: bool) ProfileChromeAccent {
     if (!is_dark) {
         return switch (kind) {
             .wsl_default, .wsl_distro => .{
@@ -623,7 +623,7 @@ pub fn profileChromeAccent(kind: windows_shell.ProfileKind, is_dark: bool) Profi
 
 pub fn applyProfileChromeAccent(
     base: ButtonColors,
-    kind: windows_shell.ProfileKind,
+    kind: ProfileKind,
     is_dark: bool,
     active: bool,
     hovered: bool,
@@ -651,12 +651,12 @@ pub fn applyProfileChromeAccent(
     return colors;
 }
 
-pub fn profileKindFocusRingColor(kind: windows_shell.ProfileKind, is_dark: bool) u32 {
+pub fn profileKindFocusRingColor(kind: ProfileKind, is_dark: bool) u32 {
     return profileChromeAccent(kind, is_dark).focus;
 }
 
 pub fn profileChromeStripeColor(
-    kind: windows_shell.ProfileKind,
+    kind: ProfileKind,
     is_dark: bool,
     active: bool,
     hovered: bool,
@@ -670,15 +670,15 @@ pub fn profileChromeStripeColor(
     return accent.idle_border;
 }
 
-pub fn profileKindLabelColor(kind: windows_shell.ProfileKind, is_dark: bool) u32 {
+pub fn profileKindLabelColor(kind: ProfileKind, is_dark: bool) u32 {
     return profileChromeAccent(kind, is_dark).focus;
 }
 
-pub fn profileKindHintColor(kind: windows_shell.ProfileKind, is_dark: bool) u32 {
+pub fn profileKindHintColor(kind: ProfileKind, is_dark: bool) u32 {
     return profileChromeAccent(kind, is_dark).active_border;
 }
 
-pub fn quickSlotChipColors(kind: windows_shell.ProfileKind, is_dark: bool, hovered: bool) ButtonColors {
+pub fn quickSlotChipColors(kind: ProfileKind, is_dark: bool, hovered: bool) ButtonColors {
     const accent = profileChromeAccent(kind, is_dark);
     return .{
         .bg = if (hovered) accent.hover_bg else accent.idle_bg,
@@ -687,7 +687,7 @@ pub fn quickSlotChipColors(kind: windows_shell.ProfileKind, is_dark: bool, hover
     };
 }
 
-pub fn pinnedChipMarkerColor(kind: windows_shell.ProfileKind, is_dark: bool, hovered: bool) u32 {
+pub fn pinnedChipMarkerColor(kind: ProfileKind, is_dark: bool, hovered: bool) u32 {
     return if (hovered) profileKindLabelColor(kind, is_dark) else profileKindHintColor(kind, is_dark);
 }
 

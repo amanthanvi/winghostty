@@ -5,7 +5,7 @@
 //! `SetTimer(hwnd, timer_id, 16, null)` while non-empty. When the last
 //! tween completes, the timer is stopped; no idle CPU.
 //!
-//! Usage pattern (P2/P4/P5 will wire this in):
+//! Typical use:
 //!
 //!     var sched: Scheduler = .{};
 //!     sched.init(my_alloc);

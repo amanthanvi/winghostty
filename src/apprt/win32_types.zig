@@ -11,11 +11,15 @@ pub const UINT = u32;
 pub const LRESULT = isize;
 pub const WPARAM = usize;
 pub const LPARAM = isize;
+pub const HRESULT = windows.HRESULT;
+pub const GUID = windows.GUID;
 pub const BOOL = windows.BOOL;
 pub const ATOM = u16;
 pub const LONG_PTR = isize;
 pub const UINT_PTR = usize;
 pub const DWORD = u32;
+pub const ULONG = u32;
+pub const ULONGLONG = u64;
 pub const WORD = u16;
 pub const BYTE = u8;
 pub const COLORREF = u32;
@@ -30,6 +34,7 @@ pub const HMODULE = ?*anyopaque;
 pub const INTRESOURCE = ?*const anyopaque;
 
 pub const POINT = geometry.Point;
+pub const POINTL = geometry.PointL;
 pub const RECT = geometry.Rect;
 
 pub const WNDPROC = *const fn (HWND, UINT, WPARAM, LPARAM) callconv(.winapi) LRESULT;
@@ -77,7 +82,12 @@ test "shared Win32 type layouts" {
     const testing = std.testing;
 
     try testing.expectEqual(@as(usize, 8), @sizeOf(POINT));
+    try testing.expectEqual(@as(usize, 8), @sizeOf(POINTL));
     try testing.expectEqual(@as(usize, 16), @sizeOf(RECT));
+    try testing.expectEqual(@as(usize, 4), @sizeOf(HRESULT));
+    try testing.expectEqual(@as(usize, 16), @sizeOf(GUID));
+    try testing.expectEqual(@as(usize, 4), @sizeOf(ULONG));
+    try testing.expectEqual(@as(usize, 8), @sizeOf(ULONGLONG));
     try testing.expectEqual(@alignOf(?*anyopaque), @alignOf(PAINTSTRUCT));
     try testing.expectEqual(@as(usize, 72), @sizeOf(PAINTSTRUCT));
     try testing.expectEqual(@as(usize, 0), @offsetOf(PAINTSTRUCT, "hdc"));

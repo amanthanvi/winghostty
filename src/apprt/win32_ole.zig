@@ -1,15 +1,20 @@
 //! Shared OLE drag-drop ABI types used by Win32 apprt modules.
 
 const std = @import("std");
-const windows = std.os.windows;
 const win32_types = @import("win32_types.zig");
 
-pub const HRESULT = windows.HRESULT;
-pub const GUID = windows.GUID;
+pub const HRESULT = win32_types.HRESULT;
+pub const GUID = win32_types.GUID;
 pub const BOOL = win32_types.BOOL;
 pub const DWORD = win32_types.DWORD;
-pub const ULONG = u32;
+pub const ULONG = win32_types.ULONG;
 pub const WORD = win32_types.WORD;
+
+pub const IID_IUnknown = GUID.parse("{00000000-0000-0000-C000-000000000046}");
+pub const IID_IDropSource = GUID.parse("{00000121-0000-0000-C000-000000000046}");
+pub const IID_IDropTarget = GUID.parse("{00000122-0000-0000-C000-000000000046}");
+pub const IID_IDataObject = GUID.parse("{0000010E-0000-0000-C000-000000000046}");
+pub const IID_IEnumFORMATETC = GUID.parse("{00000103-0000-0000-C000-000000000046}");
 
 pub const FORMATETC = extern struct {
     cfFormat: WORD,

@@ -583,14 +583,6 @@ fn legacyAltPrefix(
     return null;
 }
 
-/// A helper to memcpy a src value to a buffer and return the result.
-fn copyToBuf(buf: []u8, src: []const u8) ![]const u8 {
-    if (src.len > buf.len) return error.OutOfMemory;
-    const result = buf[0..src.len];
-    @memcpy(result, src);
-    return result;
-}
-
 /// Determines whether the key should be encoded in the xterm
 /// "PC-style Function Key" syntax (roughly). This is a hardcoded
 /// table of keys and modifiers that result in a specific sequence.

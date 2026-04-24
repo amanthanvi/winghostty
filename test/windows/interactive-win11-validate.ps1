@@ -95,6 +95,58 @@ function Invoke-Harness {
     }
 }
 
+function Invoke-HarnessWithPassSentinel {
+    param(
+        [Parameter(Mandatory)] [string] $ScriptName,
+        [Parameter(Mandatory)] [int] $TimeoutSeconds
+    )
+
+    $run = Start-Harness -ScriptName $ScriptName -TimeoutSeconds $TimeoutSeconds
+    $waitMilliseconds = [int][Math]::Ceiling(($TimeoutSeconds + 5) * 1000)
+    if (-not $run.Process.WaitForExit($waitMilliseconds)) {
+        Stop-InteractiveWin11Process -Process $run.Process
+        throw @"
+$ScriptName timed out after ${TimeoutSeconds}s
+stdout ($($run.Stdout)):
+$(Get-HarnessLog -Path $run.Stdout)
+
+stderr ($($run.Stderr)):
+$(Get-HarnessLog -Path $run.Stderr)
+"@
+    }
+
+    $stdout = Get-HarnessLog -Path $run.Stdout
+    $stderr = Get-HarnessLog -Path $run.Stderr
+    $summary = Get-HarnessSummary -Path $run.Stdout
+    $exitCode = $run.Process.ExitCode
+
+    if (($null -ne $exitCode) -and ($exitCode -ne 0)) {
+        throw @"
+$ScriptName exited with code $exitCode
+stdout:
+$stdout
+
+stderr:
+$stderr
+"@
+    }
+
+    if ($summary -notlike '*PASS*') {
+        throw @"
+$ScriptName did not report PASS
+stdout:
+$stdout
+
+stderr:
+$stderr
+"@
+    }
+
+    if (-not [string]::IsNullOrWhiteSpace($summary)) {
+        Write-Host $summary
+    }
+}
+
 function Start-Harness {
     param(
         [Parameter(Mandatory)] [string] $ScriptName,
@@ -148,6 +200,8 @@ function Get-HarnessSummary {
 Invoke-Harness -ScriptName 'interactive-win11.ps1'
 Invoke-SuiteBuildIfNeeded
 Invoke-Harness -ScriptName 'interactive-win11-smoke.ps1' -TimeoutSeconds 10 -PassResetState
+Invoke-HarnessWithPassSentinel -ScriptName 'interactive-win11-resize.ps1' -TimeoutSeconds 15
+Invoke-HarnessWithPassSentinel -ScriptName 'interactive-win11-undo.ps1' -TimeoutSeconds 35
 
 [InteractiveWin11HarnessRun[]] $parallelRuns = @(
     Start-Harness -ScriptName 'interactive-win11-command-finish.ps1' -TimeoutSeconds 12
@@ -164,8 +218,7 @@ foreach ($run in $parallelRuns) {
     if (-not $run.Process.WaitForExit($remainingMilliseconds)) {
         foreach ($other in $parallelRuns) {
             if (-not $other.Process.HasExited) {
-                Stop-Process -Id $other.Process.Id -Force -ErrorAction SilentlyContinue
-                $other.Process.WaitForExit()
+                Stop-InteractiveWin11Process -Process $other.Process
             }
         }
         throw @"

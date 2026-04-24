@@ -1,4 +1,4 @@
-//! Quick-terminal geometry module (P4.5 — Quake-drop behaviour).
+//! Quick-terminal geometry.
 //!
 //! Pure rectangle math for the quick terminal window. Computes start and
 //! end positions for slide-in animation given monitor work-area and the

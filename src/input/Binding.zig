@@ -836,27 +836,24 @@ pub const Action = union(enum) {
     check_for_updates,
 
     /// Undo the last undoable action for the focused surface or terminal,
-    /// if possible. This can undo actions such as closing tabs or
-    /// windows.
+    /// if possible.
     ///
     /// Not every action in winghostty can be undone or redone. The list
-    /// of actions support undo/redo is currently limited to:
+    /// of actions that support undo/redo is currently limited to:
     ///
-    ///   - New window, close window
-    ///   - New tab, close tab
-    ///   - New split, close split
+    ///   - `clear_screen`
+    ///   - `reset`
+    ///   - `close_tab:this`
+    ///   - `new_split` (undo removes the newly-created split; redo restores it)
     ///
     /// All actions are only undoable/redoable for a limited time.
-    /// For example, restoring a closed split can only be done for
-    /// some number of seconds since the split was closed. The exact
-    /// amount is configured with the `undo-timeout` configuration settings.
+    /// The exact amount is configured with the `undo-timeout`
+    /// configuration setting.
     ///
     /// The undo/redo actions being limited ensures that there is
     /// bounded memory usage over time, closed surfaces don't continue running
     /// in the background indefinitely, and the keybinds become available
     /// for terminal applications to use.
-    ///
-    /// Only implemented on macOS.
     undo,
 
     /// Redo the last undoable action for the focused surface or terminal,

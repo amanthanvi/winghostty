@@ -1,10 +1,10 @@
-//! Status-bar fragment model for the P5.7 chrome redesign (Win32 apprt).
+//! Status-bar fragment model for the Win32 apprt.
 //!
 //! Pure state + layout math — no HWND, no paint, no Win32 externs.
 //!
 //! The redesigned status bar is 28 px tall (`ThemeMetrics.height_status`),
-//! down from 42 px. It drops the `^N%` scroll fragment (graphical
-//! scrollbar P5.2 owns that signal) and renders the remaining fragments
+//! down from 42 px. It drops the `^N%` scroll fragment (the graphical
+//! scrollbar owns that signal) and renders the remaining fragments
 //! separated by a 2 px middle-dot (`U+00B7`) with `space_4` padding on
 //! each side.
 //!

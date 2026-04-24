@@ -1,15 +1,14 @@
 //! winghostty UI Automation — public module.
 //!
-//! Phase 1 skeleton. Exposes enough of the UIA contract that:
+//! Exposes enough of the UIA contract that:
 //!   * The host HWND answers WM_GETOBJECT with a working root provider.
 //!   * Narrator / NVDA can reach the window and see ControlType=Window.
 //!   * The system's built-in host provider chains in, so caption
 //!     buttons are still announced.
 //!
 //! Per-widget providers (tabs, command palette rows, settings fields)
-//! land in Phases 2–5; see twinkling-watching-wren.md §7.14. An
-//! `ITextProvider` over the terminal scrollback is explicitly deferred
-//! past this redesign.
+//! are added with the widgets they expose. Terminal scrollback is not
+//! exposed through `ITextProvider`.
 
 const std = @import("std");
 const com = @import("com.zig");
@@ -34,15 +33,15 @@ pub const IRawElementProviderSimple = com.IRawElementProviderSimple;
 /// takes an AddRef internally so we drop our local reference before
 /// returning. If the provider cannot be built (OOM, WinRT-less sandbox),
 /// returns `null` and lets the system fall back to its default
-/// accessibility tree — that is safer than returning a stub that
-/// claims to implement UIA but doesn't.
+/// accessibility tree — that is safer than returning a partial provider
+/// for unsupported UIA surface.
 pub fn handleGetObject(
     alloc: std.mem.Allocator,
     hwnd: com.HWND,
     wParam: com.WPARAM,
     lParam: com.LPARAM,
 ) ?com.LRESULT {
-    // Only the UIA root object ID is handled by this skeleton; other
+    // Only the UIA root object ID is handled here; other
     // accessibility queries (MSAA IAccessible, etc.) fall through.
     if (lParam != com.UiaRootObjectId) return null;
 

@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const Allocator = std.mem.Allocator;
 const internal_os = @import("../os/main.zig");
 const Command = @import("command.zig").Command;
+const windows_shell_types = @import("windows_shell_types.zig");
 const log = std.log.scoped(.windows_shell);
 const windows = std.os.windows;
 
@@ -17,14 +18,7 @@ pub const DefaultShell = enum {
     cmd,
 };
 
-pub const ProfileKind = enum {
-    wsl_default,
-    wsl_distro,
-    pwsh,
-    powershell,
-    git_bash,
-    cmd,
-};
+pub const ProfileKind = windows_shell_types.ProfileKind;
 
 pub const Profile = struct {
     kind: ProfileKind,

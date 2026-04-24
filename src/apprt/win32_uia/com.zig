@@ -1,9 +1,7 @@
 //! Minimal COM vtable declarations for Windows UI Automation.
 //!
-//! Only the surface needed for a Phase 1 skeleton (IUnknown +
-//! IRawElementProviderSimple) is declared here. Additional interfaces
-//! (ITextProvider, IRawElementProviderFragment, ISelectionProvider, …)
-//! arrive with the widgets that need them in Phases 2–5.
+//! Only interfaces with active providers are declared here. Add each
+//! additional UIA interface with the widget or provider that consumes it.
 
 const std = @import("std");
 const windows = std.os.windows;

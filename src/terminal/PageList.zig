@@ -2358,35 +2358,6 @@ fn resizeWithoutReflowGrowCols(
     self.destroyNode(chunk.node);
 }
 
-/// Returns the number of trailing blank lines, not to exceed max. Max
-/// is used to limit our traversal in the case of large scrollback.
-fn trailingBlankLines(
-    self: *const PageList,
-    max: size.CellCountInt,
-) size.CellCountInt {
-    var count: size.CellCountInt = 0;
-
-    // Go through our pages backwards since we're counting trailing blanks.
-    var it = self.pages.last;
-    while (it) |page| : (it = page.prev) {
-        const len = page.data.size.rows;
-        const rows = page.data.rows.ptr(page.data.memory)[0..len];
-        for (0..len) |i| {
-            const rev_i = len - i - 1;
-            const cells = rows[rev_i].cells.ptr(page.data.memory)[0..page.data.size.cols];
-
-            // If the row has any text then we're done.
-            if (pagepkg.Cell.hasTextAny(cells)) return count;
-
-            // Inc count, if we're beyond max then we're done.
-            count += 1;
-            if (count >= max) return count;
-        }
-    }
-
-    return count;
-}
-
 /// Trims up to max trailing blank rows from the pagelist and returns the
 /// number of rows trimmed. A blank row is any row with no text (but may
 /// have styling).

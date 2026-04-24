@@ -247,6 +247,39 @@ function Invoke-InteractiveWin11Build {
     )
 
     $devWindowsCmd = Join-Path $RepoRoot 'scripts\dev-windows.cmd'
+    $repoSandboxRoot = Get-InteractiveWin11NormalizedPath -Path (Join-Path $RepoRoot '.sandbox\win11')
+    $savedLocalAppData = $env:LOCALAPPDATA
+    $restoreLocalAppData = $false
+    if (-not [string]::IsNullOrWhiteSpace($savedLocalAppData)) {
+        $normalizedLocalAppData = Get-InteractiveWin11NormalizedPath -Path $savedLocalAppData
+        $sandboxPrefix = '{0}\' -f $repoSandboxRoot
+        if (
+            $normalizedLocalAppData.Equals($repoSandboxRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+            $normalizedLocalAppData.StartsWith($sandboxPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+        ) {
+            $hostLocalAppData = [System.Environment]::GetFolderPath(
+                [System.Environment+SpecialFolder]::LocalApplicationData
+            )
+            if ([string]::IsNullOrWhiteSpace($hostLocalAppData)) {
+                $userProfilePath = if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+                    [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::UserProfile)
+                }
+                else {
+                    $env:USERPROFILE
+                }
+
+                if (-not [string]::IsNullOrWhiteSpace($userProfilePath)) {
+                    $hostLocalAppData = Join-Path $userProfilePath 'AppData\Local'
+                }
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($hostLocalAppData)) {
+                $env:LOCALAPPDATA = Get-InteractiveWin11NormalizedPath -Path $hostLocalAppData
+                $restoreLocalAppData = $true
+            }
+        }
+    }
+
     Push-Location $RepoRoot
     try {
         & cmd /c $devWindowsCmd zig build -Demit-exe=true
@@ -256,6 +289,9 @@ function Invoke-InteractiveWin11Build {
     }
     finally {
         Pop-Location
+        if ($restoreLocalAppData) {
+            $env:LOCALAPPDATA = $savedLocalAppData
+        }
     }
 }
 
@@ -302,7 +338,16 @@ function Stop-InteractiveWin11Process {
     )
 
     if (-not $Process.HasExited) {
-        Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+        & taskkill.exe /PID $Process.Id /T /F *> $null
+        try {
+            $Process.Refresh()
+        }
+        catch {
+            Write-Warning "Process refresh failed during interactive Win11 cleanup: $($_.Exception.Message)"
+        }
+        if (-not $Process.HasExited) {
+            Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+        }
     }
     $Process.WaitForExit()
 }

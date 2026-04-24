@@ -32,6 +32,7 @@ $portableRoot = Join-Path $stageBase "winghostty"
 $zipPath = Join-Path $stageBase "winghostty-$Version-windows-x64-portable.zip"
 $installerPath = Join-Path $stageBase "winghostty-$Version-windows-x64-setup.exe"
 $checksumsPath = Join-Path $stageBase "SHA256SUMS.txt"
+$releaseIconPath = Join-Path $stageBase "winghostty-icon.svg"
 $zigOutBin = Join-Path $repoRoot "zig-out/bin"
 $zigOutShare = Join-Path $repoRoot "zig-out/share/ghostty"
 $exePath = Join-Path $zigOutBin "winghostty.exe"
@@ -44,6 +45,7 @@ $readmePath = Join-Path $repoRoot "README.md"
 $configTemplatePath = Join-Path $repoRoot "src/config/config-template"
 $innoScriptPath = Join-Path $repoRoot "dist/windows/winghostty.iss"
 $iconPath = Join-Path $repoRoot "dist/windows/winghostty.ico"
+$releaseIconSourcePath = Join-Path $repoRoot "images/winghostty-flag-light.svg"
 
 if (-not $env:ZIG_LOCAL_CACHE_DIR) {
     $env:ZIG_LOCAL_CACHE_DIR = Join-Path $repoRoot ".zig-cache"
@@ -110,6 +112,7 @@ Copy-Item -LiteralPath $licensePath -Destination (Join-Path $portableRoot "LICEN
 Copy-Item -LiteralPath $configTemplatePath -Destination (Join-Path $portableRoot "config-template.ghostty") -Force
 Copy-Item -LiteralPath $readmePath -Destination (Join-Path $portableRoot "README.md") -Force
 Copy-Item -LiteralPath $iconPath -Destination (Join-Path $portableRoot "winghostty.ico") -Force
+Copy-Item -LiteralPath $releaseIconSourcePath -Destination $releaseIconPath -Force
 
 if (Test-Path -LiteralPath $zigOutShare) {
     Copy-Tree -Source $zigOutShare -Destination (Join-Path $portableRoot "share")

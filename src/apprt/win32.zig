@@ -292,8 +292,6 @@ const DT_LEFT = 0x00000000;
 // These pull from `win32_theme.ThemeMetrics` defaults so there is a single
 // source of truth. Old call sites that read `host_tab_height`, etc.
 // keep compiling; new code should consume `ThemeMetrics` via `Theme`.
-// See C:\Users\amant\.claude\plans\twinkling-watching-wren.md §7.1 for
-// the token taxonomy.
 const default_metrics: win32_theme.ThemeMetrics = .{};
 const host_tab_height: i32 = default_metrics.height_tab;
 const host_tab_height_integrated: i32 = default_metrics.height_tab_integrated;
@@ -657,7 +655,6 @@ extern "user32" fn DefWindowProcW(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam:
 extern "user32" fn DestroyWindow(hWnd: HWND) callconv(.winapi) BOOL;
 extern "user32" fn DrawTextW(hDC: HDC, lpchText: [*:0]const u16, cchText: i32, lprc: *RECT, format: UINT) callconv(.winapi) i32;
 extern "user32" fn DispatchMessageW(lpMsg: *const MSG) callconv(.winapi) LRESULT;
-extern "user32" fn EnableWindow(hWnd: HWND, bEnable: BOOL) callconv(.winapi) BOOL;
 extern "user32" fn GetFocus() callconv(.winapi) ?HWND;
 extern "user32" fn GetMessageW(lpMsg: *MSG, hWnd: ?HWND, wMsgFilterMin: UINT, wMsgFilterMax: UINT) callconv(.winapi) i32;
 extern "user32" fn GetClientRect(hWnd: HWND, lpRect: *RECT) callconv(.winapi) BOOL;
@@ -687,7 +684,6 @@ extern "user32" fn IsClipboardFormatAvailable(format: UINT) callconv(.winapi) BO
 extern "user32" fn LoadCursorW(hInstance: ?HINSTANCE, lpCursorName: INTRESOURCE) callconv(.winapi) HCURSOR;
 extern "user32" fn LoadImageW(hInst: HINSTANCE, name: INTRESOURCE, @"type": UINT, cx: i32, cy: i32, fuLoad: UINT) callconv(.winapi) ?*anyopaque;
 extern "user32" fn GetSystemMetrics(nIndex: i32) callconv(.winapi) i32;
-extern "user32" fn MessageBoxW(hWnd: ?HWND, lpText: LPCWSTR, lpCaption: LPCWSTR, uType: UINT) callconv(.winapi) i32;
 extern "user32" fn MessageBeep(uType: UINT) callconv(.winapi) BOOL;
 extern "user32" fn InvalidateRect(hWnd: HWND, lpRect: ?*const RECT, bErase: BOOL) callconv(.winapi) BOOL;
 extern "user32" fn MoveWindow(hWnd: HWND, X: i32, Y: i32, nWidth: i32, nHeight: i32, bRepaint: BOOL) callconv(.winapi) BOOL;
@@ -702,13 +698,11 @@ extern "user32" fn SetTimer(hWnd: ?HWND, nIDEvent: UINT_PTR, uElapse: UINT, lpTi
 extern "user32" fn SetCursor(hCursor: HCURSOR) callconv(.winapi) HCURSOR;
 extern "user32" fn SetCapture(hWnd: HWND) callconv(.winapi) ?HWND;
 extern "user32" fn SetForegroundWindow(hWnd: HWND) callconv(.winapi) BOOL;
-extern "user32" fn GetForegroundWindow() callconv(.winapi) ?HWND;
 extern "user32" fn GetCursorPos(lpPoint: *POINT) callconv(.winapi) BOOL;
 extern "user32" fn MonitorFromPoint(pt: POINT, dwFlags: u32) callconv(.winapi) ?*anyopaque;
 extern "user32" fn SetLayeredWindowAttributes(hwnd: HWND, crKey: u32, bAlpha: BYTE, dwFlags: u32) callconv(.winapi) BOOL;
 extern "user32" fn SetWindowLongPtrW(hWnd: HWND, nIndex: i32, dwNewLong: LONG_PTR) callconv(.winapi) LONG_PTR;
 extern "user32" fn SetWindowPos(hWnd: HWND, hWndInsertAfter: ?*anyopaque, X: i32, Y: i32, cx: i32, cy: i32, uFlags: UINT) callconv(.winapi) BOOL;
-extern "user32" fn SetActiveWindow(hWnd: HWND) callconv(.winapi) ?HWND;
 extern "user32" fn SetFocus(hWnd: HWND) callconv(.winapi) ?HWND;
 extern "user32" fn SendMessageW(hWnd: HWND, Msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.winapi) LRESULT;
 extern "user32" fn SetWindowTextW(hWnd: HWND, lpString: LPCWSTR) callconv(.winapi) BOOL;
@@ -776,8 +770,27 @@ fn probeWindowsBuild() u32 {
     return info.dwBuildNumber;
 }
 
-fn integratedTitlebarEnabledForBuild(build: u32) bool {
-    return build >= OS_BUILD_WIN11_21H2;
+fn shouldUseIntegratedTitlebar(
+    os_build: u32,
+    show_tab_bar: configpkg.Config.WindowShowTabBar,
+) bool {
+    return os_build >= OS_BUILD_WIN11_21H2 and show_tab_bar != .never;
+}
+
+fn dispatchDwmNcMessage(
+    hwnd: HWND,
+    msg: UINT,
+    wParam: WPARAM,
+    lParam: LPARAM,
+) ?LRESULT {
+    // Custom Win32 frames should let DWM see caption-hit-test traffic
+    // first so native caption-button affordances keep working where
+    // the compositor can still own them.
+    var result: LRESULT = 0;
+    return if (DwmDefWindowProc(hwnd, msg, wParam, lParam, &result) != 0)
+        result
+    else
+        null;
 }
 
 /// Atomic replace of an existing file. Used by the settings save path
@@ -851,6 +864,7 @@ extern "opengl32" fn wglGetCurrentContext() callconv(.winapi) HGLRC;
 extern "opengl32" fn wglGetCurrentDC() callconv(.winapi) HDC;
 extern "opengl32" fn wglGetProcAddress(lpszProc: [*:0]const u8) callconv(.winapi) ?*const anyopaque;
 extern "opengl32" fn wglMakeCurrent(hdc: HDC, hglrc: HGLRC) callconv(.winapi) BOOL;
+extern "dwmapi" fn DwmDefWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM, plResult: *LRESULT) callconv(.winapi) BOOL;
 extern "dwmapi" fn DwmSetWindowAttribute(hwnd: HWND, dwAttribute: DWORD, pvAttribute: *const anyopaque, cbAttribute: DWORD) callconv(.winapi) i32;
 extern "imm32" fn ImmGetContext(hWnd: HWND) callconv(.winapi) ?*anyopaque;
 extern "imm32" fn ImmReleaseContext(hWnd: HWND, hIMC: ?*anyopaque) callconv(.winapi) BOOL;
@@ -1290,6 +1304,16 @@ fn readIpcAck(pipe: windows.HANDLE) !bool {
     };
 }
 
+fn historyEntrySortsAfter(
+    lhs_timestamp_ms: u64,
+    lhs_sequence_id: u64,
+    rhs_timestamp_ms: u64,
+    rhs_sequence_id: u64,
+) bool {
+    return lhs_timestamp_ms > rhs_timestamp_ms or
+        (lhs_timestamp_ms == rhs_timestamp_ms and lhs_sequence_id > rhs_sequence_id);
+}
+
 fn readExactHandle(pipe: windows.HANDLE, dst: []u8) !void {
     var offset: usize = 0;
     while (offset < dst.len) {
@@ -1608,6 +1632,15 @@ pub const App = struct {
     scrollbar_class_atom: ATOM = 0,
     hosts: std.ArrayListUnmanaged(*Host) = .empty,
     windows: std.ArrayListUnmanaged(*Surface) = .empty,
+    /// Internal test seam so action-path tests can drive real
+    /// `performAction(.new_tab, ...)` logic without requiring HWND/GL
+    /// surface bring-up.
+    test_create_window_surface: ?*const fn (
+        app: *App,
+        config: *const configpkg.Config,
+        title: LPCWSTR,
+        opts: SurfaceInitOptions,
+    ) anyerror!*Surface = null,
     next_host_id: u32 = 1,
     launcher_profile_key: ?[:0]const u8 = null,
     launcher_profile_hint: ?[:0]const u8 = null,
@@ -1624,6 +1657,8 @@ pub const App = struct {
     global_hotkeys_dirty: bool = false,
     ui_thread_id: DWORD = 0,
     quit_timer_id: ?UINT_PTR = null,
+    undo_prune_timer_id: ?UINT_PTR = null,
+    next_undo_sequence: u64 = 1,
     running: bool = false,
     windows_hidden: bool = false,
     update_check_running: std.atomic.Value(bool) = .init(false),
@@ -1648,8 +1683,10 @@ pub const App = struct {
     /// (Snap Layouts; `DWMSBT_TABBEDWINDOW`). Future chrome gates
     /// read this directly; no runtime config flag, per §12 Q1.
     os_build: u32 = 0,
-    /// Derived from `os_build >= 22000`; gates the integrated-titlebar
-    /// path (`WM_NCCALCSIZE` / `WM_NCHITTEST`).
+    /// Top-level switch for the integrated-titlebar path
+    /// (`WM_NCCALCSIZE` / `WM_NCHITTEST` state machine). Derived
+    /// from the Win11 build floor via `shouldUseIntegratedTitlebar`;
+    /// false keeps the stock non-client caption path.
     use_integrated_titlebar: bool = false,
     // Live-resize state is tracked PER HOST (`Host.is_live_resize`),
     // not per App. Dragging window A must NOT freeze renderer
@@ -1762,8 +1799,14 @@ pub const App = struct {
             std.log.warn("powershell integration install path resolve failed err={}", .{err});
         }
 
+        // Windows version probe. Win11 build 22000+ enables the
+        // integrated-titlebar path; older builds stay on the stock
+        // non-client caption/buttons path.
         self.os_build = probeWindowsBuild();
-        self.use_integrated_titlebar = integratedTitlebarEnabledForBuild(self.os_build);
+        self.use_integrated_titlebar = shouldUseIntegratedTitlebar(
+            self.os_build,
+            self.config.@"window-show-tab-bar",
+        );
         log.info("win32 os_build={d} integrated_titlebar={}", .{
             self.os_build,
             self.use_integrated_titlebar,
@@ -1794,8 +1837,8 @@ pub const App = struct {
     }
 
     /// Bring the STA apartment online for in-process COM consumers
-    /// (settings path picker via `IFileOpenDialog`, future WinRT toast
-    /// factory, future OLE drag-drop). Safe to call multiple times —
+    /// (settings path picker via `IFileOpenDialog`, WinRT toast setup,
+    /// OLE drag-drop). Safe to call multiple times —
     /// `S_FALSE` means "already initialised in this mode", and
     /// `RPC_E_CHANGED_MODE` means "already initialised in a different
     /// mode" (a library probably did it first; still usable for STA
@@ -1831,6 +1874,7 @@ pub const App = struct {
         @atomicStore(DWORD, &self.ui_thread_id, GetCurrentThreadId(), .release);
         self.ensureMessageQueue();
         defer {
+            self.stopUndoPruneTimer();
             self.stopQuitTimer();
             @atomicStore(DWORD, &self.ui_thread_id, 0, .release);
             self.running = false;
@@ -1912,6 +1956,13 @@ pub const App = struct {
                         continue;
                     }
                 }
+                if (self.undo_prune_timer_id) |timer_id| {
+                    if (msg.wParam == timer_id) {
+                        self.stopUndoPruneTimer();
+                        self.pruneUndoHistoryNow();
+                        continue;
+                    }
+                }
             }
 
             if (msg.message == WM_HOTKEY) {
@@ -1936,6 +1987,7 @@ pub const App = struct {
     }
 
     pub fn terminate(self: *App) void {
+        self.stopUndoPruneTimer();
         self.stopQuitTimer();
         self.update_check_running.store(false, .release);
         if (self.update_notice) |*notice| {
@@ -2420,6 +2472,95 @@ pub const App = struct {
         }
     }
 
+    fn stopUndoPruneTimer(self: *App) void {
+        if (self.undo_prune_timer_id) |timer_id| {
+            _ = KillTimer(null, timer_id);
+            self.undo_prune_timer_id = null;
+        }
+    }
+
+    fn undoTimeoutMs(self: *const App) u64 {
+        return std.math.divCeil(
+            u64,
+            self.config.@"undo-timeout".duration,
+            std.time.ns_per_ms,
+        ) catch std.math.maxInt(u64);
+    }
+
+    fn nextUndoSequence(self: *App) u64 {
+        const sequence = self.next_undo_sequence;
+        self.next_undo_sequence +%= 1;
+        if (self.next_undo_sequence == 0) self.next_undo_sequence = 1;
+        return sequence;
+    }
+
+    fn oldestUndoTimestamp(self: *const App) ?u64 {
+        var oldest: ?u64 = null;
+        for (self.windows.items) |surface| {
+            if (surface.undo_stack.oldestTimestamp()) |timestamp| {
+                if (oldest == null or timestamp < oldest.?) oldest = timestamp;
+            }
+        }
+        for (self.hosts.items) |host| {
+            if (host.oldestStructuralTimestamp()) |timestamp| {
+                if (oldest == null or timestamp < oldest.?) oldest = timestamp;
+            }
+        }
+        return oldest;
+    }
+
+    fn scheduleUndoPruneTimer(self: *App) void {
+        if (!self.running) return;
+        self.stopUndoPruneTimer();
+
+        const oldest = self.oldestUndoTimestamp() orelse return;
+        const now = GetTickCount64();
+        const expires_at = oldest +| self.undoTimeoutMs() +| 1;
+        const delay_ms = if (expires_at <= now) 1 else expires_at - now;
+        const timer_id = SetTimer(
+            null,
+            0,
+            @intCast(@min(delay_ms, std.math.maxInt(UINT))),
+            null,
+        );
+        if (timer_id == 0) {
+            log.warn("failed to start win32 undo prune timer err={}", .{
+                windows.kernel32.GetLastError(),
+            });
+            return;
+        }
+        self.undo_prune_timer_id = timer_id;
+    }
+
+    fn pruneUndoHistoryBefore(self: *App, min_timestamp_ms: u64) void {
+        for (self.windows.items) |surface| {
+            surface.undo_stack.discardExpired(min_timestamp_ms);
+        }
+
+        var i: usize = 0;
+        while (i < self.hosts.items.len) {
+            const host = self.hosts.items[i];
+            host.pruneStructuralHistoryBefore(min_timestamp_ms);
+            if (host.destroy_after_structural_dispose and host.tabs.items.len == 0 and !host.hasStructuralHistory()) {
+                if (host.hwnd) |hwnd| {
+                    _ = DestroyWindow(hwnd);
+                    self.removeHost(host);
+                    continue;
+                }
+                host.destroy_after_structural_dispose = false;
+            }
+            if (i < self.hosts.items.len and self.hosts.items[i] == host) {
+                i += 1;
+            }
+        }
+    }
+
+    fn pruneUndoHistoryNow(self: *App) void {
+        self.pruneUndoHistoryBefore(self.undoCutoffTimestampMs());
+        self.scheduleUndoPruneTimer();
+        if (self.running and !self.hasLiveUiWindows()) self.startQuitTimer();
+    }
+
     fn ensureMessageQueue(self: *App) void {
         _ = self;
         var msg: MSG = undefined;
@@ -2489,6 +2630,9 @@ pub const App = struct {
                     .host_id = if (source) |v| v.host_id else null,
                     .clone_state_from = source,
                 });
+                if (source) |v| {
+                    v.invalidateRedoForUnsupportedTabStructuralAction();
+                }
                 self.activateSurface(surface);
                 return true;
             },
@@ -2504,21 +2648,36 @@ pub const App = struct {
                 const tab_info = self.findTabForSurface(source) orelse return false;
                 const inherited_profile_key = try self.applySplitProfileConfigFromSource(&config, source);
                 _ = try applySplitWorkingDirectoryFromSource(&config, source, self.startup_cwd);
+                const split_direction = splitDirectionFromAction(value);
                 const surface = try self.createWindowSurface(&config, default_title, .{
                     .host_id = source.host_id,
                     .tab_id = tab_info.tab.id,
                     .clone_state_from = source,
-                    .split_direction = splitDirectionFromAction(value),
+                    .split_direction = split_direction,
                 });
                 if (inherited_profile_key) |key| {
                     try appendOwnedString(self.core_app.alloc, &surface.launch_profile_key, key);
+                }
+                tab_info.tab.clearRedoHistory();
+                if (tab_info.host.pushStructuralUndo(.{
+                    .kind = .split_create,
+                    .timestamp_ms = GetTickCount64(),
+                    .sequence_id = self.nextUndoSequence(),
+                    .payload = .{ .split_create = .{
+                        .source_surface = source,
+                        .created_surface = surface,
+                        .direction = split_direction,
+                    } },
+                })) |_| {} else |err| {
+                    log.warn("new_split undo snapshot failed err={}", .{err});
+                    tab_info.host.clearStructuralRedo();
                 }
                 self.activateSurface(surface);
                 return true;
             },
 
             .close_tab => {
-                return self.closeTab(target, value);
+                return try self.closeTab(target, value);
             },
 
             .close_all_windows => {
@@ -2786,6 +2945,7 @@ pub const App = struct {
                     const found = self.findTabForSurface(surface) orelse return false;
                     const handle = found.tab.findHandle(surface) orelse found.tab.focused;
                     found.tab.tree.zoom(if (found.tab.tree.zoomed != null) null else handle);
+                    surface.invalidateRedoForUnsupportedTabStructuralAction();
                     try found.host.layout();
                     return true;
                 }
@@ -2984,34 +3144,86 @@ pub const App = struct {
             },
 
             .undo => {
-                // UndoStack is wired; snapshot capture on destructive
-                // actions is the P6 follow-up, so the stack is
-                // currently always empty and undo is a no-op. The
-                // banner now communicates *why* instead of pretending
-                // the action is entirely unimplemented, and the stack
-                // gating keeps this a real (if trivial) consumer of
-                // the per-surface infrastructure.
-                //
-                // popForUndo returns a borrowed const pointer into
-                // redo_entries — the snapshot is owned by the redo
-                // stack, not by us. Never deinit it here or we'll
-                // double-free when the stack deinits later.
-                const surface = self.findSurfaceForTarget(target) orelse return false;
-                if (surface.undo_stack.popForUndo()) |_| {
-                    _ = try self.showHostBanner(target, .info, "Undo replay is pending; the snapshot moved to the redo stack.");
+                self.pruneUndoHistoryNow();
+                const surface = self.undoRedoSurfaceForTarget(target) orelse {
+                    const host = self.structuralUndoHostForTarget(target) orelse return false;
+                    while (host.peekStructuralUndo() != null) {
+                        const message = try host.applyLatestStructuralUndo() orelse continue;
+                        try host.setBanner(.info, message);
+                        return true;
+                    }
+                    try host.setBanner(.info, "Nothing to undo.");
+                    return true;
+                };
+
+                while (true) {
+                    const host_entry = if (surface.host) |host| host.peekStructuralUndo() else null;
+                    const local_entry = surface.undo_stack.peekUndo();
+
+                    if (host_entry == null and local_entry == null) break;
+                    const use_host = host_entry != null and
+                        (local_entry == null or historyEntrySortsAfter(
+                            host_entry.?.timestamp_ms,
+                            host_entry.?.sequence_id,
+                            local_entry.?.timestamp_ms,
+                            local_entry.?.sequence_id,
+                        ));
+
+                    if (use_host) {
+                        const host = surface.host orelse break;
+                        const message = try host.applyLatestStructuralUndo() orelse continue;
+                        _ = try self.showHostBanner(.{ .surface = surface.core() }, .info, message);
+                        return true;
+                    }
+
+                    const message = try surface.applyLatestLocalUndo() orelse continue;
+                    _ = try self.showHostBanner(.{ .surface = surface.core() }, .info, message);
                     return true;
                 }
-                _ = try self.showHostBanner(target, .info, "Nothing to undo.");
+
+                _ = try self.showHostBanner(.{ .surface = surface.core() }, .info, "Nothing to undo.");
                 return true;
             },
 
             .redo => {
-                const surface = self.findSurfaceForTarget(target) orelse return false;
-                if (surface.undo_stack.popForRedo()) |_| {
-                    _ = try self.showHostBanner(target, .info, "Redo replay is pending; the snapshot moved back to the undo stack.");
+                self.pruneUndoHistoryNow();
+                const surface = self.undoRedoSurfaceForTarget(target) orelse {
+                    const host = self.structuralRedoHostForTarget(target) orelse return false;
+                    while (host.peekStructuralRedo() != null) {
+                        const message = try host.applyLatestStructuralRedo() orelse continue;
+                        try host.setBanner(.info, message);
+                        return true;
+                    }
+                    try host.setBanner(.info, "Nothing to redo.");
+                    return true;
+                };
+
+                while (true) {
+                    const host_entry = if (surface.host) |host| host.peekStructuralRedo() else null;
+                    const local_entry = surface.undo_stack.peekRedo();
+
+                    if (host_entry == null and local_entry == null) break;
+                    const use_host = host_entry != null and
+                        (local_entry == null or historyEntrySortsAfter(
+                            host_entry.?.timestamp_ms,
+                            host_entry.?.sequence_id,
+                            local_entry.?.timestamp_ms,
+                            local_entry.?.sequence_id,
+                        ));
+
+                    if (use_host) {
+                        const host = surface.host orelse break;
+                        const message = try host.applyLatestStructuralRedo() orelse continue;
+                        _ = try self.showHostBanner(.{ .surface = surface.core() }, .info, message);
+                        return true;
+                    }
+
+                    const message = try surface.applyLatestLocalRedo() orelse continue;
+                    _ = try self.showHostBanner(.{ .surface = surface.core() }, .info, message);
                     return true;
                 }
-                _ = try self.showHostBanner(target, .info, "Nothing to redo.");
+
+                _ = try self.showHostBanner(.{ .surface = surface.core() }, .info, "Nothing to redo.");
                 return true;
             },
 
@@ -3219,6 +3431,9 @@ pub const App = struct {
         title: LPCWSTR,
         opts: SurfaceInitOptions,
     ) !*Surface {
+        if (self.test_create_window_surface) |hook| {
+            return try hook(self, config, title, opts);
+        }
         const surface = try self.core_app.alloc.create(Surface);
         errdefer self.core_app.alloc.destroy(surface);
 
@@ -3300,11 +3515,40 @@ pub const App = struct {
     }
 
     fn reconfigureTheme(self: *App) void {
+        const previous_integrated_titlebar = self.use_integrated_titlebar;
+        self.use_integrated_titlebar = shouldUseIntegratedTitlebar(
+            self.os_build,
+            self.config.@"window-show-tab-bar",
+        );
+        const frame_mode_changed = previous_integrated_titlebar != self.use_integrated_titlebar;
         self.resolved_theme = resolveTheme(&self.config);
         for (self.hosts.items) |host| {
             host.rebuildThemeBrushes();
             host.recreateChromeFont();
-            if (host.hwnd) |hwnd| applyDwmThemeWithBuild(hwnd, &self.resolved_theme, &self.config, self.os_build);
+            if (frame_mode_changed) {
+                // A stock<->integrated frame flip can cancel the old
+                // NC hover tracking without delivering
+                // WM_NCMOUSELEAVE. Clear both fields eagerly so
+                // re-enabling integrated chrome doesn't resurrect a
+                // stale hovered button.
+                host.handleNcMouseLeave();
+            }
+            if (host.hwnd) |hwnd| {
+                applyDwmThemeWithBuild(hwnd, &self.resolved_theme, &self.config, self.os_build);
+                if (frame_mode_changed) {
+                    _ = SetWindowPos(
+                        hwnd,
+                        null,
+                        0,
+                        0,
+                        0,
+                        0,
+                        SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED,
+                    );
+                    host.layout() catch {};
+                    host.invalidateChrome();
+                }
+            }
         }
         for (self.windows.items) |surface| surface.invalidateScrollbarWindow();
     }
@@ -3491,9 +3735,96 @@ pub const App = struct {
         };
     }
 
+    fn focusedSurfaceForUndoRedo(self: *App) ?*Surface {
+        for (self.hosts.items) |host| {
+            if (host.activeSurface()) |surface| {
+                if (surface.window_focused) return surface;
+            }
+        }
+
+        for (self.windows.items) |surface| {
+            if (surface.window_focused) return surface;
+        }
+
+        return null;
+    }
+
+    fn undoRedoSurfaceForTarget(self: *App, target: apprt.Target) ?*Surface {
+        return switch (target) {
+            .app => self.focusedSurfaceForUndoRedo() orelse self.primarySurface(),
+            .surface => |core_surface| self.findSurfaceByCore(core_surface),
+        };
+    }
+
+    fn structuralUndoHostForTarget(self: *App, target: apprt.Target) ?*Host {
+        if (self.undoRedoSurfaceForTarget(target)) |surface| {
+            if (surface.host) |host| return host;
+        }
+
+        return switch (target) {
+            .app => self.hostWithNewestStructuralUndo() orelse if (self.hosts.items.len > 0) self.hosts.items[0] else null,
+            .surface => null,
+        };
+    }
+
+    fn structuralRedoHostForTarget(self: *App, target: apprt.Target) ?*Host {
+        if (self.undoRedoSurfaceForTarget(target)) |surface| {
+            if (surface.host) |host| return host;
+        }
+
+        return switch (target) {
+            .app => self.hostWithNewestStructuralRedo() orelse if (self.hosts.items.len > 0) self.hosts.items[0] else null,
+            .surface => null,
+        };
+    }
+
     fn primarySurface(self: *App) ?*Surface {
         if (self.hosts.items.len == 0) return null;
         return self.activeSurfaceForHost(self.hosts.items[0].id);
+    }
+
+    fn hostWithNewestStructuralUndo(self: *App) ?*Host {
+        var best: ?*Host = null;
+        var best_ts: u64 = 0;
+        var best_seq: u64 = 0;
+        for (self.hosts.items) |host| {
+            const entry = host.peekStructuralUndo() orelse continue;
+            if (best == null or historyEntrySortsAfter(
+                entry.timestamp_ms,
+                entry.sequence_id,
+                best_ts,
+                best_seq,
+            )) {
+                best = host;
+                best_ts = entry.timestamp_ms;
+                best_seq = entry.sequence_id;
+            }
+        }
+        return best;
+    }
+
+    fn hostWithNewestStructuralRedo(self: *App) ?*Host {
+        var best: ?*Host = null;
+        var best_ts: u64 = 0;
+        var best_seq: u64 = 0;
+        for (self.hosts.items) |host| {
+            const entry = host.peekStructuralRedo() orelse continue;
+            if (best == null or historyEntrySortsAfter(
+                entry.timestamp_ms,
+                entry.sequence_id,
+                best_ts,
+                best_seq,
+            )) {
+                best = host;
+                best_ts = entry.timestamp_ms;
+                best_seq = entry.sequence_id;
+            }
+        }
+        return best;
+    }
+
+    fn undoCutoffTimestampMs(self: *const App) u64 {
+        return GetTickCount64() -| self.undoTimeoutMs();
     }
 
     fn findSurfaceByCore(self: *App, core_surface: *CoreSurface) ?*Surface {
@@ -3763,6 +4094,9 @@ pub const App = struct {
     fn windowDestroyed(self: *App, surface: *Surface) void {
         self.removeWindow(surface);
         if (surface.host) |host| {
+            surface.invalidateStructuralHistoryForDestroy();
+            host.discardStructuralEntriesReferencing(surface);
+
             // Clear stale hover/drag state that may reference the destroyed surface's tab button
             host.setHoveredButton(null);
             host.tab_drag_index = null;
@@ -3791,11 +4125,18 @@ pub const App = struct {
             }
 
             if (host.tabs.items.len == 0) {
-                if (host.hwnd) |hwnd| _ = DestroyWindow(hwnd);
-                self.removeHost(host);
+                if (host.structural_history_disposing) {
+                    host.destroy_after_structural_dispose = true;
+                } else {
+                    if (host.hwnd) |hwnd| _ = DestroyWindow(hwnd);
+                    self.removeHost(host);
+                }
             } else if (self.running) {
                 if (self.activeTab(host)) |tab| if (tab.focusedSurface()) |replacement| self.activateSurface(replacement);
-                // Relayout when tab bar visibility may have changed (auto-hide crossing 1-tab threshold)
+                // Relayout after tab removal because the chrome
+                // reservation may have changed. In this fork,
+                // `.auto` still shows the row since it carries the
+                // essential host controls (+, overflow).
                 host.layout() catch {};
             }
         }
@@ -3867,6 +4208,13 @@ pub const App = struct {
         };
         const delta = std.math.clamp((@as(f16, @floatFromInt(value.amount)) / 100.0) * delta_sign, -1, 1);
         const next_tree = try found.tab.tree.resize(self.core_app.alloc, handle, layout, delta);
+        if (splitTreeEquivalent(&found.tab.tree, &next_tree)) {
+            var unchanged = next_tree;
+            unchanged.deinit();
+            return false;
+        }
+        found.tab.clearRedoHistory();
+        found.host.clearStructuralHistory(.normal);
         found.tab.tree.deinit();
         found.tab.tree = next_tree;
         try found.host.layout();
@@ -3877,13 +4225,20 @@ pub const App = struct {
         const surface = self.findSurfaceForTarget(target) orelse return false;
         const found = self.findTabForSurface(surface) orelse return false;
         const next_tree = try found.tab.tree.equalize(self.core_app.alloc);
+        if (splitTreeEquivalent(&found.tab.tree, &next_tree)) {
+            var unchanged = next_tree;
+            unchanged.deinit();
+            return false;
+        }
+        found.tab.clearRedoHistory();
+        found.host.clearStructuralHistory(.normal);
         found.tab.tree.deinit();
         found.tab.tree = next_tree;
         try found.host.layout();
         return true;
     }
 
-    fn closeTab(self: *App, target: apprt.Target, mode: apprt.action.CloseTabMode) bool {
+    fn closeTab(self: *App, target: apprt.Target, mode: apprt.action.CloseTabMode) !bool {
         const current = self.findSurfaceForTarget(target) orelse return false;
         const found = self.findTabForSurface(current) orelse return false;
         const host = found.host;
@@ -3891,16 +4246,31 @@ pub const App = struct {
 
         switch (mode) {
             .this => {
-                var surfaces: std.ArrayListUnmanaged(*Surface) = .empty;
-                defer surfaces.deinit(self.core_app.alloc);
-                var it = found.tab.tree.iterator();
-                while (it.next()) |entry| surfaces.append(self.core_app.alloc, entry.view) catch return false;
-                for (surfaces.items) |surface| surface.close(false);
+                const entry = host.detachTabForUndo(current_idx) orelse return false;
+                const stored_entry = host.pushStructuralUndo(entry) catch |err| {
+                    log.warn("close_tab undo snapshot failed err={}", .{err});
+                    var failed = entry;
+                    errdefer failed.dispose(host, .normal);
+                    _ = try host.restoreClosedTabEntry(&failed.payload.close_tab);
+                    if (host.activeSurface()) |restored| self.activateSurface(restored);
+                    return err;
+                };
+                if (stored_entry.payload.close_tab.tab) |*tab| tab.clearRedoHistory();
+                if (host.activeSurface()) |replacement| {
+                    self.activateSurface(replacement);
+                } else {
+                    host.refocusHostWindow();
+                    host.layout() catch {};
+                    host.refreshChrome() catch {};
+                    host.setBanner(.info, "Tab closed. Use undo to restore it.") catch {};
+                }
                 return true;
             },
 
             .other => {
                 if (host.tabs.items.len <= 1) return false;
+                found.tab.clearRedoHistory();
+                host.clearStructuralHistory(.normal);
                 var closed = false;
                 var i = host.tabs.items.len;
                 while (i > 0) {
@@ -3916,6 +4286,8 @@ pub const App = struct {
 
             .right => {
                 if (current_idx + 1 >= host.tabs.items.len) return false;
+                found.tab.clearRedoHistory();
+                host.clearStructuralHistory(.normal);
                 var closed = false;
                 var i = host.tabs.items.len;
                 while (i > current_idx + 1) {
@@ -3951,6 +4323,8 @@ pub const App = struct {
         const current_idx = found.index;
         const desired = desiredMoveIndex(found.host.tabs.items.len, current_idx, move.amount) orelse return false;
         if (desired == current_idx) return false;
+        found.tab.clearRedoHistory();
+        found.host.clearStructuralHistory(.normal);
         const tab = found.host.tabs.orderedRemove(current_idx);
         try found.host.tabs.insert(self.core_app.alloc, desired, tab);
         found.host.active_tab = desired;
@@ -3969,7 +4343,7 @@ pub const App = struct {
     fn toggleQuickTerminal(self: *App) !void {
         // `quick-terminal-keyboard-interactivity`:
         //   * on-demand → show + focus (our `.present()` path)
-        //   * exclusive → show + focus (future: grab global input)
+        //   * exclusive → show + focus (no global input grab)
         //   * none      → show WITHOUT stealing focus; the window
         //                 becomes a visible passive log / reference
         //                 the user can glance at without losing their
@@ -4097,9 +4471,8 @@ pub const App = struct {
         //   * `.focused` (config's `mouse`) → the monitor under
         //                 the cursor via `GetCursorPos` +
         //                 `MonitorFromPoint(MONITOR_DEFAULTTONEAREST)`.
-        //   * `.all`    → caller's current monitor for now; a
-        //                 virtual-desktop union via
-        //                 `EnumDisplayMonitors` lands later.
+        //   * `.all`    → caller's current monitor; the current path
+        //                 does not span the virtual desktop.
         const monitor = switch (qt_cfg.screen) {
             .focused => blk: {
                 var pt: POINT = .{ .x = 0, .y = 0 };
@@ -4164,6 +4537,7 @@ pub const App = struct {
                 self.removeHost(host);
                 continue;
             };
+            host.clearStructuralHistory(.normal);
             _ = DestroyWindow(hwnd);
         }
     }
@@ -4348,19 +4722,17 @@ pub const App = struct {
         //   3. Future new CLI-only flags would silently persist.
         //
         // Then copy every field the GUI user actually edited from
-        // `pending` into `file_cfg`, and serialise `file_cfg`. This
-        // guarantees the written bytes reflect file-resident state +
-        // explicit GUI edits only. Comments + formatting in the
-        // original file are still lost (comment-preserving serialiser
-        // is a later pass); that's documented inline in the Advanced
-        // section.
+        // `pending` into `file_cfg`, and use that as the source for
+        // patching the raw target file. The raw-text patcher below
+        // preserves comments, formatting, relative include paths, and
+        // unrelated fields.
         //
         // Field types we currently support as GUI edits are all value
         // types (bool, int, float, enum, packed struct, tagged union
         // with no pointer variants). Assigning via `@field` is a
-        // shallow bit-copy and is safe without arena-transfer. If a
-        // future GUI field adds a pointer (string / slice), the inline
-        // for below needs an explicit string-dupe branch.
+        // shallow bit-copy and is safe without arena-transfer. Any
+        // GUI-exposed pointer field (string / slice) needs an explicit
+        // string-dupe branch here.
         var file_cfg = configpkg.Config.default(alloc) catch return error.SerializeFailed;
         defer file_cfg.deinit();
         // Seed the baseline from the ACTUAL target file, not the
@@ -4779,9 +5151,8 @@ pub const App = struct {
         _ = self;
         _ = target;
         // Final fallback for notification paths that cannot surface a
-        // host banner. Replaced the old modal `MessageBoxW` path with
-        // an explicit log entry so failures stay observable without
-        // blocking the UI thread.
+        // host banner. Keep failures observable without blocking the UI
+        // thread.
         std.log.info("info notification (no visible target): {s} — {s}", .{ title, message });
     }
 
@@ -5265,6 +5636,21 @@ const Tab = struct {
         while (it.next()) |_| count += 1;
         return count;
     }
+
+    fn clearRedoHistory(self: *Tab) void {
+        var it = self.tree.iterator();
+        while (it.next()) |entry| {
+            entry.view.undo_stack.clearRedo();
+        }
+    }
+
+    fn clearRedoHistoryExcept(self: *Tab, skip: *Surface) void {
+        var it = self.tree.iterator();
+        while (it.next()) |entry| {
+            if (entry.view == skip) continue;
+            entry.view.undo_stack.clearRedo();
+        }
+    }
 };
 
 const ChromeTextDirty = packed struct(u8) {
@@ -5326,9 +5712,8 @@ const Host = struct {
     /// Tab-drag state machine. `beginPress` fires on tab mousedown;
     /// `onMouseMove` promotes to `drag_tab` once movement exceeds
     /// the 5 px L1 threshold; `onMouseUp` returns the gesture
-    /// (activate / drop). Full OLE wire-up (`IDropSource` /
-    /// `IDataObject` / cross-window `IDropTarget`) lands in a later
-    /// P5 pass; this field is the behaviour contract, ready.
+    /// (activate / drop). Cross-window OLE drag/drop is intentionally
+    /// outside this host-local gesture state.
     drag_state: win32_tab_drag.DragState = .{},
     overlay_mode: HostOverlayMode = .none,
     /// Active confirm overlay payload when `overlay_mode == .confirm`.
@@ -5414,10 +5799,9 @@ const Host = struct {
     /// (AGENTS.md:58).
     tab_underline: win32_tab_visual.UnderlineState = .{},
     /// Which caption button the cursor is currently hovering, when
-    /// integrated-titlebar is active. Drives hover-tint paint in
-    /// `paintChrome` and is cleared on `WM_NCMOUSELEAVE`. Gate on
-    /// `App.use_integrated_titlebar` — stays `.none` on Win10 / any
-    /// build < 22000.
+    /// this host is actively using the integrated titlebar. Drives
+    /// hover-tint paint in `paintChrome` and is cleared on
+    /// `WM_NCMOUSELEAVE`.
     caption_hover: CaptionButton = .none,
     caption_pressed: CaptionButton = .none,
     /// Registered for WM_NCMOUSELEAVE via `TrackMouseEvent(TME_NONCLIENT
@@ -5465,12 +5849,442 @@ const Host = struct {
     scrollbar_timer_active: bool = false,
     resize_settle_timer_active: bool = false,
     resize_settle_repaint_ticks: u8 = 0,
+    structural_history_disposing: bool = false,
+    destroy_after_structural_dispose: bool = false,
+    structural_undo_entries: std.ArrayListUnmanaged(StructuralUndoEntry) = .empty,
+    structural_redo_entries: std.ArrayListUnmanaged(StructuralUndoEntry) = .empty,
+
+    const StructuralHistoryDisposeMode = enum {
+        normal,
+        host_destroy,
+    };
+
+    const StructuralUndoKind = enum {
+        close_tab,
+        split_create,
+    };
+
+    const CloseTabUndo = struct {
+        tab: ?Tab = null,
+        index: usize,
+        tab_id: u32,
+    };
+
+    const SplitCreateUndo = struct {
+        source_surface: *Surface,
+        created_surface: *Surface,
+        direction: SplitTreeSurface.Split.Direction = .right,
+        detached: bool = false,
+    };
+
+    const StructuralUndoEntry = struct {
+        kind: StructuralUndoKind,
+        timestamp_ms: u64,
+        sequence_id: u64 = 0,
+        payload: union(StructuralUndoKind) {
+            close_tab: CloseTabUndo,
+            split_create: SplitCreateUndo,
+        },
+
+        fn dispose(
+            self: *StructuralUndoEntry,
+            host: *Host,
+            mode: StructuralHistoryDisposeMode,
+        ) void {
+            switch (self.payload) {
+                .close_tab => |*value| {
+                    if (value.tab) |*tab| {
+                        switch (mode) {
+                            .normal => host.disposeDetachedUndoTab(tab),
+                            .host_destroy => tab.deinit(),
+                        }
+                        value.tab = null;
+                    }
+                },
+
+                .split_create => |*value| {
+                    if (!value.detached) return;
+                    switch (mode) {
+                        .normal => host.disposeDetachedUndoSurface(value.created_surface),
+                        .host_destroy => {},
+                    }
+                    value.detached = false;
+                },
+            }
+        }
+
+        fn referencesSurface(
+            self: *const StructuralUndoEntry,
+            host: *Host,
+            surface: *Surface,
+        ) bool {
+            return switch (self.payload) {
+                .close_tab => |value| close_tab: {
+                    if (value.tab) |tab| break :close_tab tab.findHandle(surface) != null;
+                    const index = host.findTabIndexById(value.tab_id) orelse return false;
+                    break :close_tab host.tabs.items[index].findHandle(surface) != null;
+                },
+
+                .split_create => |value| value.source_surface == surface or value.created_surface == surface,
+            };
+        }
+    };
 
     fn nextTabId(self: *Host) u32 {
         const id = self.next_tab_id;
         self.next_tab_id +%= 1;
         if (self.next_tab_id == 0) self.next_tab_id = 1;
         return id;
+    }
+
+    fn findTabIndexById(self: *const Host, id: u32) ?usize {
+        for (self.tabs.items, 0..) |tab, i| {
+            if (tab.id == id) return i;
+        }
+        return null;
+    }
+
+    fn disposeDetachedUndoSurface(self: *Host, surface: *Surface) void {
+        self.structural_history_disposing = true;
+        defer self.structural_history_disposing = false;
+        surface.close(false);
+    }
+
+    fn disposeDetachedUndoTab(self: *Host, tab: *Tab) void {
+        self.structural_history_disposing = true;
+        defer self.structural_history_disposing = false;
+
+        var it = tab.tree.iterator();
+        while (it.next()) |entry| {
+            entry.view.close(false);
+        }
+        tab.deinit();
+    }
+
+    fn discardNewestStructuralUndo(self: *Host) void {
+        var entry = self.structural_undo_entries.pop() orelse return;
+        entry.dispose(self, .normal);
+    }
+
+    fn discardNewestStructuralRedo(self: *Host) void {
+        var entry = self.structural_redo_entries.pop() orelse return;
+        entry.dispose(self, .normal);
+    }
+
+    fn clearStructuralRedo(self: *Host) void {
+        while (self.structural_redo_entries.items.len > 0) {
+            self.discardNewestStructuralRedo();
+        }
+    }
+
+    fn clearStructuralHistory(
+        self: *Host,
+        mode: StructuralHistoryDisposeMode,
+    ) void {
+        while (self.structural_undo_entries.items.len > 0) {
+            var entry = self.structural_undo_entries.pop().?;
+            entry.dispose(self, mode);
+        }
+        while (self.structural_redo_entries.items.len > 0) {
+            var entry = self.structural_redo_entries.pop().?;
+            entry.dispose(self, mode);
+        }
+    }
+
+    fn discardExpiredStructuralEntries(
+        self: *Host,
+        list: *std.ArrayListUnmanaged(StructuralUndoEntry),
+        min_timestamp_ms: u64,
+    ) void {
+        var i: usize = 0;
+        while (i < list.items.len) {
+            if (list.items[i].timestamp_ms >= min_timestamp_ms) {
+                i += 1;
+                continue;
+            }
+
+            var expired = list.orderedRemove(i);
+            expired.dispose(self, .normal);
+        }
+    }
+
+    fn oldestStructuralTimestamp(self: *const Host) ?u64 {
+        var oldest: ?u64 = null;
+        for (self.structural_undo_entries.items) |entry| {
+            if (oldest == null or entry.timestamp_ms < oldest.?) oldest = entry.timestamp_ms;
+        }
+        for (self.structural_redo_entries.items) |entry| {
+            if (oldest == null or entry.timestamp_ms < oldest.?) oldest = entry.timestamp_ms;
+        }
+        return oldest;
+    }
+
+    fn hasStructuralHistory(self: *const Host) bool {
+        return self.structural_undo_entries.items.len > 0 or self.structural_redo_entries.items.len > 0;
+    }
+
+    fn pruneStructuralHistoryBefore(self: *Host, min_timestamp_ms: u64) void {
+        self.discardExpiredStructuralEntries(&self.structural_undo_entries, min_timestamp_ms);
+        self.discardExpiredStructuralEntries(&self.structural_redo_entries, min_timestamp_ms);
+    }
+
+    fn pruneStructuralHistory(self: *Host) void {
+        self.pruneStructuralHistoryBefore(self.app.undoCutoffTimestampMs());
+    }
+
+    fn pushStructuralUndo(self: *Host, entry: StructuralUndoEntry) Allocator.Error!*StructuralUndoEntry {
+        self.pruneStructuralHistory();
+        try self.structural_undo_entries.ensureUnusedCapacity(self.app.core_app.alloc, 1);
+        self.clearStructuralRedo();
+        while (self.structural_undo_entries.items.len >= win32_undo.max_entries) {
+            var oldest = self.structural_undo_entries.orderedRemove(0);
+            oldest.dispose(self, .normal);
+        }
+        self.structural_undo_entries.appendAssumeCapacity(entry);
+        self.app.scheduleUndoPruneTimer();
+        return &self.structural_undo_entries.items[self.structural_undo_entries.items.len - 1];
+    }
+
+    fn peekStructuralUndo(self: *const Host) ?*const StructuralUndoEntry {
+        if (self.structural_undo_entries.items.len == 0) return null;
+        return &self.structural_undo_entries.items[self.structural_undo_entries.items.len - 1];
+    }
+
+    fn peekStructuralRedo(self: *const Host) ?*const StructuralUndoEntry {
+        if (self.structural_redo_entries.items.len == 0) return null;
+        return &self.structural_redo_entries.items[self.structural_redo_entries.items.len - 1];
+    }
+
+    fn popStructuralUndo(self: *Host) Allocator.Error!?*StructuralUndoEntry {
+        const entry = self.structural_undo_entries.pop() orelse return null;
+        self.structural_redo_entries.append(self.app.core_app.alloc, entry) catch |err| {
+            self.structural_undo_entries.append(self.app.core_app.alloc, entry) catch unreachable;
+            return err;
+        };
+        return &self.structural_redo_entries.items[self.structural_redo_entries.items.len - 1];
+    }
+
+    fn popStructuralRedo(self: *Host) Allocator.Error!?*StructuralUndoEntry {
+        const entry = self.structural_redo_entries.pop() orelse return null;
+        self.structural_undo_entries.append(self.app.core_app.alloc, entry) catch |err| {
+            self.structural_redo_entries.append(self.app.core_app.alloc, entry) catch unreachable;
+            return err;
+        };
+        return &self.structural_undo_entries.items[self.structural_undo_entries.items.len - 1];
+    }
+
+    fn restoreLastStructuralUndoPop(self: *Host) void {
+        const entry = self.structural_redo_entries.pop() orelse return;
+        self.structural_undo_entries.append(self.app.core_app.alloc, entry) catch unreachable;
+    }
+
+    fn restoreLastStructuralRedoPop(self: *Host) void {
+        const entry = self.structural_undo_entries.pop() orelse return;
+        self.structural_redo_entries.append(self.app.core_app.alloc, entry) catch unreachable;
+    }
+
+    fn discardStructuralEntriesReferencing(self: *Host, surface: *Surface) void {
+        if (self.structural_history_disposing) return;
+
+        var i: usize = 0;
+        while (i < self.structural_undo_entries.items.len) {
+            if (!self.structural_undo_entries.items[i].referencesSurface(self, surface)) {
+                i += 1;
+                continue;
+            }
+
+            var removed = self.structural_undo_entries.orderedRemove(i);
+            removed.dispose(self, .normal);
+        }
+
+        i = 0;
+        while (i < self.structural_redo_entries.items.len) {
+            if (!self.structural_redo_entries.items[i].referencesSurface(self, surface)) {
+                i += 1;
+                continue;
+            }
+
+            var removed = self.structural_redo_entries.orderedRemove(i);
+            removed.dispose(self, .normal);
+        }
+    }
+
+    fn detachTabForUndo(self: *Host, index: usize) ?StructuralUndoEntry {
+        // Load-bearing guard: detached tabs retain their surface
+        // allocations + host pointers so undo can reinsert them
+        // without replaying process startup. Detaching the last tab
+        // leaves an empty Host alive as the keybinding target for
+        // undo/redo; the app-level prune timer owns the timeout path
+        // so hidden surfaces cannot live past `undo-timeout`.
+        if (index >= self.tabs.items.len) return null;
+
+        var removed = self.tabs.orderedRemove(index);
+        const tab_id = removed.id;
+        destroySubclassedWindow(&removed.button_hwnd, &removed.button_prev_proc);
+        removed.button_placement = .{};
+        removed.button_label_cache_valid = false;
+
+        var it = removed.tree.iterator();
+        while (it.next()) |entry| {
+            entry.view.host_active = false;
+            entry.view.setVisible(false);
+        }
+
+        self.active_tab = if (self.tabs.items.len == 0)
+            0
+        else if (index >= self.tabs.items.len)
+            self.tabs.items.len - 1
+        else
+            index;
+
+        return .{
+            .kind = .close_tab,
+            .timestamp_ms = GetTickCount64(),
+            .sequence_id = self.app.nextUndoSequence(),
+            .payload = .{ .close_tab = .{
+                .tab = removed,
+                .index = index,
+                .tab_id = tab_id,
+            } },
+        };
+    }
+
+    fn restoreClosedTabEntry(self: *Host, value: *CloseTabUndo) Allocator.Error!bool {
+        const tab = value.tab orelse return false;
+        const insert_index = @min(value.index, self.tabs.items.len);
+        try self.tabs.insert(self.app.core_app.alloc, insert_index, tab);
+        value.tab = null;
+        value.index = insert_index;
+        self.active_tab = insert_index;
+        return self.activeSurface() != null;
+    }
+
+    fn redoClosedTabEntry(self: *Host, value: *CloseTabUndo) bool {
+        if (value.tab != null) return false;
+        const index = self.findTabIndexById(value.tab_id) orelse return false;
+        var removed = self.tabs.orderedRemove(index);
+        destroySubclassedWindow(&removed.button_hwnd, &removed.button_prev_proc);
+        removed.button_placement = .{};
+        removed.button_label_cache_valid = false;
+
+        var it = removed.tree.iterator();
+        while (it.next()) |entry| {
+            entry.view.host_active = false;
+            entry.view.setVisible(false);
+        }
+
+        value.index = index;
+        value.tab = removed;
+        self.active_tab = if (self.tabs.items.len == 0)
+            0
+        else if (index >= self.tabs.items.len)
+            self.tabs.items.len - 1
+        else
+            index;
+        return true;
+    }
+
+    fn undoSplitCreateEntry(self: *Host, value: *SplitCreateUndo) !bool {
+        if (value.detached) return false;
+        const found = self.app.findTabForSurface(value.source_surface) orelse return false;
+        if (found.host != self) return false;
+        const created_handle = found.tab.findHandle(value.created_surface) orelse return false;
+        const next_tree = try found.tab.tree.remove(self.app.core_app.alloc, created_handle);
+        found.tab.tree.deinit();
+        found.tab.tree = next_tree;
+        found.tab.focused = found.tab.findHandle(value.source_surface) orelse found.tab.focused;
+        value.created_surface.host_active = false;
+        value.created_surface.setVisible(false);
+        value.detached = true;
+        self.active_tab = found.index;
+        return true;
+    }
+
+    fn redoSplitCreateEntry(self: *Host, value: *SplitCreateUndo) !bool {
+        if (!value.detached) return false;
+        const found = self.app.findTabForSurface(value.source_surface) orelse return false;
+        if (found.host != self) return false;
+
+        const source_handle = found.tab.findHandle(value.source_surface) orelse return false;
+        const inserted = try SplitTreeSurface.init(self.app.core_app.alloc, value.created_surface);
+        defer {
+            var cleanup = inserted;
+            cleanup.deinit();
+        }
+
+        const next_tree = try found.tab.tree.split(
+            self.app.core_app.alloc,
+            source_handle,
+            value.direction,
+            0.5,
+            &inserted,
+        );
+        found.tab.tree.deinit();
+        found.tab.tree = next_tree;
+        found.tab.focused = found.tab.findHandle(value.created_surface) orelse source_handle;
+        value.detached = false;
+        self.active_tab = found.index;
+        return true;
+    }
+
+    fn applyLatestStructuralUndo(self: *Host) !?[]const u8 {
+        const entry = (try self.popStructuralUndo()) orelse return null;
+        errdefer self.restoreLastStructuralUndoPop();
+
+        switch (entry.payload) {
+            .close_tab => |*value| {
+                if (!(try self.restoreClosedTabEntry(value))) {
+                    self.discardNewestStructuralRedo();
+                    return null;
+                }
+                const surface = self.activeSurface() orelse {
+                    self.discardNewestStructuralRedo();
+                    return null;
+                };
+                self.app.activateSurface(surface);
+                return "Tab restored.";
+            },
+
+            .split_create => |*value| {
+                if (!(try self.undoSplitCreateEntry(value))) {
+                    self.discardNewestStructuralRedo();
+                    return null;
+                }
+                self.app.activateSurface(value.source_surface);
+                return "New split undone.";
+            },
+        }
+    }
+
+    fn applyLatestStructuralRedo(self: *Host) !?[]const u8 {
+        const entry = (try self.popStructuralRedo()) orelse return null;
+        errdefer self.restoreLastStructuralRedoPop();
+
+        switch (entry.payload) {
+            .close_tab => |*value| {
+                if (!self.redoClosedTabEntry(value)) {
+                    self.discardNewestStructuralUndo();
+                    return null;
+                }
+                if (self.activeSurface()) |surface| {
+                    self.app.activateSurface(surface);
+                } else {
+                    self.refocusHostWindow();
+                    self.layout() catch {};
+                    self.refreshChrome() catch {};
+                }
+                return "Tab closed again.";
+            },
+
+            .split_create => |*value| {
+                if (!(try self.redoSplitCreateEntry(value))) {
+                    self.discardNewestStructuralUndo();
+                    return null;
+                }
+                self.app.activateSurface(value.created_surface);
+                return "Split restored.";
+            },
+        }
     }
 
     // ── Tween scheduler plumbing ───────────────────────────────────────
@@ -5615,7 +6429,7 @@ const Host = struct {
     /// `(left, width)` (in parent HWND coords). Snaps on the first
     /// retarget (no slide-in from origin on window open) and under
     /// reduced-motion / HC. Otherwise slides over
-    /// `win32_tab_visual.underline_slide_ms`; registers a dummy tween
+    /// `win32_tab_visual.underline_slide_ms`; registers a timer-only tween
     /// so the 16 ms heartbeat stays alive for the slide duration.
     fn retargetTabUnderline(self: *Host, left: i32, width: i32) void {
         const new_left: f32 = @floatFromInt(left);
@@ -5663,27 +6477,31 @@ const Host = struct {
         wParam: WPARAM,
         lParam: LPARAM,
     ) ?LRESULT {
-        if (!self.app.use_integrated_titlebar) return null;
+        if (!self.usingIntegratedTitlebar()) return null;
         if (wParam == 0) return null; // FALSE case: untouched.
         const params: *NCCALCSIZE_PARAMS = @ptrFromInt(@as(usize, @bitCast(lParam)));
-        const saved_top = params.rgrc[0].top;
+        const original = params.rgrc[0];
         // Let DWP compute the default side/bottom frame…
         _ = DefWindowProcW(hwnd, WM_NCCALCSIZE, wParam, lParam);
-        // …then reset the top so the caption row lives inside the
-        // client area (WT's strategy, wt-chrome-reference.md §3).
-        params.rgrc[0].top = saved_top;
-        // Maximized state: Win11 adds an invisible resize margin
-        // above the visible content. Without this compensation the
-        // top of the content would clip into the monitor bezel.
-        if (IsZoomed(hwnd) != 0) {
-            const metrics = win32_nc_layout.metricsDefault(self.current_dpi);
-            params.rgrc[0].top += metrics.size_frame_y + metrics.padded_border;
-        }
+        // …then compute the top edge through the shared NC-layout
+        // math. Side / bottom stay DWP-owned so the stock frame
+        // widths survive, while the integrated-caption policy
+        // (caption row inside client + maximized invisible-margin
+        // compensation) stays centralized in `win32_nc_layout`.
+        const metrics = win32_nc_layout.metricsDefault(self.current_dpi);
+        const state: win32_nc_layout.WindowState = if (IsZoomed(hwnd) != 0) .maximized else .normal;
+        const adjusted = win32_nc_layout.calcNcClientRect(.{
+            .left = params.rgrc[0].left,
+            .top = original.top,
+            .right = params.rgrc[0].right,
+            .bottom = params.rgrc[0].bottom,
+        }, metrics, state);
+        params.rgrc[0].top = adjusted.top;
         return 0;
     }
 
     fn handleNcHitTest(self: *Host, hwnd: HWND, lParam: LPARAM) ?LRESULT {
-        if (!self.app.use_integrated_titlebar) return null;
+        if (!self.usingIntegratedTitlebar()) return null;
 
         // lParam is the cursor in SCREEN coords (WM_NCHITTEST is
         // special-cased — NOT client-relative).
@@ -5725,7 +6543,7 @@ const Host = struct {
     }
 
     fn handleNcMouseMove(self: *Host, hwnd: HWND, wParam: WPARAM) ?LRESULT {
-        if (!self.app.use_integrated_titlebar) return null;
+        if (!self.usingIntegratedTitlebar()) return null;
 
         // wParam is the hit-test code returned by our WM_NCHITTEST.
         const ht: i32 = @intCast(@as(i64, @bitCast(wParam)));
@@ -5896,12 +6714,10 @@ const Host = struct {
     }
 
     fn announcePaletteSelection(self: *const Host) void {
-        // TODO: raise UIA_NamePropertyId PropertyChanged so Narrator
-        // re-reads the selected entry on ↑/↓. This needs the active
-        // provider instance; the current WM_GETOBJECT path creates a
-        // fresh one per query so there's nothing to raise against
-        // without caching. Leave as a known-limitation until the
-        // per-widget provider cache lands (P3-era work).
+        // Selection-change UIA events need a stable provider instance
+        // to target. The current WM_GETOBJECT path creates a fresh one
+        // per query, so there's nothing to raise against without
+        // caching.
         _ = self;
     }
 
@@ -5919,8 +6735,8 @@ const Host = struct {
 
     /// Dispatch the action at rank index `row`. Must be called from the
     /// palette list's WM_LBUTTONDOWN, where the Host is still alive;
-    /// the dispatched action may free the host (close_tab on last tab
-    /// etc.) so no `self` access after `performBindingAction`.
+    /// the dispatched action may free the host (`close_window`, etc.)
+    /// so no `self` access after `performBindingAction`.
     fn invokePaletteRow(self: *Host, row: usize) !void {
         if (row >= self.palette_list_ranked_count) return;
         if (row >= self.palette_list_ranked.len) return;
@@ -6112,6 +6928,9 @@ const Host = struct {
         if (self.chrome_font) |font| _ = DeleteObject(font);
         if (self.titlebar_caption_icon_font) |font| _ = DeleteObject(font);
         if (self.titlebar_action_icon_font) |font| _ = DeleteObject(font);
+        self.clearStructuralHistory(.host_destroy);
+        self.structural_undo_entries.deinit(self.app.core_app.alloc);
+        self.structural_redo_entries.deinit(self.app.core_app.alloc);
         for (self.tabs.items) |*tab| tab.deinit();
         self.tabs.deinit(self.app.core_app.alloc);
         self.* = undefined;
@@ -6154,6 +6973,23 @@ const Host = struct {
         if (self.tabs.items.len == 0 or self.active_tab >= self.tabs.items.len) return null;
         const tab: *const Tab = &self.tabs.items[self.active_tab];
         return tab.focusedSurface();
+    }
+
+    fn refocusHostWindow(self: *Host) void {
+        if (self.hwnd) |hwnd| {
+            _ = SetFocus(hwnd);
+        }
+    }
+
+    fn handleEmptyHostKeyMessage(
+        self: *Host,
+        msg: UINT,
+        wParam: WPARAM,
+        lParam: LPARAM,
+    ) bool {
+        if (self.activeSurface() != null) return false;
+        const event = keyEventFromWin32Message(msg, wParam, lParam) orelse return false;
+        return self.app.core_app.keyEvent(self.app, event);
     }
 
     fn prepareActiveTabVisibility(self: *Host, active_index: usize) void {
@@ -6248,6 +7084,9 @@ const Host = struct {
     fn swapTabs(self: *Host, a: usize, b: usize) void {
         if (a == b) return;
         if (a >= self.tabs.items.len or b >= self.tabs.items.len) return;
+        self.tabs.items[a].clearRedoHistory();
+        self.tabs.items[b].clearRedoHistory();
+        self.clearStructuralHistory(.normal);
         const tmp = self.tabs.items[a];
         self.tabs.items[a] = self.tabs.items[b];
         self.tabs.items[b] = tmp;
@@ -7790,10 +8629,14 @@ const Host = struct {
                 surface.promptTitle(.tab) catch {};
             },
             CTX_TAB_CLOSE => {
-                _ = self.app.closeTab(.{ .surface = surface.core() }, .this);
+                _ = self.app.closeTab(.{ .surface = surface.core() }, .this) catch |err| {
+                    log.warn("close_tab action failed err={}", .{err});
+                };
             },
             CTX_TAB_CLOSE_OTHERS => {
-                _ = self.app.closeTab(.{ .surface = surface.core() }, .other);
+                _ = self.app.closeTab(.{ .surface = surface.core() }, .other) catch |err| {
+                    log.warn("close_tab other action failed err={}", .{err});
+                };
             },
             CTX_TAB_MOVE_LEFT => {
                 _ = self.app.moveTab(.{ .surface = surface.core() }, .{ .amount = -1 }) catch {};
@@ -8749,11 +9592,19 @@ const Host = struct {
         return true;
     }
 
-    fn shouldShowTabBar(self: *Host) bool {
+    fn shouldShowTabBar(self: *const Host) bool {
         return switch (self.app.config.@"window-show-tab-bar") {
             .always, .auto => true, // always show: tab bar has essential controls (+, ▾ dropdown)
             .never => false,
         };
+    }
+
+    /// Host-local view of the integrated-titlebar state. The app
+    /// carries the build/config floor, but host-side non-client
+    /// handling must also respect whether this host is actually
+    /// reserving a visible caption/tab row.
+    fn usingIntegratedTitlebar(self: *const Host) bool {
+        return self.app.use_integrated_titlebar and self.shouldShowTabBar();
     }
 
     fn tabBarHeight(self: *Host) i32 {
@@ -8763,7 +9614,7 @@ const Host = struct {
         // "tabs-in-caption" look. On Win10 / build < 22000 we keep
         // the compact 32 px height since the DWM caption still sits
         // above.
-        const base = if (self.app.use_integrated_titlebar)
+        const base = if (self.usingIntegratedTitlebar())
             host_tab_height_integrated
         else
             host_tab_height;
@@ -8784,7 +9635,7 @@ const Host = struct {
     /// Buttons are painted by `paintChrome`; this reservation keeps
     /// the [+][▾] cluster and tab strip from colliding with them.
     fn captionButtonsWidth(self: *const Host) i32 {
-        if (!self.app.use_integrated_titlebar) return 0;
+        if (!self.usingIntegratedTitlebar()) return 0;
         return self.scaled(host_caption_button_w) * 3;
     }
 
@@ -8883,7 +9734,9 @@ const Host = struct {
         }
 
         if (surfaces.items.len == 0) {
+            self.clearStructuralHistory(.normal);
             if (fallback_hwnd) |hwnd| _ = DestroyWindow(hwnd);
+            self.app.removeHost(self);
             return;
         }
         for (surfaces.items) |surface| surface.close(false);
@@ -9320,8 +10173,13 @@ const Host = struct {
 
     fn syncWindowTitle(self: *Host) !bool {
         const hwnd = self.hwnd orelse return false;
-        const surface = self.activeSurface() orelse return false;
         const alloc = self.app.core_app.alloc;
+        const surface = self.activeSurface() orelse {
+            if (!windowTitleSyncChanged(self.cached_window_title, "winghostty")) return false;
+            try appendOwnedString(alloc, &self.cached_window_title, "winghostty");
+            _ = SetWindowTextW(hwnd, default_title);
+            return true;
+        };
         const host_base_title = try buildHostAwareBaseTitle(
             alloc,
             if (surface.effectiveTitle()) |value| value else null,
@@ -9791,7 +10649,7 @@ const Host = struct {
 
     /// Paint the 3 caption buttons (min / max-or-restore / close) at
     /// the top-right of the tab row. Called from `paintChrome` only
-    /// when `App.use_integrated_titlebar` is true.
+    /// when this host is actively using the integrated titlebar.
     fn drawTitlebarGlyph(
         self: *Host,
         hdc: HDC,
@@ -10044,7 +10902,7 @@ const Host = struct {
             // hit-tested via `win32_nc_layout.hitTest` and dispatched
             // from our NC mouse handlers so Snap Layout hover remains
             // intact while the visuals stay app-owned.
-            if (self.app.use_integrated_titlebar) {
+            if (self.usingIntegratedTitlebar()) {
                 self.paintCaptionButtons(hdc, client_rect, theme);
             }
 
@@ -11019,6 +11877,88 @@ fn commitSplitSurfaceAttach(split_rollback: *?SplitSurfaceAttachRollback) void {
     }
 }
 
+const RestoredTerminalUndoState = struct {
+    title: ?[]const u8 = null,
+    pwd: ?[]const u8 = null,
+    scrollbar: terminal.Scrollbar = .zero,
+};
+
+const undo_snapshot_magic = "WUH1";
+
+fn captureTerminalUndoStateBytes(
+    alloc: Allocator,
+    terminal_state: *const terminal.Terminal,
+) ![]u8 {
+    var vt_buf: std.Io.Writer.Allocating = .init(alloc);
+    defer vt_buf.deinit();
+
+    var formatter = terminal.formatter.TerminalFormatter.init(
+        terminal_state,
+        .vt,
+    );
+    formatter.extra = .all;
+    formatter.extra.pwd = false;
+    try formatter.format(&vt_buf.writer);
+
+    const vt_bytes = try vt_buf.toOwnedSlice();
+    defer alloc.free(vt_bytes);
+
+    const title = terminal_state.getTitle() orelse "";
+    const pwd = terminal_state.getPwd() orelse "";
+
+    var buf: std.Io.Writer.Allocating = .init(alloc);
+    defer buf.deinit();
+    try buf.writer.writeAll(undo_snapshot_magic);
+    try buf.writer.writeInt(u32, @intCast(title.len), .little);
+    try buf.writer.writeInt(u32, @intCast(pwd.len), .little);
+    try buf.writer.writeAll(title);
+    try buf.writer.writeAll(pwd);
+    try buf.writer.writeAll(vt_bytes);
+    return try buf.toOwnedSlice();
+}
+
+fn restoreTerminalUndoState(
+    terminal_state: *terminal.Terminal,
+    state_bytes: []const u8,
+) RestoredTerminalUndoState {
+    var title_bytes: []const u8 = "";
+    var pwd_bytes: []const u8 = "";
+    var vt_bytes = state_bytes;
+    if (state_bytes.len >= 12 and std.mem.eql(u8, state_bytes[0..4], undo_snapshot_magic)) {
+        const title_len: usize = std.mem.readInt(u32, state_bytes[4..8], .little);
+        const pwd_len: usize = std.mem.readInt(u32, state_bytes[8..12], .little);
+        const title_start = 12;
+        const pwd_start = title_start + title_len;
+        const vt_start = pwd_start + pwd_len;
+        if (vt_start <= state_bytes.len) {
+            title_bytes = state_bytes[title_start..pwd_start];
+            pwd_bytes = state_bytes[pwd_start..vt_start];
+            vt_bytes = state_bytes[vt_start..];
+        }
+    }
+
+    terminal_state.fullReset();
+    var stream = terminal_state.vtStream();
+    defer stream.deinit();
+    stream.nextSlice(vt_bytes);
+    if (title_bytes.len > 0) {
+        terminal_state.setTitle(title_bytes) catch |err| {
+            log.warn("undo snapshot title restore failed err={}", .{err});
+        };
+    }
+    if (pwd_bytes.len > 0) {
+        terminal_state.setPwd(pwd_bytes) catch |err| {
+            log.warn("undo snapshot pwd restore failed err={}", .{err});
+        };
+    }
+
+    return .{
+        .title = terminal_state.getTitle(),
+        .pwd = terminal_state.getPwd(),
+        .scrollbar = terminal_state.screens.active.pages.scrollbar(),
+    };
+}
+
 const HostBannerKind = enum {
     none,
     info,
@@ -11088,14 +12028,6 @@ const ProfileOpenTarget = enum {
     window,
     split,
 };
-
-fn profileOpenTargetLabel(target: ProfileOpenTarget) []const u8 {
-    return switch (target) {
-        .tab => "tab",
-        .window => "window",
-        .split => "split",
-    };
-}
 
 fn parseProfileOpenTarget(raw: []const u8) ?ProfileOpenTarget {
     if (std.ascii.eqlIgnoreCase(raw, "tab")) return .tab;
@@ -11602,10 +12534,6 @@ fn titlebarTextColor(theme: *const ThemeColors, config: *const configpkg.Config)
     return theme.text_primary;
 }
 
-fn applyDwmTheme(hwnd: HWND, theme: *const ThemeColors, config: *const configpkg.Config) void {
-    applyDwmThemeWithBuild(hwnd, theme, config, 0);
-}
-
 fn applyDwmThemeWithBuild(hwnd: HWND, theme: *const ThemeColors, config: *const configpkg.Config, os_build: u32) void {
     if (isHighContrastActive()) return; // Let system control title bar in HC mode
     const dark_mode: u32 = if (theme.is_dark) 1 else 0;
@@ -11822,6 +12750,7 @@ fn buildToastLaunchForSurface(
 fn surfaceConfirmCloseAccept(userdata: ?*anyopaque) void {
     const ud = userdata orelse return;
     const surface: *Surface = @ptrCast(@alignCast(ud));
+    surface.invalidateStructuralHistoryForClose();
     if (surface.hwnd) |hwnd| _ = DestroyWindow(hwnd);
 }
 
@@ -11836,7 +12765,7 @@ fn surfaceConfirmPasteAccept(userdata: ?*anyopaque) void {
     const pending = op.paste;
     // Snapshot the allocator by value BEFORE dispatching. If
     // `completeClipboardRequest` synchronously destroys the surface
-    // (close_surface / close_tab on last tab), `surface.app` at defer
+    // (for example via close_surface), `surface.app` at defer
     // time is a dangling read. `std.mem.Allocator` is a pod value
     // (vtable + ctx ptr); the ctx is owned by the app arena which
     // outlives the surface, so the snapshot stays valid.
@@ -12497,11 +13426,11 @@ test "win32 rectIntersects only trips on positive overlap" {
 
 test "win32 palette EN_CHANGE re-entry guard: suppress_edit_events gates sync cascade" {
     // Sentinel test — the Host struct MUST carry the
-    // `suppress_edit_events: bool = false` flag. Task #44's palette-
-    // crash fix relies on it gating the EN_CHANGE handler at
+    // `suppress_edit_events: bool = false` flag. The palette edit
+    // path relies on it gating the EN_CHANGE handler at
     // `hostWindowProc` (command_id 2002) and on `setOverlayEditText`
     // flipping it around programmatic `SetWindowTextW` calls. If a
-    // future refactor removes or renames the field this test fails
+    // refactor removes or renames the field this test fails
     // at compile time before anyone else hits the crash again.
     try std.testing.expect(@hasField(Host, "suppress_edit_events"));
     try std.testing.expectEqual(bool, @FieldType(Host, "suppress_edit_events"));
@@ -13103,6 +14032,31 @@ const SurfaceOrderEntry = struct {
     host_id: u32,
     host_active: bool,
 };
+
+fn splitTreeEquivalent(a: *const SplitTreeSurface, b: *const SplitTreeSurface) bool {
+    if (a.zoomed != b.zoomed) return false;
+    if (a.nodes.len != b.nodes.len) return false;
+
+    for (a.nodes, b.nodes) |lhs, rhs| {
+        switch (lhs) {
+            .leaf => |lhs_view| switch (rhs) {
+                .leaf => |rhs_view| if (lhs_view != rhs_view) return false,
+                .split => return false,
+            },
+            .split => |lhs_split| switch (rhs) {
+                .leaf => return false,
+                .split => |rhs_split| {
+                    if (lhs_split.layout != rhs_split.layout) return false;
+                    if (lhs_split.ratio != rhs_split.ratio) return false;
+                    if (lhs_split.left != rhs_split.left) return false;
+                    if (lhs_split.right != rhs_split.right) return false;
+                },
+            },
+        }
+    }
+
+    return true;
+}
 
 fn resizeSplitFallbackDelta(value: apprt.action.ResizeSplit) ResizeSplitFallbackDelta {
     const amount: i32 = @intCast(value.amount);
@@ -14151,22 +15105,6 @@ fn paintPinnedSlotBadge(hdc: HDC, rect: RECT, digit: u8, border: u32, bg: u32, f
     );
 }
 
-fn paintPinnedButtonMarker(hdc: HDC, rect: RECT, color: u32, dpi: u32) void {
-    const s = Host.scaledBy;
-    fillSolidRect(hdc, .{
-        .left = rect.right - s(10, dpi),
-        .top = rect.top + s(3, dpi),
-        .right = rect.right - s(4, dpi),
-        .bottom = rect.top + s(5, dpi),
-    }, color);
-    fillSolidRect(hdc, .{
-        .left = rect.right - s(6, dpi),
-        .top = rect.top + s(3, dpi),
-        .right = rect.right - s(4, dpi),
-        .bottom = rect.top + s(9, dpi),
-    }, color);
-}
-
 fn profileOpenTargetMarkerColor(target: ProfileOpenTarget) u32 {
     return switch (target) {
         .tab => rgb(132, 172, 238),
@@ -14541,17 +15479,6 @@ fn commandPaletteUniqueMatch(snap: PaletteSnapshot, input_text: []const u8) ?[]c
     return if (best_index) |i| std.mem.span(snap.cvals[i].action) else null;
 }
 
-fn commandPaletteNthMatch(
-    snap: PaletteSnapshot,
-    input_text: []const u8,
-    target_index: usize,
-) ?[]const u8 {
-    var ranked_buf: [palette_max_ranked]RankedIndex = undefined;
-    const ranked = rankedIndicesForQuery(snap, input_text, &ranked_buf);
-    if (target_index >= ranked.len) return null;
-    return std.mem.span(snap.cvals[ranked[target_index].index].action);
-}
-
 fn commandPaletteCompletionCandidate(
     snap: PaletteSnapshot,
     seed: []const u8,
@@ -14885,7 +15812,9 @@ fn tabButtonProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv
                         .close => {
                             if (v.activateTabIndex(index)) {
                                 if (v.activeSurface()) |surface| {
-                                    _ = v.app.closeTab(.{ .surface = surface.core() }, .this);
+                                    _ = v.app.closeTab(.{ .surface = surface.core() }, .this) catch |err| {
+                                        log.warn("tab close button action failed err={}", .{err});
+                                    };
                                 }
                             }
                         },
@@ -15005,7 +15934,9 @@ fn tabButtonProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv
                             .close => {
                                 if (v.tabs.items.len > 1 and v.activateTabIndex(index)) {
                                     if (v.activeSurface()) |surface| {
-                                        _ = v.app.closeTab(.{ .surface = surface.core() }, .this);
+                                        _ = v.app.closeTab(.{ .surface = surface.core() }, .this) catch |err| {
+                                            log.warn("tab close key action failed err={}", .{err});
+                                        };
                                         return 0;
                                     }
                                 }
@@ -15024,7 +15955,9 @@ fn tabButtonProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv
                 WM_MBUTTONUP => {
                     if (v.tabs.items.len > 1 and v.activateTabIndex(index)) {
                         if (v.activeSurface()) |surface| {
-                            _ = v.app.closeTab(.{ .surface = surface.core() }, .this);
+                            _ = v.app.closeTab(.{ .surface = surface.core() }, .this) catch |err| {
+                                log.warn("tab middle-click close action failed err={}", .{err});
+                            };
                             return 0;
                         }
                     }
@@ -15257,10 +16190,11 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
         WM_ERASEBKGND => return 1,
-        // Integrated-titlebar non-client handlers. All gated on
-        // `App.use_integrated_titlebar` (Win11 build ≥ 22000 per
-        // AGENTS.md:78); on Win10 / older builds they fall through to
-        // DefWindowProcW and the system paints its default caption.
+        // Integrated-titlebar non-client handlers. All gated on the
+        // host actively using the integrated titlebar (Win11 build /
+        // config gate + visible tab/caption row); otherwise they fall
+        // through to DefWindowProcW and the system paints its default
+        // caption.
         WM_NCCALCSIZE => {
             if (host) |v| {
                 if (v.handleNcCalcSize(hwnd, wParam, lParam)) |lr| return lr;
@@ -15269,6 +16203,9 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
         },
         WM_NCHITTEST => {
             if (host) |v| {
+                if (v.usingIntegratedTitlebar()) {
+                    if (dispatchDwmNcMessage(hwnd, msg, wParam, lParam)) |lr| return lr;
+                }
                 if (v.handleNcHitTest(hwnd, lParam)) |lr| return lr;
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
@@ -15281,7 +16218,12 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
         },
         WM_NCMOUSELEAVE => {
             if (host) |v| {
+                const dwm_result = if (v.usingIntegratedTitlebar())
+                    dispatchDwmNcMessage(hwnd, msg, wParam, lParam)
+                else
+                    null;
                 v.handleNcMouseLeave();
+                if (dwm_result) |lr| return lr;
             }
             return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
@@ -15292,7 +16234,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
         // loop once WM_NCCALCSIZE has removed the top NC margin.
         WM_NCLBUTTONDOWN => {
             if (host) |v| {
-                if (v.app.use_integrated_titlebar) {
+                if (v.usingIntegratedTitlebar()) {
                     const ht: i32 = @intCast(@as(i64, @bitCast(wParam)));
                     v.caption_pressed = titlebarCaptionFromHitTest(ht);
                     if (v.caption_pressed != .none) v.repaintTopChrome();
@@ -15308,7 +16250,8 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
         },
         WM_NCLBUTTONUP => {
             if (host) |v| {
-                if (v.app.use_integrated_titlebar) {
+                if (v.usingIntegratedTitlebar()) {
+                    if (dispatchDwmNcMessage(hwnd, msg, wParam, lParam)) |lr| return lr;
                     const ht: i32 = @intCast(@as(i64, @bitCast(wParam)));
                     if (captionButtonSysCommand(ht, IsZoomed(hwnd) != 0) != null) {
                         v.clearCaptionPressed();
@@ -15453,7 +16396,7 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                             // handler run would invalidate
                             // `cached_overlay_edit` mid-write and
                             // racing borrows across the sync cascade
-                            // was the root of task #44.
+                            // caused palette edit re-entry crashes.
                             if (v.suppress_edit_events) return 0;
                             appendOwnedString(v.app.core_app.alloc, &v.cached_overlay_edit, null) catch {};
                             if (v.overlay_mode == .search) {
@@ -15506,13 +16449,9 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                     },
                     2004 => {
                         if (v.overlay_mode == .confirm) {
-                            // Cancel is non-destructive today (the
-                            // confirm-close-surface cancel callback
-                            // is null), but future consumers might
-                            // add destructive cancel callbacks (e.g.
-                            // rollback). Use the same no-access-after
-                            // discipline as the accept path for
-                            // safety.
+                            // Cancel callbacks can mutate or destroy
+                            // the Host. Use the same no-access-after
+                            // discipline as the accept path for safety.
                             v.invokeConfirmCancel();
                             return 0;
                         }
@@ -15643,6 +16582,13 @@ fn hostWindowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callcon
                 refocusActiveSurface(v);
             }
             return 0;
+        },
+
+        WM_KEYDOWN, WM_SYSKEYDOWN, WM_KEYUP, WM_SYSKEYUP => {
+            if (host) |v| {
+                if (v.handleEmptyHostKeyMessage(msg, wParam, lParam)) return 0;
+            }
+            return DefWindowProcW(hwnd, msg, wParam, lParam);
         },
 
         WM_GETMINMAXINFO => {
@@ -16526,6 +17472,42 @@ fn translateKeyText(
     return result;
 }
 
+fn keyEventFromWin32Message(
+    msg: UINT,
+    wParam: WPARAM,
+    lParam: LPARAM,
+) ?input.KeyEvent {
+    const action: input.Action = switch (msg) {
+        WM_KEYUP, WM_SYSKEYUP => .release,
+        WM_KEYDOWN, WM_SYSKEYDOWN => if (isRepeatedKey(lParam)) .repeat else .press,
+        else => return null,
+    };
+
+    const vk: UINT = @intCast(wParam & 0xFFFF);
+    const key = keyFromVirtualKey(vk, lParam);
+    var keyboard_state_storage: [256]u8 = [_]u8{0} ** 256;
+    const keyboard_state = currentKeyboardState(&keyboard_state_storage);
+    const mods = currentModsFromKeyboardState(keyboard_state);
+
+    var event: input.KeyEvent = .{
+        .action = action,
+        .key = key,
+        .mods = mods,
+        .unshifted_codepoint = unshiftedCodepointForVirtualKey(vk),
+    };
+
+    if (action != .release) {
+        const translated = translateKeyText(vk, lParam, mods, keyboard_state);
+        event.utf8 = translated.utf8[0..translated.len];
+        event.consumed_mods = translated.consumed_mods;
+        if (translated.unshifted_codepoint != 0) {
+            event.unshifted_codepoint = translated.unshifted_codepoint;
+        }
+    }
+
+    return event;
+}
+
 fn windowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.winapi) LRESULT {
     if (msg == WM_NCCREATE) {
         const cs: *const CREATESTRUCTW = @ptrFromInt(@as(usize, @bitCast(lParam)));
@@ -16789,6 +17771,7 @@ fn windowProc(hwnd: HWND, msg: UINT, wParam: WPARAM, lParam: LPARAM) callconv(.w
         },
 
         WM_CLOSE => {
+            if (surface) |v| v.invalidateStructuralHistoryForClose();
             _ = DestroyWindow(hwnd);
             return 0;
         },
@@ -16888,8 +17871,11 @@ pub const Surface = struct {
     renderer_repaint_retry_pending: std.atomic.Value(bool) = .init(false),
     draw_in_progress: bool = false,
     ime_composing: bool = false,
-    /// Per-surface bounded undo stack. Initialised empty in
-    /// `Surface.init`, drained in `deinit`, and capped by the stack.
+    undo_capture_suspended: bool = false,
+    /// Per-surface bounded undo stack for terminal-local replayable
+    /// actions (`clear_screen`, `reset`). Structural history that
+    /// retains live tabs/surfaces lives on `Host` because it crosses
+    /// pane boundaries and outlives the triggering surface.
     undo_stack: win32_undo.UndoStack = undefined,
     /// Per-pane docked search bar state. The pure state machine
     /// lives in `win32_search_bar.zig`; HWNDs below are the live
@@ -17247,7 +18233,243 @@ pub const Surface = struct {
             };
             return;
         }
+        const mutable: *Surface = @constCast(self);
+        mutable.invalidateStructuralHistoryForClose();
         if (self.hwnd) |hwnd| _ = DestroyWindow(hwnd);
+    }
+
+    pub fn captureUndoClearScreen(self: *Surface) !void {
+        try self.captureUndoTerminalState(.clear_screen);
+    }
+
+    pub fn captureUndoReset(self: *Surface) !void {
+        try self.captureUndoTerminalState(.reset);
+    }
+
+    pub fn invalidateRedoForSnapshotlessLocalAction(self: *Surface) void {
+        self.undo_stack.clearRedo();
+        self.invalidateRedoForNewLocalAction();
+    }
+
+    fn invalidateRedoForNewLocalAction(self: *Surface) void {
+        if (self.host) |host| host.clearStructuralRedo();
+    }
+
+    fn invalidateRedoForUnsupportedStructuralAction(self: *Surface) void {
+        self.undo_stack.clearRedo();
+        if (self.host) |host| host.clearStructuralRedo();
+    }
+
+    fn invalidateRedoForUnsupportedTabStructuralAction(self: *Surface) void {
+        const found = self.app.findTabForSurface(self) orelse {
+            self.invalidateRedoForUnsupportedStructuralAction();
+            return;
+        };
+        found.tab.clearRedoHistory();
+        found.host.clearStructuralRedo();
+    }
+
+    fn invalidateStructuralHistoryForClose(self: *Surface) void {
+        const found = self.app.findTabForSurface(self) orelse return;
+        found.tab.clearRedoHistory();
+        if (found.tab.tree.nodes.len == 1) {
+            found.host.clearStructuralHistory(.normal);
+            return;
+        }
+        found.host.clearStructuralRedo();
+    }
+
+    fn invalidateStructuralHistoryForDestroy(self: *Surface) void {
+        const found = self.app.findTabForSurface(self) orelse return;
+        found.tab.clearRedoHistoryExcept(self);
+        if (found.tab.tree.nodes.len == 1) {
+            found.host.clearStructuralHistory(.normal);
+            return;
+        }
+        found.host.clearStructuralRedo();
+    }
+
+    fn pushUndoEntryAndInvalidateRedo(
+        self: *Surface,
+        entry: win32_undo.Entry,
+    ) !void {
+        // Redo invalidation must happen AFTER the new undo entry is
+        // committed. If the push fails, the action is aborted and the
+        // existing redo branch must remain reachable.
+        try self.undo_stack.push(entry);
+        self.invalidateRedoForNewLocalAction();
+        self.app.scheduleUndoPruneTimer();
+    }
+
+    fn captureUndoTerminalState(self: *Surface, kind: win32_undo.Kind) !void {
+        if (self.undo_capture_suspended) return;
+
+        self.undo_stack.discardExpired(self.app.undoCutoffTimestampMs());
+        const state_bytes = try self.captureTerminalStateBytes();
+        // Ownership moves into `entry` below.
+
+        var entry: win32_undo.Entry = .{
+            .kind = kind,
+            .snapshot = switch (kind) {
+                .clear_screen => .{ .clear_screen = .{ .state_bytes = state_bytes } },
+                .reset => .{ .reset = .{ .state_bytes = state_bytes } },
+            },
+            .timestamp_ms = GetTickCount64(),
+            .sequence_id = self.app.nextUndoSequence(),
+        };
+        errdefer entry.deinit(self.app.core_app.alloc);
+        try self.pushUndoEntryAndInvalidateRedo(entry);
+    }
+
+    fn captureTerminalStateBytes(self: *Surface) ![]u8 {
+        self.core_surface.renderer_state.mutex.lock();
+        defer self.core_surface.renderer_state.mutex.unlock();
+        return try captureTerminalUndoStateBytes(
+            self.app.core_app.alloc,
+            self.core_surface.renderer_state.terminal,
+        );
+    }
+
+    fn restoreUndoSnapshot(self: *Surface, entry: *const win32_undo.Entry) void {
+        const alloc = self.app.core_app.alloc;
+        const state_bytes = switch (entry.snapshot) {
+            .clear_screen => |value| value.state_bytes,
+            .reset => |value| value.state_bytes,
+        };
+        var restored: RestoredTerminalUndoState = .{};
+
+        {
+            self.core_surface.renderer_state.mutex.lock();
+            defer self.core_surface.renderer_state.mutex.unlock();
+            restored = restoreTerminalUndoState(
+                self.core_surface.renderer_state.terminal,
+                state_bytes,
+            );
+        }
+
+        appendOwnedString(alloc, &self.title, restored.title) catch |err| {
+            log.warn("undo snapshot title cache sync failed err={}", .{err});
+        };
+        appendOwnedString(alloc, &self.pwd, restored.pwd) catch |err| {
+            log.warn("undo snapshot pwd cache sync failed err={}", .{err});
+        };
+        self.setScrollbar(restored.scrollbar) catch |err| {
+            log.warn("undo snapshot scrollbar sync failed err={}", .{err});
+        };
+        self.refreshWindowTitle() catch |err| {
+            log.warn("undo snapshot window title refresh failed err={}", .{err});
+        };
+        self.requestRepaint() catch |err| {
+            log.warn("undo snapshot repaint request failed err={}", .{err});
+        };
+    }
+
+    fn applyLocalUndoEntry(
+        self: *Surface,
+        entry: *const win32_undo.Entry,
+        mode: enum { undo, redo },
+    ) ?[]const u8 {
+        switch (mode) {
+            .undo => {
+                self.restoreUndoSnapshot(entry);
+                return switch (entry.kind) {
+                    .clear_screen => "Clear screen undone.",
+                    .reset => "Terminal reset undone.",
+                };
+            },
+
+            .redo => {
+                self.undo_capture_suspended = true;
+                defer self.undo_capture_suspended = false;
+
+                if (!self.reapplyUndoableAction(entry.kind)) return null;
+                return switch (entry.kind) {
+                    .clear_screen => "Clear screen redone.",
+                    .reset => "Terminal reset redone.",
+                };
+            },
+        }
+    }
+
+    fn reapplyUndoableAction(self: *Surface, kind: win32_undo.Kind) bool {
+        switch (kind) {
+            .clear_screen => {
+                {
+                    self.core_surface.renderer_state.mutex.lock();
+                    defer self.core_surface.renderer_state.mutex.unlock();
+                    if (self.core_surface.io.terminal.screens.active_key == .alternate) return false;
+                }
+                self.core_surface.io.queueMessage(
+                    .{ .clear_screen = .{ .history = true } },
+                    .unlocked,
+                );
+                return true;
+            },
+
+            .reset => {
+                var scrollbar: terminal.Scrollbar = .zero;
+                {
+                    self.core_surface.renderer_state.mutex.lock();
+                    defer self.core_surface.renderer_state.mutex.unlock();
+                    self.core_surface.renderer_state.terminal.fullReset();
+                    scrollbar = self.core_surface.renderer_state.terminal.screens.active.pages.scrollbar();
+                }
+
+                appendOwnedString(self.app.core_app.alloc, &self.title, null) catch |err| {
+                    log.warn("redo reset title cache clear failed err={}", .{err});
+                };
+                appendOwnedString(self.app.core_app.alloc, &self.pwd, null) catch |err| {
+                    log.warn("redo reset pwd cache clear failed err={}", .{err});
+                };
+                self.setScrollbar(scrollbar) catch |err| {
+                    log.warn("redo reset scrollbar sync failed err={}", .{err});
+                };
+                self.refreshWindowTitle() catch |err| {
+                    log.warn("redo reset window title refresh failed err={}", .{err});
+                };
+                self.requestRepaint() catch |err| {
+                    log.warn("redo reset repaint request failed err={}", .{err});
+                };
+                return true;
+            },
+        }
+    }
+
+    fn canReapplyUndoableAction(self: *Surface, kind: win32_undo.Kind) bool {
+        switch (kind) {
+            .clear_screen => {
+                self.core_surface.renderer_state.mutex.lock();
+                defer self.core_surface.renderer_state.mutex.unlock();
+                return self.core_surface.io.terminal.screens.active_key != .alternate;
+            },
+            .reset => return true,
+        }
+    }
+
+    fn localRedoUnavailableMessage(kind: win32_undo.Kind) []const u8 {
+        return switch (kind) {
+            .clear_screen => "Redo unavailable in alternate screen.",
+            .reset => unreachable,
+        };
+    }
+
+    fn applyLatestLocalUndo(self: *Surface) !?[]const u8 {
+        const entry = (try self.undo_stack.popForUndo()) orelse return null;
+        return self.applyLocalUndoEntry(entry, .undo);
+    }
+
+    fn applyLatestLocalRedo(self: *Surface) !?[]const u8 {
+        const next = self.undo_stack.peekRedo() orelse return null;
+        if (!self.canReapplyUndoableAction(next.kind)) return localRedoUnavailableMessage(next.kind);
+
+        const entry = (try self.undo_stack.popForRedo()) orelse return null;
+        const kind = entry.kind;
+        const message = self.applyLocalUndoEntry(entry, .redo);
+        if (message == null) {
+            self.undo_stack.restoreLastRedoPop();
+            return localRedoUnavailableMessage(kind);
+        }
+        return message;
     }
 
     fn present(self: *Surface) void {
@@ -19305,39 +20527,15 @@ pub const Surface = struct {
     fn handleKeyMessage(self: *Surface, msg: UINT, wParam: WPARAM, lParam: LPARAM) void {
         if (!self.core_initialized) return;
 
-        const vk: UINT = @intCast(wParam & 0xFFFF);
-        const key = keyFromVirtualKey(vk, lParam);
-        var keyboard_state_storage: [256]u8 = [_]u8{0} ** 256;
-        const keyboard_state = currentKeyboardState(&keyboard_state_storage);
-        const mods = currentModsFromKeyboardState(keyboard_state);
-        const action: input.Action = switch (msg) {
-            WM_KEYUP, WM_SYSKEYUP => .release,
-            else => if (isRepeatedKey(lParam)) .repeat else .press,
-        };
-
-        var event: input.KeyEvent = .{
-            .action = action,
-            .key = key,
-            .mods = mods,
-            .unshifted_codepoint = unshiftedCodepointForVirtualKey(vk),
-        };
-
-        if (action != .release) {
-            const translated = translateKeyText(vk, lParam, mods, keyboard_state);
-            event.utf8 = translated.utf8[0..translated.len];
-            event.consumed_mods = translated.consumed_mods;
-            if (translated.unshifted_codepoint != 0) {
-                event.unshifted_codepoint = translated.unshifted_codepoint;
-            }
-        }
+        const event = keyEventFromWin32Message(msg, wParam, lParam) orelse return;
 
         _ = self.core_surface.keyCallback(event) catch |err| {
             log.err("win32 key callback failed err={} vk={} action={} key={} mods={}", .{
                 err,
-                vk,
-                action,
-                key,
-                mods,
+                @as(UINT, @intCast(wParam & 0xFFFF)),
+                event.action,
+                event.key,
+                event.mods,
             });
             return;
         };
@@ -19947,8 +21145,7 @@ pub const Surface = struct {
     /// accept `surfaceConfirmPasteAccept` completes the paste; on
     /// cancel `surfaceConfirmPasteCancel` frees the payload.
     ///
-    /// Non-modal replacement for the old synchronous clipboard
-    /// confirmation path.
+    /// Queues a non-modal clipboard confirmation.
     fn requestPasteConfirm(
         self: *Surface,
         request: apprt.ClipboardRequest,
@@ -20208,6 +21405,3129 @@ pub const Surface = struct {
     }
 };
 
+fn pushUndoAndRedoBranch(
+    stack: *win32_undo.UndoStack,
+    alloc: Allocator,
+    seed: u8,
+) !void {
+    const first = try alloc.alloc(u8, 1);
+    first[0] = seed;
+    try stack.push(.{
+        .kind = .clear_screen,
+        .snapshot = .{ .clear_screen = .{ .state_bytes = first } },
+        .timestamp_ms = seed,
+    });
+
+    const second = try alloc.alloc(u8, 1);
+    second[0] = seed + 1;
+    try stack.push(.{
+        .kind = .reset,
+        .snapshot = .{ .reset = .{ .state_bytes = second } },
+        .timestamp_ms = seed + 1,
+    });
+
+    try std.testing.expect((try stack.popForUndo()) != null);
+    try std.testing.expectEqual(@as(usize, 1), stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), stack.redoDepth());
+}
+
+test "win32 undo history ordering uses sequence when timestamps tie" {
+    try std.testing.expect(historyEntrySortsAfter(10, 2, 10, 1));
+    try std.testing.expect(!historyEntrySortsAfter(10, 1, 10, 2));
+    try std.testing.expect(historyEntrySortsAfter(11, 1, 10, 99));
+}
+
+test "win32 undo prune expires local and structural histories" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.windows = .empty;
+    app.hosts = .empty;
+    defer {
+        app.windows.deinit(std.testing.allocator);
+        app.hosts.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    try app.windows.append(std.testing.allocator, &surface_a);
+    try app.hosts.append(std.testing.allocator, &host);
+
+    try surface_a.undo_stack.push(.{
+        .kind = .clear_screen,
+        .snapshot = .{ .clear_screen = .{ .state_bytes = try std.testing.allocator.alloc(u8, 1) } },
+        .timestamp_ms = 10,
+    });
+    try surface_a.undo_stack.push(.{
+        .kind = .reset,
+        .snapshot = .{ .reset = .{ .state_bytes = try std.testing.allocator.alloc(u8, 1) } },
+        .timestamp_ms = 200,
+    });
+    _ = try surface_a.undo_stack.popForUndo();
+
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 20,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_b,
+        } },
+    });
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 220,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_b,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 30,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_b,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 230,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_b,
+        } },
+    });
+
+    app.pruneUndoHistoryBefore(100);
+
+    try std.testing.expectEqual(@as(usize, 0), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(u64, 220), host.structural_undo_entries.items[0].timestamp_ms);
+    try std.testing.expectEqual(@as(usize, 1), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(u64, 230), host.structural_redo_entries.items[0].timestamp_ms);
+    try std.testing.expectEqual(@as(?u64, 200), app.oldestUndoTimestamp());
+}
+
+test "win32 undo redo actions prune expired empty-host structural history before selection" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = .{
+        .core_app = &core_app,
+        .config = try configpkg.Config.default(std.testing.allocator),
+        .hinstance = GetModuleHandleW(null),
+        .hosts = .empty,
+        .windows = .empty,
+    };
+    defer {
+        app.config.deinit();
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+    app.config.@"undo-timeout" = .{ .duration = 0 };
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.setBanner(.none, null) catch {};
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    try app.hosts.append(std.testing.allocator, &host);
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 0,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 0,
+            .tab_id = 1,
+        } },
+    });
+
+    try std.testing.expect(try app.performAction(.app, .undo, {}));
+    try std.testing.expectEqual(@as(usize, 0), host.structural_undo_entries.items.len);
+    try std.testing.expectEqualStrings("Nothing to undo.", host.banner_text.?);
+
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 0,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 0,
+            .tab_id = 1,
+        } },
+    });
+
+    try std.testing.expect(try app.performAction(.app, .redo, {}));
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+    try std.testing.expectEqualStrings("Nothing to redo.", host.banner_text.?);
+}
+
+test "win32 local undo capture invalidates host structural redo only" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.host = &host;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.host = &host;
+
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 1);
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 99,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_b,
+        } },
+    });
+
+    surface_a.invalidateRedoForNewLocalAction();
+
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.redoDepth());
+}
+
+test "win32 snapshotless local action invalidates local redo and host structural redo" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.host = &host;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.host = &host;
+
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 11);
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 111,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_b,
+        } },
+    });
+
+    surface_a.invalidateRedoForSnapshotlessLocalAction();
+
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_a.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+}
+
+test "win32 unsupported structural action invalidates local redo and host structural redo only" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.host = &host;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.host = &host;
+
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 40);
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 41,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_b,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 42,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_b,
+        } },
+    });
+
+    surface_a.invalidateRedoForUnsupportedStructuralAction();
+
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_a.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+}
+
+test "win32 unsupported tab structural action invalidates affected tab redo and host structural redo only" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    var surface_c: Surface = undefined;
+    surface_c.app = &app;
+    surface_c.host = &host;
+    surface_c.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_c.undo_stack.deinit();
+
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 50);
+    try pushUndoAndRedoBranch(&surface_b.undo_stack, std.testing.allocator, 51);
+    try pushUndoAndRedoBranch(&surface_c.undo_stack, std.testing.allocator, 52);
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+    const inserted = try SplitTreeSurface.init(std.testing.allocator, &surface_b);
+    defer {
+        var cleanup = inserted;
+        cleanup.deinit();
+    }
+    const next_tree = try host.tabs.items[0].tree.split(
+        std.testing.allocator,
+        .root,
+        .right,
+        0.5,
+        &inserted,
+    );
+    host.tabs.items[0].tree.deinit();
+    host.tabs.items[0].tree = next_tree;
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &surface_c));
+
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 53,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_c,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 54,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_c,
+        } },
+    });
+
+    surface_a.invalidateRedoForUnsupportedTabStructuralAction();
+
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_a.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_b.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_c.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_c.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+}
+
+test "win32 local undo push failure preserves host structural redo" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var arena: [64]u8 = undefined;
+    var fixed: std.heap.FixedBufferAllocator = .init(&arena);
+
+    var surface_a: Surface = undefined;
+    surface_a.host = &host;
+    surface_a.undo_stack = win32_undo.UndoStack.init(fixed.allocator());
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.host = &host;
+
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 77,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_b,
+        } },
+    });
+
+    const state_bytes = try std.testing.allocator.alloc(u8, 32);
+    errdefer std.testing.allocator.free(state_bytes);
+    var entry: win32_undo.Entry = .{
+        .kind = .clear_screen,
+        .snapshot = .{ .clear_screen = .{ .state_bytes = state_bytes } },
+        .timestamp_ms = 88,
+    };
+    defer entry.deinit(std.testing.allocator);
+
+    try std.testing.expectError(
+        error.OutOfMemory,
+        surface_a.pushUndoEntryAndInvalidateRedo(entry),
+    );
+    try std.testing.expectEqual(@as(usize, 1), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_a.undo_stack.redoDepth());
+}
+
+test "win32 structural redo invalidation clears affected tab redo only" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+    };
+    defer {
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    var surface_c: Surface = undefined;
+    surface_c.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_c.undo_stack.deinit();
+
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 10);
+    try pushUndoAndRedoBranch(&surface_b.undo_stack, std.testing.allocator, 20);
+    try pushUndoAndRedoBranch(&surface_c.undo_stack, std.testing.allocator, 30);
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+    const inserted = try SplitTreeSurface.init(std.testing.allocator, &surface_b);
+    defer {
+        var cleanup = inserted;
+        cleanup.deinit();
+    }
+    const next_tree = try host.tabs.items[0].tree.split(
+        std.testing.allocator,
+        .root,
+        .right,
+        0.5,
+        &inserted,
+    );
+    host.tabs.items[0].tree.deinit();
+    host.tabs.items[0].tree = next_tree;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &surface_c));
+
+    host.tabs.items[0].clearRedoHistory();
+
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_a.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_b.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_c.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_c.undo_stack.redoDepth());
+}
+
+test "win32 new_tab action clears current tab redo and activates the created tab" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    try core_app.init(std.testing.allocator);
+    defer core_app.deinit();
+
+    var app: App = .{
+        .core_app = &core_app,
+        .config = try configpkg.Config.default(std.testing.allocator),
+        .hinstance = GetModuleHandleW(null),
+    };
+    defer {
+        app.config.deinit();
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var source: Surface = undefined;
+    source.app = &app;
+    source.host = &host;
+    source.host_id = host.id;
+    source.hwnd = null;
+    source.core_initialized = false;
+    source.window_visible = true;
+    source.host_active = true;
+    source.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer source.undo_stack.deinit();
+
+    var sibling: Surface = undefined;
+    sibling.app = &app;
+    sibling.host = &host;
+    sibling.host_id = host.id;
+    sibling.hwnd = null;
+    sibling.core_initialized = false;
+    sibling.window_visible = true;
+    sibling.host_active = true;
+    sibling.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer sibling.undo_stack.deinit();
+
+    var other: Surface = undefined;
+    other.app = &app;
+    other.host = &host;
+    other.host_id = host.id;
+    other.hwnd = null;
+    other.core_initialized = false;
+    other.window_visible = true;
+    other.host_active = true;
+    other.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer other.undo_stack.deinit();
+
+    var created: Surface = undefined;
+    created.app = &app;
+    created.host = &host;
+    created.host_id = host.id;
+    created.hwnd = null;
+    created.core_initialized = false;
+    created.window_visible = false;
+    created.host_active = false;
+    created.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer created.undo_stack.deinit();
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &source));
+    const inserted = try SplitTreeSurface.init(std.testing.allocator, &sibling);
+    defer {
+        var cleanup = inserted;
+        cleanup.deinit();
+    }
+    const next_tree = try host.tabs.items[0].tree.split(
+        std.testing.allocator,
+        .root,
+        .right,
+        0.5,
+        &inserted,
+    );
+    host.tabs.items[0].tree.deinit();
+    host.tabs.items[0].tree = next_tree;
+    host.tabs.items[0].focused = host.tabs.items[0].findHandle(&source) orelse host.tabs.items[0].focused;
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &other));
+    host.next_tab_id = 3;
+
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &source);
+    try app.windows.append(std.testing.allocator, &sibling);
+    try app.windows.append(std.testing.allocator, &other);
+
+    try pushUndoAndRedoBranch(&source.undo_stack, std.testing.allocator, 120);
+    try pushUndoAndRedoBranch(&sibling.undo_stack, std.testing.allocator, 121);
+    try pushUndoAndRedoBranch(&other.undo_stack, std.testing.allocator, 122);
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 11,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 1,
+            .tab_id = 2,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 12,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 1,
+            .tab_id = 2,
+        } },
+    });
+
+    const Hook = struct {
+        var host_ref: *Host = undefined;
+        var created_ref: *Surface = undefined;
+        var captured_host_id: ?u32 = null;
+        var captured_tab_id: ?u32 = 999;
+        var captured_clone_state_from: ?*const Surface = null;
+
+        fn createSurface(
+            hook_app: *App,
+            config: *const configpkg.Config,
+            title: LPCWSTR,
+            opts: SurfaceInitOptions,
+        ) anyerror!*Surface {
+            _ = config;
+            _ = title;
+            captured_host_id = opts.host_id;
+            captured_tab_id = opts.tab_id;
+            captured_clone_state_from = opts.clone_state_from;
+
+            created_ref.app = hook_app;
+            created_ref.host = host_ref;
+            created_ref.host_id = host_ref.id;
+            try hook_app.windows.append(hook_app.core_app.alloc, created_ref);
+            const tab_id = host_ref.nextTabId();
+            try host_ref.tabs.append(hook_app.core_app.alloc, try Tab.init(hook_app.core_app.alloc, tab_id, created_ref));
+            return created_ref;
+        }
+    };
+
+    Hook.host_ref = &host;
+    Hook.created_ref = &created;
+    app.test_create_window_surface = &Hook.createSurface;
+
+    try std.testing.expect(try app.performAction(.app, .new_tab, {}));
+    try std.testing.expectEqual(@as(?u32, host.id), Hook.captured_host_id);
+    try std.testing.expectEqual(@as(?u32, null), Hook.captured_tab_id);
+    try std.testing.expect(Hook.captured_clone_state_from == &source);
+    try std.testing.expectEqual(@as(usize, 3), host.tabs.items.len);
+    try std.testing.expectEqual(@as(usize, 2), host.active_tab);
+    try std.testing.expectEqual(@as(usize, 4), app.windows.items.len);
+    try std.testing.expect(host.tabs.items[2].focusedSurface() == &created);
+    try std.testing.expect(created.host_active);
+    try std.testing.expect(created.window_visible);
+    try std.testing.expectEqual(@as(usize, 1), source.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), source.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), sibling.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), sibling.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), other.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), other.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+}
+
+test "win32 moveTab invalidates current tab redo and structural history before reordering tabs" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host;
+    surface_b.hwnd = null;
+    surface_b.core_initialized = false;
+    surface_b.window_visible = true;
+    surface_b.host_active = true;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    var surface_c: Surface = undefined;
+    surface_c.app = &app;
+    surface_c.host = &host;
+    surface_c.hwnd = null;
+    surface_c.core_initialized = false;
+    surface_c.window_visible = true;
+    surface_c.host_active = true;
+    surface_c.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_c.undo_stack.deinit();
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+    const inserted = try SplitTreeSurface.init(std.testing.allocator, &surface_b);
+    defer {
+        var cleanup = inserted;
+        cleanup.deinit();
+    }
+    const next_tree = try host.tabs.items[0].tree.split(
+        std.testing.allocator,
+        .root,
+        .right,
+        0.5,
+        &inserted,
+    );
+    host.tabs.items[0].tree.deinit();
+    host.tabs.items[0].tree = next_tree;
+    host.tabs.items[0].focused = host.tabs.items[0].findHandle(&surface_a) orelse host.tabs.items[0].focused;
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &surface_c));
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface_a);
+    try app.windows.append(std.testing.allocator, &surface_c);
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 30);
+    try pushUndoAndRedoBranch(&surface_b.undo_stack, std.testing.allocator, 31);
+    try pushUndoAndRedoBranch(&surface_c.undo_stack, std.testing.allocator, 32);
+
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 10,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 1,
+            .tab_id = 2,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 11,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_c,
+            .detached = false,
+        } },
+    });
+
+    try std.testing.expect(try app.moveTab(.app, .{ .amount = 1 }));
+    try std.testing.expectEqual(@as(usize, 0), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(u32, 2), host.tabs.items[0].id);
+    try std.testing.expectEqual(@as(u32, 1), host.tabs.items[1].id);
+    try std.testing.expectEqual(@as(usize, 1), host.active_tab);
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_a.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_b.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_c.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_c.undo_stack.redoDepth());
+}
+
+test "win32 closeTab other clears current tab redo and structural history before peer closes" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host;
+    surface_b.hwnd = null;
+    surface_b.core_initialized = false;
+    surface_b.window_visible = true;
+    surface_b.host_active = true;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    var surface_c: Surface = undefined;
+    surface_c.app = &app;
+    surface_c.host = &host;
+    surface_c.hwnd = null;
+    surface_c.core_initialized = false;
+    surface_c.window_visible = true;
+    surface_c.host_active = true;
+    surface_c.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_c.undo_stack.deinit();
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+    const inserted = try SplitTreeSurface.init(std.testing.allocator, &surface_b);
+    defer {
+        var cleanup = inserted;
+        cleanup.deinit();
+    }
+    const next_tree = try host.tabs.items[0].tree.split(
+        std.testing.allocator,
+        .root,
+        .right,
+        0.5,
+        &inserted,
+    );
+    host.tabs.items[0].tree.deinit();
+    host.tabs.items[0].tree = next_tree;
+    host.tabs.items[0].focused = host.tabs.items[0].findHandle(&surface_a) orelse host.tabs.items[0].focused;
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &surface_c));
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface_a);
+    try app.windows.append(std.testing.allocator, &surface_c);
+
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 40);
+    try pushUndoAndRedoBranch(&surface_b.undo_stack, std.testing.allocator, 41);
+    try pushUndoAndRedoBranch(&surface_c.undo_stack, std.testing.allocator, 42);
+
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 10,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 1,
+            .tab_id = 2,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 11,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_c,
+            .detached = false,
+        } },
+    });
+
+    try std.testing.expect(try app.closeTab(.app, .other));
+    try std.testing.expectEqual(@as(usize, 0), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_a.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_b.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_c.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_c.undo_stack.redoDepth());
+}
+
+test "win32 closeTab right clears current tab redo and structural history before right-side peer closes" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_left: Surface = undefined;
+    surface_left.app = &app;
+    surface_left.host = &host;
+    surface_left.hwnd = null;
+    surface_left.core_initialized = false;
+    surface_left.window_visible = true;
+    surface_left.host_active = true;
+    surface_left.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_left.undo_stack.deinit();
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host;
+    surface_b.hwnd = null;
+    surface_b.core_initialized = false;
+    surface_b.window_visible = true;
+    surface_b.host_active = true;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    var surface_right: Surface = undefined;
+    surface_right.app = &app;
+    surface_right.host = &host;
+    surface_right.hwnd = null;
+    surface_right.core_initialized = false;
+    surface_right.window_visible = true;
+    surface_right.host_active = true;
+    surface_right.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_right.undo_stack.deinit();
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_left));
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &surface_a));
+    const inserted = try SplitTreeSurface.init(std.testing.allocator, &surface_b);
+    defer {
+        var cleanup = inserted;
+        cleanup.deinit();
+    }
+    const next_tree = try host.tabs.items[1].tree.split(
+        std.testing.allocator,
+        .root,
+        .right,
+        0.5,
+        &inserted,
+    );
+    host.tabs.items[1].tree.deinit();
+    host.tabs.items[1].tree = next_tree;
+    host.tabs.items[1].focused = host.tabs.items[1].findHandle(&surface_a) orelse host.tabs.items[1].focused;
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 3, &surface_right));
+    host.active_tab = 1;
+
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface_left);
+    try app.windows.append(std.testing.allocator, &surface_a);
+    try app.windows.append(std.testing.allocator, &surface_right);
+
+    try pushUndoAndRedoBranch(&surface_left.undo_stack, std.testing.allocator, 50);
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 51);
+    try pushUndoAndRedoBranch(&surface_b.undo_stack, std.testing.allocator, 52);
+    try pushUndoAndRedoBranch(&surface_right.undo_stack, std.testing.allocator, 53);
+
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 10,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 2,
+            .tab_id = 3,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 11,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_right,
+            .detached = false,
+        } },
+    });
+
+    try std.testing.expect(try app.closeTab(.app, .right));
+    try std.testing.expectEqual(@as(usize, 0), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), surface_left.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_left.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_a.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_b.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_right.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_right.undo_stack.redoDepth());
+}
+
+test "win32 closeTab other no-op preserves redo and structural history" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host;
+    surface_b.hwnd = null;
+    surface_b.core_initialized = false;
+    surface_b.window_visible = true;
+    surface_b.host_active = true;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+    const inserted = try SplitTreeSurface.init(std.testing.allocator, &surface_b);
+    defer {
+        var cleanup = inserted;
+        cleanup.deinit();
+    }
+    const next_tree = try host.tabs.items[0].tree.split(
+        std.testing.allocator,
+        .root,
+        .right,
+        0.5,
+        &inserted,
+    );
+    host.tabs.items[0].tree.deinit();
+    host.tabs.items[0].tree = next_tree;
+    host.tabs.items[0].focused = host.tabs.items[0].findHandle(&surface_a) orelse host.tabs.items[0].focused;
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface_a);
+
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 60);
+    try pushUndoAndRedoBranch(&surface_b.undo_stack, std.testing.allocator, 61);
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 10,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 0,
+            .tab_id = 1,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 11,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_b,
+            .detached = false,
+        } },
+    });
+
+    try std.testing.expect(!(try app.closeTab(.app, .other)));
+    try std.testing.expectEqual(@as(usize, 1), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.redoDepth());
+}
+
+test "win32 closeTab right no-op preserves redo and structural history" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_left: Surface = undefined;
+    surface_left.app = &app;
+    surface_left.host = &host;
+    surface_left.hwnd = null;
+    surface_left.core_initialized = false;
+    surface_left.window_visible = true;
+    surface_left.host_active = true;
+    surface_left.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_left.undo_stack.deinit();
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host;
+    surface_b.hwnd = null;
+    surface_b.core_initialized = false;
+    surface_b.window_visible = true;
+    surface_b.host_active = true;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_left));
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &surface_a));
+    const inserted = try SplitTreeSurface.init(std.testing.allocator, &surface_b);
+    defer {
+        var cleanup = inserted;
+        cleanup.deinit();
+    }
+    const next_tree = try host.tabs.items[1].tree.split(
+        std.testing.allocator,
+        .root,
+        .right,
+        0.5,
+        &inserted,
+    );
+    host.tabs.items[1].tree.deinit();
+    host.tabs.items[1].tree = next_tree;
+    host.tabs.items[1].focused = host.tabs.items[1].findHandle(&surface_a) orelse host.tabs.items[1].focused;
+    host.active_tab = 1;
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface_left);
+    try app.windows.append(std.testing.allocator, &surface_a);
+
+    try pushUndoAndRedoBranch(&surface_left.undo_stack, std.testing.allocator, 70);
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 71);
+    try pushUndoAndRedoBranch(&surface_b.undo_stack, std.testing.allocator, 72);
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 10,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 1,
+            .tab_id = 2,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 11,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_b,
+            .detached = false,
+        } },
+    });
+
+    try std.testing.expect(!(try app.closeTab(.app, .right)));
+    try std.testing.expectEqual(@as(usize, 1), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), surface_left.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_left.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.redoDepth());
+}
+
+test "win32 closeTab this on last tab detaches tab for undo" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.setBanner(.none, null) catch {};
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface: Surface = undefined;
+    surface.app = &app;
+    surface.host = &host;
+    surface.host_id = host.id;
+    surface.hwnd = null;
+    surface.core_initialized = false;
+    surface.window_visible = true;
+    surface.host_active = true;
+    surface.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface.undo_stack.deinit();
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface));
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface);
+
+    try std.testing.expect(try app.closeTab(.app, .this));
+    try std.testing.expectEqual(@as(usize, 0), host.tabs.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.active_tab);
+    try std.testing.expectEqual(@as(usize, 1), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+    try std.testing.expect(host.structural_undo_entries.items[0].payload.close_tab.tab != null);
+    try std.testing.expect(!surface.host_active);
+    try std.testing.expect(!surface.window_visible);
+    try std.testing.expectEqual(@as(usize, 0), surface.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface.undo_stack.redoDepth());
+}
+
+test "win32 prune preserves empty host while structural undo remains" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.setBanner(.none, null) catch {};
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface: Surface = undefined;
+    surface.app = &app;
+    surface.host = &host;
+    surface.host_id = host.id;
+    surface.hwnd = null;
+    surface.core_initialized = false;
+    surface.window_visible = true;
+    surface.host_active = true;
+    surface.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface.undo_stack.deinit();
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface));
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface);
+
+    const entry = host.detachTabForUndo(0) orelse unreachable;
+    try host.structural_undo_entries.append(std.testing.allocator, entry);
+    host.destroy_after_structural_dispose = true;
+
+    app.pruneUndoHistoryBefore(0);
+
+    try std.testing.expectEqual(@as(usize, 1), app.hosts.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.tabs.items.len);
+    try std.testing.expectEqual(@as(usize, 1), host.structural_undo_entries.items.len);
+    try std.testing.expect(host.destroy_after_structural_dispose);
+}
+
+test "win32 app undo redo replays last tab close without active surface" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = .{
+        .core_app = &core_app,
+        .config = try configpkg.Config.default(std.testing.allocator),
+        .hinstance = GetModuleHandleW(null),
+        .hosts = .empty,
+        .windows = .empty,
+    };
+    defer {
+        app.config.deinit();
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.setBanner(.none, null) catch {};
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface: Surface = undefined;
+    surface.app = &app;
+    surface.host = &host;
+    surface.host_id = host.id;
+    surface.hwnd = null;
+    surface.core_initialized = false;
+    surface.window_visible = true;
+    surface.window_focused = false;
+    surface.host_active = true;
+    surface.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface.undo_stack.deinit();
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface));
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface);
+
+    try std.testing.expect(try app.closeTab(.app, .this));
+    try std.testing.expectEqual(@as(usize, 0), host.tabs.items.len);
+    try std.testing.expect(!surface.host_active);
+    try std.testing.expect(!surface.window_visible);
+
+    try std.testing.expect(try app.performAction(.app, .undo, {}));
+    try std.testing.expectEqual(@as(usize, 1), host.tabs.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.active_tab);
+    try std.testing.expectEqual(@as(usize, 0), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), host.structural_redo_entries.items.len);
+    try std.testing.expect(surface.host_active);
+    try std.testing.expect(surface.window_visible);
+
+    try std.testing.expect(try app.performAction(.app, .redo, {}));
+    try std.testing.expectEqual(@as(usize, 0), host.tabs.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.active_tab);
+    try std.testing.expectEqual(@as(usize, 1), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+    try std.testing.expect(!surface.host_active);
+    try std.testing.expect(!surface.window_visible);
+}
+
+test "win32 app undo redo uses focused host" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = .{
+        .core_app = &core_app,
+        .config = try configpkg.Config.default(std.testing.allocator),
+        .hinstance = GetModuleHandleW(null),
+        .hosts = .empty,
+        .windows = .empty,
+    };
+    defer {
+        app.config.deinit();
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host_a: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host_a.setBanner(.none, null) catch {};
+        host_a.clearStructuralHistory(.normal);
+        host_a.structural_undo_entries.deinit(std.testing.allocator);
+        host_a.structural_redo_entries.deinit(std.testing.allocator);
+        for (host_a.tabs.items) |*tab| tab.deinit();
+        host_a.tabs.deinit(std.testing.allocator);
+    }
+
+    var host_b: Host = .{
+        .app = &app,
+        .id = 2,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host_b.setBanner(.none, null) catch {};
+        host_b.clearStructuralHistory(.normal);
+        host_b.structural_undo_entries.deinit(std.testing.allocator);
+        host_b.structural_redo_entries.deinit(std.testing.allocator);
+        for (host_b.tabs.items) |*tab| tab.deinit();
+        host_b.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host_a;
+    surface_a.host_id = host_a.id;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.window_focused = false;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host_b;
+    surface_b.host_id = host_b.id;
+    surface_b.hwnd = null;
+    surface_b.core_initialized = false;
+    surface_b.window_visible = true;
+    surface_b.window_focused = true;
+    surface_b.host_active = true;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    try host_a.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 11, &surface_a));
+    try host_b.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 22, &surface_b));
+    try app.hosts.append(std.testing.allocator, &host_a);
+    try app.hosts.append(std.testing.allocator, &host_b);
+    try app.windows.append(std.testing.allocator, &surface_a);
+    try app.windows.append(std.testing.allocator, &surface_b);
+
+    const now = GetTickCount64();
+    try host_a.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = now,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 0,
+            .tab_id = 11,
+        } },
+    });
+    try host_b.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = now + 1,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 0,
+            .tab_id = 22,
+        } },
+    });
+
+    try std.testing.expect(try app.performAction(.app, .undo, {}));
+    try std.testing.expectEqual(@as(usize, 1), host_a.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host_b.structural_undo_entries.items.len);
+
+    try host_a.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = now + 2,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 0,
+            .tab_id = 11,
+        } },
+    });
+    try host_b.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = now + 3,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 0,
+            .tab_id = 22,
+        } },
+    });
+
+    try std.testing.expect(try app.performAction(.app, .redo, {}));
+    try std.testing.expectEqual(@as(usize, 1), host_a.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host_b.structural_redo_entries.items.len);
+}
+
+test "win32 structural undo OOM rolls close_tab entry back to undo" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface: Surface = undefined;
+    surface.app = &app;
+    surface.host = &host;
+    surface.hwnd = null;
+    surface.core_initialized = false;
+    surface.window_visible = false;
+    surface.host_active = false;
+    surface.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface.undo_stack.deinit();
+
+    try host.structural_redo_entries.ensureTotalCapacity(std.testing.allocator, 1);
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 10,
+        .payload = .{ .close_tab = .{
+            .tab = try Tab.init(std.testing.allocator, 1, &surface),
+            .index = 0,
+            .tab_id = 1,
+        } },
+    });
+
+    var backing: [0]u8 = .{};
+    var fixed = std.heap.FixedBufferAllocator.init(&backing);
+    const original_alloc = core_app.alloc;
+    core_app.alloc = fixed.allocator();
+    defer core_app.alloc = original_alloc;
+
+    try std.testing.expectError(error.OutOfMemory, host.applyLatestStructuralUndo());
+    try std.testing.expectEqual(@as(usize, 1), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.tabs.items.len);
+    try std.testing.expect(host.structural_undo_entries.items[0].payload.close_tab.tab != null);
+}
+
+test "win32 structural redo OOM rolls split_create entry back to redo" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var source: Surface = undefined;
+    source.app = &app;
+    source.host = &host;
+    source.hwnd = null;
+    source.core_initialized = false;
+    source.window_visible = true;
+    source.host_active = true;
+    source.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer source.undo_stack.deinit();
+
+    var created: Surface = undefined;
+    created.app = &app;
+    created.host = &host;
+    created.hwnd = null;
+    created.core_initialized = false;
+    created.window_visible = false;
+    created.host_active = false;
+    created.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer created.undo_stack.deinit();
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &source));
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &source);
+    try host.structural_undo_entries.ensureTotalCapacity(std.testing.allocator, 1);
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 20,
+        .payload = .{ .split_create = .{
+            .source_surface = &source,
+            .created_surface = &created,
+            .direction = .down,
+            .detached = true,
+        } },
+    });
+
+    var backing: [0]u8 = .{};
+    var fixed = std.heap.FixedBufferAllocator.init(&backing);
+    const original_alloc = core_app.alloc;
+    core_app.alloc = fixed.allocator();
+    defer core_app.alloc = original_alloc;
+
+    try std.testing.expectError(error.OutOfMemory, host.applyLatestStructuralRedo());
+    try std.testing.expectEqual(@as(usize, 0), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), host.structural_redo_entries.items.len);
+    try std.testing.expect(host.structural_redo_entries.items[0].payload.split_create.detached);
+    try std.testing.expect(host.tabs.items[0].findHandle(&created) == null);
+}
+
+test "win32 closeTab this restores tab when structural undo push fails" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .active_tab = 1,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.host_id = host.id;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.window_focused = false;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host;
+    surface_b.host_id = host.id;
+    surface_b.hwnd = null;
+    surface_b.core_initialized = false;
+    surface_b.window_visible = true;
+    surface_b.window_focused = false;
+    surface_b.host_active = true;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &surface_b));
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface_a);
+    try app.windows.append(std.testing.allocator, &surface_b);
+    try pushUndoAndRedoBranch(&surface_b.undo_stack, std.testing.allocator, 77);
+
+    var backing: [0]u8 = .{};
+    var fixed = std.heap.FixedBufferAllocator.init(&backing);
+    const original_alloc = core_app.alloc;
+    core_app.alloc = fixed.allocator();
+    defer core_app.alloc = original_alloc;
+
+    try std.testing.expectError(error.OutOfMemory, app.closeTab(.app, .this));
+    try std.testing.expectEqual(@as(usize, 2), host.tabs.items.len);
+    try std.testing.expectEqual(@as(usize, 1), host.active_tab);
+    try std.testing.expectEqual(@as(usize, 0), host.structural_undo_entries.items.len);
+    try std.testing.expect(surface_b.host_active);
+    try std.testing.expect(surface_b.window_visible);
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.redoDepth());
+}
+
+test "win32 closeTab this on last tab restores tab when structural undo push fails" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface: Surface = undefined;
+    surface.app = &app;
+    surface.host = &host;
+    surface.host_id = host.id;
+    surface.hwnd = null;
+    surface.core_initialized = false;
+    surface.window_visible = true;
+    surface.host_active = true;
+    surface.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface.undo_stack.deinit();
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface));
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface);
+
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 11,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface,
+            .created_surface = &surface,
+            .detached = false,
+        } },
+    });
+
+    var backing: [0]u8 = .{};
+    var fixed = std.heap.FixedBufferAllocator.init(&backing);
+    const original_alloc = core_app.alloc;
+    core_app.alloc = fixed.allocator();
+    defer core_app.alloc = original_alloc;
+
+    try std.testing.expectError(error.OutOfMemory, app.closeTab(.app, .this));
+    try std.testing.expectEqual(@as(usize, 1), host.tabs.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.active_tab);
+    try std.testing.expectEqual(@as(usize, 0), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), host.structural_redo_entries.items.len);
+    try std.testing.expect(surface.host_active);
+    try std.testing.expect(surface.window_visible);
+}
+
+test "win32 resizeSplit fallback OOM preserves redo and structural history" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host;
+    surface_b.hwnd = null;
+    surface_b.core_initialized = false;
+    surface_b.window_visible = true;
+    surface_b.host_active = true;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+    const inserted = try SplitTreeSurface.init(std.testing.allocator, &surface_b);
+    defer {
+        var cleanup = inserted;
+        cleanup.deinit();
+    }
+    const next_tree = try host.tabs.items[0].tree.split(
+        std.testing.allocator,
+        .root,
+        .right,
+        0.5,
+        &inserted,
+    );
+    host.tabs.items[0].tree.deinit();
+    host.tabs.items[0].tree = next_tree;
+    host.tabs.items[0].focused = host.tabs.items[0].findHandle(&surface_a) orelse host.tabs.items[0].focused;
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface_a);
+
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 80);
+    try pushUndoAndRedoBranch(&surface_b.undo_stack, std.testing.allocator, 81);
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 10,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 0,
+            .tab_id = 1,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 11,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_b,
+            .detached = false,
+        } },
+    });
+
+    var tiny: [1]u8 = undefined;
+    var fixed: std.heap.FixedBufferAllocator = .init(&tiny);
+    const original_alloc = core_app.alloc;
+    core_app.alloc = fixed.allocator();
+    defer core_app.alloc = original_alloc;
+
+    try std.testing.expectError(
+        error.OutOfMemory,
+        app.resizeSplitFallback(.app, .{ .direction = .right, .amount = 10 }),
+    );
+    try std.testing.expectEqual(@as(usize, 1), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.redoDepth());
+}
+
+test "win32 equalizeSplits fallback OOM preserves redo and structural history" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host;
+    surface_b.hwnd = null;
+    surface_b.core_initialized = false;
+    surface_b.window_visible = true;
+    surface_b.host_active = true;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+    const inserted = try SplitTreeSurface.init(std.testing.allocator, &surface_b);
+    defer {
+        var cleanup = inserted;
+        cleanup.deinit();
+    }
+    const next_tree = try host.tabs.items[0].tree.split(
+        std.testing.allocator,
+        .root,
+        .right,
+        0.5,
+        &inserted,
+    );
+    host.tabs.items[0].tree.deinit();
+    host.tabs.items[0].tree = next_tree;
+    host.tabs.items[0].focused = host.tabs.items[0].findHandle(&surface_a) orelse host.tabs.items[0].focused;
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface_a);
+
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 90);
+    try pushUndoAndRedoBranch(&surface_b.undo_stack, std.testing.allocator, 91);
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 10,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 0,
+            .tab_id = 1,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 11,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_b,
+            .detached = false,
+        } },
+    });
+
+    var tiny: [1]u8 = undefined;
+    var fixed: std.heap.FixedBufferAllocator = .init(&tiny);
+    const original_alloc = core_app.alloc;
+    core_app.alloc = fixed.allocator();
+    defer core_app.alloc = original_alloc;
+
+    try std.testing.expectError(
+        error.OutOfMemory,
+        app.equalizeSplitsFallback(.app),
+    );
+    try std.testing.expectEqual(@as(usize, 1), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.redoDepth());
+}
+
+test "win32 resizeSplit fallback no-op preserves redo and structural history" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var detached_surface: Surface = undefined;
+    detached_surface.app = &app;
+    detached_surface.host = &host;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface_a);
+
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 100);
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 10,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 0,
+            .tab_id = 1,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 11,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &detached_surface,
+            .detached = true,
+        } },
+    });
+
+    try std.testing.expect(!(try app.resizeSplitFallback(.app, .{ .direction = .right, .amount = 10 })));
+    try std.testing.expectEqual(@as(usize, 1), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.redoDepth());
+}
+
+test "win32 equalizeSplits fallback no-op preserves redo and structural history" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var detached_surface: Surface = undefined;
+    detached_surface.app = &app;
+    detached_surface.host = &host;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface_a);
+
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 110);
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 10,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 0,
+            .tab_id = 1,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 11,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &detached_surface,
+            .detached = true,
+        } },
+    });
+
+    try std.testing.expect(!(try app.equalizeSplitsFallback(.app)));
+    try std.testing.expectEqual(@as(usize, 1), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.redoDepth());
+}
+
+test "win32 toggle_split_zoom invalidates structural redo" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host;
+    surface_b.hwnd = null;
+    surface_b.core_initialized = false;
+    surface_b.window_visible = true;
+    surface_b.host_active = true;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    var detached_surface: Surface = undefined;
+    detached_surface.app = &app;
+    detached_surface.host = &host;
+    detached_surface.hwnd = null;
+    detached_surface.core_initialized = false;
+    detached_surface.window_visible = false;
+    detached_surface.host_active = false;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+    const inserted = try SplitTreeSurface.init(std.testing.allocator, &surface_b);
+    defer {
+        var cleanup = inserted;
+        cleanup.deinit();
+    }
+    const next_tree = try host.tabs.items[0].tree.split(
+        std.testing.allocator,
+        .root,
+        .right,
+        0.5,
+        &inserted,
+    );
+    host.tabs.items[0].tree.deinit();
+    host.tabs.items[0].tree = next_tree;
+    host.tabs.items[0].focused = host.tabs.items[0].findHandle(&surface_a) orelse host.tabs.items[0].focused;
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface_a);
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 10);
+    try pushUndoAndRedoBranch(&surface_b.undo_stack, std.testing.allocator, 11);
+
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 42,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &detached_surface,
+            .detached = true,
+        } },
+    });
+
+    try std.testing.expect(try app.performAction(.app, .toggle_split_zoom, {}));
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_a.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_b.undo_stack.redoDepth());
+    try std.testing.expectEqual(host.tabs.items[0].findHandle(&surface_a), host.tabs.items[0].tree.zoomed);
+}
+
+test "win32 swapTabs invalidates structural history before drag reorder" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host;
+    surface_b.hwnd = null;
+    surface_b.core_initialized = false;
+    surface_b.window_visible = true;
+    surface_b.host_active = true;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &surface_b));
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 30);
+    try pushUndoAndRedoBranch(&surface_b.undo_stack, std.testing.allocator, 40);
+
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 10,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 1,
+            .tab_id = 2,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 11,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_b,
+            .detached = false,
+        } },
+    });
+
+    host.active_tab = 0;
+    host.swapTabs(0, 1);
+
+    try std.testing.expectEqual(@as(usize, 0), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(u32, 2), host.tabs.items[0].id);
+    try std.testing.expectEqual(@as(u32, 1), host.tabs.items[1].id);
+    try std.testing.expectEqual(@as(usize, 1), host.active_tab);
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_a.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_b.undo_stack.redoDepth());
+}
+
+test "win32 close_surface on single-surface tab invalidates structural history" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host;
+    surface_b.hwnd = null;
+    surface_b.core_initialized = false;
+    surface_b.window_visible = true;
+    surface_b.host_active = true;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &surface_b));
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 12);
+
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 10,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 1,
+            .tab_id = 2,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 11,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_b,
+            .detached = false,
+        } },
+    });
+
+    surface_a.invalidateStructuralHistoryForClose();
+
+    try std.testing.expectEqual(@as(usize, 0), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_a.undo_stack.redoDepth());
+}
+
+test "win32 close_surface on split pane clears affected tab redo and structural redo only" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host;
+    surface_b.hwnd = null;
+    surface_b.core_initialized = false;
+    surface_b.window_visible = true;
+    surface_b.host_active = true;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    var detached_surface: Surface = undefined;
+    detached_surface.app = &app;
+    detached_surface.host = &host;
+    detached_surface.hwnd = null;
+    detached_surface.core_initialized = false;
+    detached_surface.window_visible = false;
+    detached_surface.host_active = false;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+    const inserted = try SplitTreeSurface.init(std.testing.allocator, &surface_b);
+    defer {
+        var cleanup = inserted;
+        cleanup.deinit();
+    }
+    const next_tree = try host.tabs.items[0].tree.split(
+        std.testing.allocator,
+        .root,
+        .right,
+        0.5,
+        &inserted,
+    );
+    host.tabs.items[0].tree.deinit();
+    host.tabs.items[0].tree = next_tree;
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 20);
+    try pushUndoAndRedoBranch(&surface_b.undo_stack, std.testing.allocator, 21);
+
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 10,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 0,
+            .tab_id = 1,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 11,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &detached_surface,
+            .detached = true,
+        } },
+    });
+
+    surface_a.invalidateStructuralHistoryForClose();
+
+    try std.testing.expectEqual(@as(usize, 1), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_a.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_b.undo_stack.redoDepth());
+}
+
+test "win32 windowDestroyed backup clears affected tab redo and structural redo for split-pane removal" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.running = false;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host;
+    surface_b.hwnd = null;
+    surface_b.core_initialized = false;
+    surface_b.window_visible = true;
+    surface_b.host_active = true;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    var detached_surface: Surface = undefined;
+    detached_surface.app = &app;
+    detached_surface.host = &host;
+    detached_surface.hwnd = null;
+    detached_surface.core_initialized = false;
+    detached_surface.window_visible = false;
+    detached_surface.host_active = false;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+    const inserted = try SplitTreeSurface.init(std.testing.allocator, &surface_b);
+    defer {
+        var cleanup = inserted;
+        cleanup.deinit();
+    }
+    const next_tree = try host.tabs.items[0].tree.split(
+        std.testing.allocator,
+        .root,
+        .right,
+        0.5,
+        &inserted,
+    );
+    host.tabs.items[0].tree.deinit();
+    host.tabs.items[0].tree = next_tree;
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 30);
+    try pushUndoAndRedoBranch(&surface_b.undo_stack, std.testing.allocator, 31);
+
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface_a);
+    try app.windows.append(std.testing.allocator, &surface_b);
+
+    try host.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = 10,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 0,
+            .tab_id = 99,
+        } },
+    });
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 11,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &detached_surface,
+            .detached = true,
+        } },
+    });
+
+    app.windowDestroyed(&surface_a);
+
+    try std.testing.expectEqual(@as(usize, 1), app.windows.items.len);
+    try std.testing.expectEqual(@as(*Surface, &surface_b), app.windows.items[0]);
+    try std.testing.expectEqual(@as(usize, 1), host.tabs.items.len);
+    try std.testing.expect(host.tabs.items[0].findHandle(&surface_b) != null);
+    try std.testing.expectEqual(@as(usize, 1), host.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_b.undo_stack.redoDepth());
+}
+
+test "win32 windowDestroyed backup skips closing surface redo after undo teardown" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.running = false;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host;
+    surface_b.hwnd = null;
+    surface_b.core_initialized = false;
+    surface_b.window_visible = true;
+    surface_b.host_active = true;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    var detached_surface: Surface = undefined;
+    detached_surface.app = &app;
+    detached_surface.host = &host;
+    detached_surface.hwnd = null;
+    detached_surface.core_initialized = false;
+    detached_surface.window_visible = false;
+    detached_surface.host_active = false;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+    const inserted = try SplitTreeSurface.init(std.testing.allocator, &surface_b);
+    defer {
+        var cleanup = inserted;
+        cleanup.deinit();
+    }
+    const next_tree = try host.tabs.items[0].tree.split(
+        std.testing.allocator,
+        .root,
+        .right,
+        0.5,
+        &inserted,
+    );
+    host.tabs.items[0].tree.deinit();
+    host.tabs.items[0].tree = next_tree;
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 40);
+    try pushUndoAndRedoBranch(&surface_b.undo_stack, std.testing.allocator, 41);
+
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface_a);
+    try app.windows.append(std.testing.allocator, &surface_b);
+
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 11,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &detached_surface,
+            .detached = true,
+        } },
+    });
+
+    surface_a.undo_stack.deinit();
+    surface_a.undo_stack = undefined;
+
+    app.windowDestroyed(&surface_a);
+
+    try std.testing.expectEqual(@as(usize, 1), app.windows.items.len);
+    try std.testing.expectEqual(@as(*Surface, &surface_b), app.windows.items[0]);
+    try std.testing.expectEqual(@as(usize, 1), host.tabs.items.len);
+    try std.testing.expect(host.tabs.items[0].findHandle(&surface_b) != null);
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 1), surface_b.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_b.undo_stack.redoDepth());
+}
+
+test "win32 terminal undo snapshot restores terminal state" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    const alloc = std.testing.allocator;
+    var t = try terminal.Terminal.init(alloc, .{
+        .cols = 12,
+        .rows = 2,
+    });
+    defer t.deinit(alloc);
+
+    var stream = t.vtStream();
+    defer stream.deinit();
+
+    try t.setPwd("C:/Users/amant/project");
+    stream.nextSlice("\x1b]2;Undo Title\x1b\\");
+    stream.nextSlice("\x1b]4;1;rgb:ab/cd/ef\x1b\\");
+    stream.nextSlice("line1\r\nline2\r\nline3");
+
+    const expected_scrollbar = t.screens.active.pages.scrollbar();
+    const snapshot = try captureTerminalUndoStateBytes(alloc, &t);
+    defer alloc.free(snapshot);
+
+    t.fullReset();
+
+    const restored = restoreTerminalUndoState(&t, snapshot);
+
+    const plain = try t.plainString(alloc);
+    defer alloc.free(plain);
+
+    try std.testing.expect(std.mem.indexOf(u8, plain, "line2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, plain, "line3") != null);
+    try std.testing.expectEqualStrings("Undo Title", t.getTitle().?);
+    try std.testing.expectEqualStrings("C:/Users/amant/project", t.getPwd().?);
+    try std.testing.expectEqualStrings("Undo Title", restored.title.?);
+    try std.testing.expectEqualStrings("C:/Users/amant/project", restored.pwd.?);
+    try std.testing.expectEqual(t.colors.palette.current[1], terminal.color.RGB{
+        .r = 0xAB,
+        .g = 0xCD,
+        .b = 0xEF,
+    });
+    try std.testing.expectEqual(expected_scrollbar, restored.scrollbar);
+}
+
+test "win32 close_tab structural undo restores and redoes a detached tab" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var surface_a: Surface = undefined;
+    var surface_b: Surface = undefined;
+    surface_a.hwnd = null;
+    surface_b.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_b.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_b.window_visible = true;
+    surface_a.host_active = true;
+    surface_b.host_active = true;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .active_tab = 1,
+    };
+    defer {
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 2, &surface_b));
+
+    var entry = host.detachTabForUndo(1).?;
+    defer entry.dispose(&host, .host_destroy);
+
+    try std.testing.expectEqual(@as(usize, 1), host.tabs.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.active_tab);
+    try std.testing.expect(!surface_b.host_active);
+    try std.testing.expect(!surface_b.window_visible);
+    try std.testing.expect(entry.payload.close_tab.tab != null);
+
+    const close_tab = &entry.payload.close_tab;
+    try std.testing.expect(try host.restoreClosedTabEntry(close_tab));
+    try std.testing.expectEqual(@as(usize, 2), host.tabs.items.len);
+    try std.testing.expectEqual(@as(usize, 1), host.active_tab);
+    try std.testing.expect(close_tab.tab == null);
+
+    try std.testing.expect(host.redoClosedTabEntry(close_tab));
+    try std.testing.expectEqual(@as(usize, 1), host.tabs.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.active_tab);
+    try std.testing.expect(close_tab.tab != null);
+}
+
+test "win32 close_tab structural undo detaches the last remaining tab" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var surface: Surface = undefined;
+    surface.hwnd = null;
+    surface.core_initialized = false;
+    surface.window_visible = true;
+    surface.host_active = true;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .active_tab = 0,
+    };
+    defer {
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    surface.app = &app;
+    surface.host = &host;
+    surface.host_id = host.id;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface));
+
+    var entry = host.detachTabForUndo(0).?;
+    defer entry.dispose(&host, .host_destroy);
+
+    try std.testing.expectEqual(@as(usize, 0), host.tabs.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.active_tab);
+    try std.testing.expect(!surface.host_active);
+    try std.testing.expect(!surface.window_visible);
+    try std.testing.expect(entry.payload.close_tab.tab != null);
+}
+
+test "win32 close_tab structural redo can detach the last restored tab" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .active_tab = 0,
+    };
+    defer {
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface: Surface = undefined;
+    surface.app = &app;
+    surface.host = &host;
+    surface.host_id = host.id;
+    surface.hwnd = null;
+    surface.core_initialized = false;
+    surface.window_visible = true;
+    surface.host_active = true;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface));
+
+    var entry = host.detachTabForUndo(0).?;
+    defer entry.dispose(&host, .host_destroy);
+
+    const close_tab = &entry.payload.close_tab;
+    try std.testing.expect(try host.restoreClosedTabEntry(close_tab));
+    try std.testing.expectEqual(@as(usize, 1), host.tabs.items.len);
+    try std.testing.expect(close_tab.tab == null);
+
+    try std.testing.expect(host.redoClosedTabEntry(close_tab));
+    try std.testing.expectEqual(@as(usize, 0), host.tabs.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.active_tab);
+    try std.testing.expect(close_tab.tab != null);
+    try std.testing.expect(!surface.host_active);
+    try std.testing.expect(!surface.window_visible);
+}
+
+test "win32 split_create structural undo removes and redoes the split" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .active_tab = 0,
+    };
+    defer {
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.host_active = true;
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host;
+    surface_b.hwnd = null;
+    surface_b.core_initialized = false;
+    surface_b.window_visible = true;
+    surface_b.host_active = true;
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface_a));
+
+    const inserted = try SplitTreeSurface.init(std.testing.allocator, &surface_b);
+    defer {
+        var cleanup = inserted;
+        cleanup.deinit();
+    }
+    const next_tree = try host.tabs.items[0].tree.split(
+        std.testing.allocator,
+        .root,
+        .down,
+        0.5,
+        &inserted,
+    );
+    host.tabs.items[0].tree.deinit();
+    host.tabs.items[0].tree = next_tree;
+    host.tabs.items[0].focused = host.tabs.items[0].findHandle(&surface_b).?;
+
+    var split_create: Host.SplitCreateUndo = .{
+        .source_surface = &surface_a,
+        .created_surface = &surface_b,
+        .direction = .down,
+    };
+
+    try std.testing.expect(try host.undoSplitCreateEntry(&split_create));
+    try std.testing.expectEqual(@as(?SplitTreeSurface.Node.Handle, null), host.tabs.items[0].findHandle(&surface_b));
+    try std.testing.expectEqual(@as(?*Surface, &surface_a), host.tabs.items[0].focusedSurface());
+    try std.testing.expect(split_create.detached);
+    try std.testing.expect(!surface_b.window_visible);
+    try std.testing.expect(!surface_b.host_active);
+
+    try std.testing.expect(try host.redoSplitCreateEntry(&split_create));
+    try std.testing.expect(host.tabs.items[0].findHandle(&surface_b) != null);
+    try std.testing.expectEqual(
+        SplitTreeSurface.Split.Layout.vertical,
+        host.tabs.items[0].tree.nodes[SplitTreeSurface.Node.Handle.root.idx()].split.layout,
+    );
+    try std.testing.expectEqual(@as(?*Surface, &surface_b), host.tabs.items[0].focusedSurface());
+    try std.testing.expect(!split_create.detached);
+}
+
 test "win32 runtime can initialize config" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
@@ -20324,15 +24644,6 @@ test "win32 titlebar colors honor ghostty overrides" {
 
     try std.testing.expectEqual(rgb(1, 2, 3), titlebarCaptionColor(&theme, &config));
     try std.testing.expectEqual(rgb(4, 5, 6), titlebarTextColor(&theme, &config));
-}
-
-test "win32 integrated titlebar gates on Windows 11 builds" {
-    if (builtin.os.tag != .windows) return error.SkipZigTest;
-
-    try std.testing.expect(!integratedTitlebarEnabledForBuild(0));
-    try std.testing.expect(!integratedTitlebarEnabledForBuild(OS_BUILD_WIN11_21H2 - 1));
-    try std.testing.expect(integratedTitlebarEnabledForBuild(OS_BUILD_WIN11_21H2));
-    try std.testing.expect(integratedTitlebarEnabledForBuild(OS_BUILD_WIN11_22H2));
 }
 
 test "win32 cursorPosFromLParam decodes signed coordinates" {
@@ -20664,6 +24975,16 @@ test "win32 surfaceWindowStyle clips sibling repaints" {
     try std.testing.expect((style & WS_CHILD) != 0);
 }
 
+test "win32 shouldUseIntegratedTitlebar gates on Win11 build floor" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    try std.testing.expect(!shouldUseIntegratedTitlebar(0, .auto));
+    try std.testing.expect(!shouldUseIntegratedTitlebar(21_999, .auto));
+    try std.testing.expect(shouldUseIntegratedTitlebar(22_000, .auto));
+    try std.testing.expect(shouldUseIntegratedTitlebar(OS_BUILD_WIN11_22H2, .always));
+    try std.testing.expect(!shouldUseIntegratedTitlebar(OS_BUILD_WIN11_22H2, .never));
+}
+
 test "win32 effectiveHostWindowStyle preserves clipchildren for hosted surfaces" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
@@ -20818,8 +25139,8 @@ test "win32 applyProfileCommandConfig preserves inherited working directory" {
 
 test "win32 splitWorkingDirectoryCandidate prefers live cwd over cached wrapper cwd" {
     try std.testing.expectEqualStrings(
-        "/home/athanvi/live",
-        splitWorkingDirectoryCandidate("/home/athanvi/live", "C:\\stale").?,
+        "/home/user/live",
+        splitWorkingDirectoryCandidate("/home/user/live", "C:\\stale").?,
     );
     try std.testing.expectEqualStrings(
         "C:\\cached",
@@ -20839,8 +25160,8 @@ test "win32 applySplitWorkingDirectoryPath applies source pane cwd" {
     const clone_alloc = clone._arena.?.allocator();
     clone.@"working-directory" = .{ .path = try clone_alloc.dupe(u8, "C:\\stale") };
 
-    try std.testing.expect(try applySplitWorkingDirectoryPath(&clone, "/home/athanvi/project"));
-    try std.testing.expectEqualStrings("/home/athanvi/project", clone.@"working-directory".?.path);
+    try std.testing.expect(try applySplitWorkingDirectoryPath(&clone, "/home/user/project"));
+    try std.testing.expectEqualStrings("/home/user/project", clone.@"working-directory".?.path);
 }
 
 test "win32 applySplitWorkingDirectoryPath respects disabled inheritance" {
@@ -20855,7 +25176,7 @@ test "win32 applySplitWorkingDirectoryPath respects disabled inheritance" {
     clone.@"split-inherit-working-directory" = false;
     clone.@"working-directory" = .{ .path = try clone_alloc.dupe(u8, "C:\\explicit") };
 
-    try std.testing.expect(!try applySplitWorkingDirectoryPath(&clone, "/home/athanvi/project"));
+    try std.testing.expect(!try applySplitWorkingDirectoryPath(&clone, "/home/user/project"));
     try std.testing.expectEqualStrings("C:\\explicit", clone.@"working-directory".?.path);
 }
 
@@ -20865,14 +25186,14 @@ test "win32 WSL split cwd treats startup cwd as stale fallback" {
     try std.testing.expect(try shouldTreatWslSplitPwdAsStartupFallback(
         std.testing.allocator,
         command,
-        "/mnt/c/Users/amant/.codex/worktrees/ff46/winghostty",
-        "C:\\Users\\amant\\.codex\\worktrees\\ff46\\winghostty",
+        "/mnt/c/Users/example/src/winghostty",
+        "C:\\Users\\example\\src\\winghostty",
     ));
     try std.testing.expect(!try shouldTreatWslSplitPwdAsStartupFallback(
         std.testing.allocator,
         command,
-        "/home/athanvi",
-        "C:\\Users\\amant\\.codex\\worktrees\\ff46\\winghostty",
+        "/home/user",
+        "C:\\Users\\example\\src\\winghostty",
     ));
 }
 
@@ -20882,8 +25203,8 @@ test "win32 non-WSL split cwd keeps startup cwd candidate" {
     try std.testing.expect(!try shouldTreatWslSplitPwdAsStartupFallback(
         std.testing.allocator,
         command,
-        "C:\\Users\\amant\\.codex\\worktrees\\ff46\\winghostty",
-        "C:\\Users\\amant\\.codex\\worktrees\\ff46\\winghostty",
+        "C:\\Users\\example\\src\\winghostty",
+        "C:\\Users\\example\\src\\winghostty",
     ));
 }
 

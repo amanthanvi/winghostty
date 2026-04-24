@@ -1,22 +1,22 @@
 //! Command palette ranking primitives.
 //!
-//! Pure, Win32-free: `std`, `zf`, and `../input.zig`. Shared between
+//! Pure, Win32-free: `std`, `zf`, and the command catalog. Shared between
 //! the Win32 apprt (live palette) and the `bench/palette_match.zig`
 //! microbench so both exercise the same scoring path.
 
 const std = @import("std");
 const zf = @import("zf");
-const input = @import("../input.zig");
+const command = @import("../input/command.zig");
 
 /// Non-owning view over the palette's command + cval lists.
 pub const Snapshot = struct {
-    commands: []const input.Command,
-    cvals: []const input.Command.C,
+    commands: []const command.Command,
+    cvals: []const command.Command.C,
 
     pub fn fromDefaults() Snapshot {
         return .{
-            .commands = input.command.defaults,
-            .cvals = input.command.defaultsC,
+            .commands = command.defaults,
+            .cvals = command.defaultsC,
         };
     }
 };
@@ -48,8 +48,8 @@ pub fn tokenizeQuery(
 /// Rank one entry against tokens. Scores title and action; picks the
 /// better (lower) rank. Null = at least one token missed both haystacks.
 pub fn rankEntry(
-    cmd: input.Command,
-    c: input.Command.C,
+    cmd: command.Command,
+    c: command.Command.C,
     tokens: []const []const u8,
 ) ?f64 {
     const opts: zf.RankOptions = .{ .to_lower = true, .plain = true };

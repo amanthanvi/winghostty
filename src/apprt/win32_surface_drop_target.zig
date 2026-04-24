@@ -22,9 +22,9 @@ const log = std.log.scoped(.win32_drop_target);
 
 // ── Win32 type aliases ─────────────────────────────────────────────────
 
-const HRESULT = windows.HRESULT;
+const HRESULT = ole_types.HRESULT;
 const HWND = win32_types.HWND;
-const GUID = windows.GUID;
+const GUID = ole_types.GUID;
 const BOOL = win32_types.BOOL;
 const DWORD = ole_types.DWORD;
 const UINT = win32_types.UINT;
@@ -63,13 +63,13 @@ const DVASPECT_CONTENT: DWORD = 1;
 const DATADIR_GET: DWORD = 1;
 
 // IIDs.
-const IID_IUnknown = GUID.parse("{00000000-0000-0000-C000-000000000046}");
-const IID_IDropTarget = GUID.parse("{00000122-0000-0000-C000-000000000046}");
-const IID_IEnumFORMATETC = GUID.parse("{00000103-0000-0000-C000-000000000046}");
+const IID_IUnknown = ole_types.IID_IUnknown;
+const IID_IDropTarget = ole_types.IID_IDropTarget;
+const IID_IEnumFORMATETC = ole_types.IID_IEnumFORMATETC;
 
 // ── OLE shared types ───────────────────────────────────────────────────
 
-const POINTL = @import("win32_geometry.zig").PointL;
+const POINTL = win32_types.POINTL;
 const FORMATETC = ole_types.FORMATETC;
 const STGMEDIUM = ole_types.STGMEDIUM;
 const IDataObject = ole_types.IDataObject;
