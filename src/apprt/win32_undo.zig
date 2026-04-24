@@ -33,6 +33,7 @@ pub const Entry = struct {
     kind: Kind,
     snapshot: Snapshot,
     timestamp_ms: u64,
+    sequence_id: u64 = 0,
 
     /// Owned-byte footprint used for cap accounting.
     pub fn byteSize(self: Entry) usize {

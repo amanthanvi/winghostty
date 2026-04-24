@@ -1304,6 +1304,16 @@ fn readIpcAck(pipe: windows.HANDLE) !bool {
     };
 }
 
+fn historyEntrySortsAfter(
+    lhs_timestamp_ms: u64,
+    lhs_sequence_id: u64,
+    rhs_timestamp_ms: u64,
+    rhs_sequence_id: u64,
+) bool {
+    return lhs_timestamp_ms > rhs_timestamp_ms or
+        (lhs_timestamp_ms == rhs_timestamp_ms and lhs_sequence_id > rhs_sequence_id);
+}
+
 fn readExactHandle(pipe: windows.HANDLE, dst: []u8) !void {
     var offset: usize = 0;
     while (offset < dst.len) {
@@ -1648,6 +1658,7 @@ pub const App = struct {
     ui_thread_id: DWORD = 0,
     quit_timer_id: ?UINT_PTR = null,
     undo_prune_timer_id: ?UINT_PTR = null,
+    next_undo_sequence: u64 = 1,
     running: bool = false,
     windows_hidden: bool = false,
     update_check_running: std.atomic.Value(bool) = .init(false),
@@ -2476,6 +2487,13 @@ pub const App = struct {
         ) catch std.math.maxInt(u64);
     }
 
+    fn nextUndoSequence(self: *App) u64 {
+        const sequence = self.next_undo_sequence;
+        self.next_undo_sequence +%= 1;
+        if (self.next_undo_sequence == 0) self.next_undo_sequence = 1;
+        return sequence;
+    }
+
     fn oldestUndoTimestamp(self: *const App) ?u64 {
         var oldest: ?u64 = null;
         for (self.windows.items) |surface| {
@@ -2644,6 +2662,7 @@ pub const App = struct {
                 if (tab_info.host.pushStructuralUndo(.{
                     .kind = .split_create,
                     .timestamp_ms = GetTickCount64(),
+                    .sequence_id = self.nextUndoSequence(),
                     .payload = .{ .split_create = .{
                         .source_surface = source,
                         .created_surface = surface,
@@ -3143,7 +3162,12 @@ pub const App = struct {
 
                     if (host_entry == null and local_entry == null) break;
                     const use_host = host_entry != null and
-                        (local_entry == null or host_entry.?.timestamp_ms > local_entry.?.timestamp_ms);
+                        (local_entry == null or historyEntrySortsAfter(
+                            host_entry.?.timestamp_ms,
+                            host_entry.?.sequence_id,
+                            local_entry.?.timestamp_ms,
+                            local_entry.?.sequence_id,
+                        ));
 
                     if (use_host) {
                         const host = surface.host orelse break;
@@ -3180,7 +3204,12 @@ pub const App = struct {
 
                     if (host_entry == null and local_entry == null) break;
                     const use_host = host_entry != null and
-                        (local_entry == null or host_entry.?.timestamp_ms > local_entry.?.timestamp_ms);
+                        (local_entry == null or historyEntrySortsAfter(
+                            host_entry.?.timestamp_ms,
+                            host_entry.?.sequence_id,
+                            local_entry.?.timestamp_ms,
+                            local_entry.?.sequence_id,
+                        ));
 
                     if (use_host) {
                         const host = surface.host orelse break;
@@ -3757,11 +3786,18 @@ pub const App = struct {
     fn hostWithNewestStructuralUndo(self: *App) ?*Host {
         var best: ?*Host = null;
         var best_ts: u64 = 0;
+        var best_seq: u64 = 0;
         for (self.hosts.items) |host| {
             const entry = host.peekStructuralUndo() orelse continue;
-            if (best == null or entry.timestamp_ms > best_ts) {
+            if (best == null or historyEntrySortsAfter(
+                entry.timestamp_ms,
+                entry.sequence_id,
+                best_ts,
+                best_seq,
+            )) {
                 best = host;
                 best_ts = entry.timestamp_ms;
+                best_seq = entry.sequence_id;
             }
         }
         return best;
@@ -3770,11 +3806,18 @@ pub const App = struct {
     fn hostWithNewestStructuralRedo(self: *App) ?*Host {
         var best: ?*Host = null;
         var best_ts: u64 = 0;
+        var best_seq: u64 = 0;
         for (self.hosts.items) |host| {
             const entry = host.peekStructuralRedo() orelse continue;
-            if (best == null or entry.timestamp_ms > best_ts) {
+            if (best == null or historyEntrySortsAfter(
+                entry.timestamp_ms,
+                entry.sequence_id,
+                best_ts,
+                best_seq,
+            )) {
                 best = host;
                 best_ts = entry.timestamp_ms;
+                best_seq = entry.sequence_id;
             }
         }
         return best;
@@ -5837,6 +5880,7 @@ const Host = struct {
     const StructuralUndoEntry = struct {
         kind: StructuralUndoKind,
         timestamp_ms: u64,
+        sequence_id: u64 = 0,
         payload: union(StructuralUndoKind) {
             close_tab: CloseTabUndo,
             split_create: SplitCreateUndo,
@@ -6096,6 +6140,7 @@ const Host = struct {
         return .{
             .kind = .close_tab,
             .timestamp_ms = GetTickCount64(),
+            .sequence_id = self.app.nextUndoSequence(),
             .payload = .{ .close_tab = .{
                 .tab = removed,
                 .index = index,
@@ -18270,6 +18315,7 @@ pub const Surface = struct {
                 .reset => .{ .reset = .{ .state_bytes = state_bytes } },
             },
             .timestamp_ms = GetTickCount64(),
+            .sequence_id = self.app.nextUndoSequence(),
         };
         errdefer entry.deinit(self.app.core_app.alloc);
         try self.pushUndoEntryAndInvalidateRedo(entry);
@@ -21383,6 +21429,12 @@ fn pushUndoAndRedoBranch(
     try std.testing.expect((try stack.popForUndo()) != null);
     try std.testing.expectEqual(@as(usize, 1), stack.undoDepth());
     try std.testing.expectEqual(@as(usize, 1), stack.redoDepth());
+}
+
+test "win32 undo history ordering uses sequence when timestamps tie" {
+    try std.testing.expect(historyEntrySortsAfter(10, 2, 10, 1));
+    try std.testing.expect(!historyEntrySortsAfter(10, 1, 10, 2));
+    try std.testing.expect(historyEntrySortsAfter(11, 1, 10, 99));
 }
 
 test "win32 undo prune expires local and structural histories" {
