@@ -104,8 +104,7 @@ function Invoke-HarnessWithPassSentinel {
     $run = Start-Harness -ScriptName $ScriptName -TimeoutSeconds $TimeoutSeconds
     $waitMilliseconds = [int][Math]::Ceiling(($TimeoutSeconds + 5) * 1000)
     if (-not $run.Process.WaitForExit($waitMilliseconds)) {
-        Stop-Process -Id $run.Process.Id -Force -ErrorAction SilentlyContinue
-        $run.Process.WaitForExit()
+        Stop-InteractiveWin11Process -Process $run.Process
         throw @"
 $ScriptName timed out after ${TimeoutSeconds}s
 stdout ($($run.Stdout)):
@@ -219,8 +218,7 @@ foreach ($run in $parallelRuns) {
     if (-not $run.Process.WaitForExit($remainingMilliseconds)) {
         foreach ($other in $parallelRuns) {
             if (-not $other.Process.HasExited) {
-                Stop-Process -Id $other.Process.Id -Force -ErrorAction SilentlyContinue
-                $other.Process.WaitForExit()
+                Stop-InteractiveWin11Process -Process $other.Process
             }
         }
         throw @"

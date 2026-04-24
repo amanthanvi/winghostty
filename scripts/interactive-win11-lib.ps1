@@ -253,7 +253,10 @@ function Invoke-InteractiveWin11Build {
     if (-not [string]::IsNullOrWhiteSpace($savedLocalAppData)) {
         $normalizedLocalAppData = Get-InteractiveWin11NormalizedPath -Path $savedLocalAppData
         $sandboxPrefix = '{0}\' -f $repoSandboxRoot
-        if ($normalizedLocalAppData.StartsWith($sandboxPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+        if (
+            $normalizedLocalAppData.Equals($repoSandboxRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
+            $normalizedLocalAppData.StartsWith($sandboxPrefix, [System.StringComparison]::OrdinalIgnoreCase)
+        ) {
             $userProfilePath = if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
                 [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::UserProfile)
             }
@@ -326,7 +329,15 @@ function Stop-InteractiveWin11Process {
     )
 
     if (-not $Process.HasExited) {
-        Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+        & taskkill.exe /PID $Process.Id /T /F *> $null
+        try {
+            $Process.Refresh()
+        }
+        catch {
+        }
+        if (-not $Process.HasExited) {
+            Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
+        }
     }
     $Process.WaitForExit()
 }

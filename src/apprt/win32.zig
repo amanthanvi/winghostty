@@ -2523,7 +2523,7 @@ pub const App = struct {
         while (i < self.hosts.items.len) {
             const host = self.hosts.items[i];
             host.pruneStructuralHistoryBefore(min_timestamp_ms);
-            if (host.destroy_after_structural_dispose and host.tabs.items.len == 0) {
+            if (host.destroy_after_structural_dispose and host.tabs.items.len == 0 and !host.hasStructuralHistory()) {
                 if (host.hwnd) |hwnd| {
                     _ = DestroyWindow(hwnd);
                     self.removeHost(host);
@@ -5973,6 +5973,10 @@ const Host = struct {
             if (oldest == null or entry.timestamp_ms < oldest.?) oldest = entry.timestamp_ms;
         }
         return oldest;
+    }
+
+    fn hasStructuralHistory(self: *const Host) bool {
+        return self.structural_undo_entries.items.len > 0 or self.structural_redo_entries.items.len > 0;
     }
 
     fn pruneStructuralHistoryBefore(self: *Host, min_timestamp_ms: u64) void {
@@ -22668,6 +22672,64 @@ test "win32 closeTab this on last tab detaches tab for undo" {
     try std.testing.expect(!surface.window_visible);
     try std.testing.expectEqual(@as(usize, 0), surface.undo_stack.undoDepth());
     try std.testing.expectEqual(@as(usize, 0), surface.undo_stack.redoDepth());
+}
+
+test "win32 prune preserves empty host while structural undo remains" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+    app.hosts = .empty;
+    app.windows = .empty;
+    defer {
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.setBanner(.none, null) catch {};
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        for (host.tabs.items) |*tab| tab.deinit();
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface: Surface = undefined;
+    surface.app = &app;
+    surface.host = &host;
+    surface.host_id = host.id;
+    surface.hwnd = null;
+    surface.core_initialized = false;
+    surface.window_visible = true;
+    surface.host_active = true;
+    surface.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface.undo_stack.deinit();
+
+    try host.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 1, &surface));
+    try app.hosts.append(std.testing.allocator, &host);
+    try app.windows.append(std.testing.allocator, &surface);
+
+    const entry = host.detachTabForUndo(0) orelse unreachable;
+    try host.structural_undo_entries.append(std.testing.allocator, entry);
+    host.destroy_after_structural_dispose = true;
+
+    app.pruneUndoHistoryBefore(0);
+
+    try std.testing.expectEqual(@as(usize, 1), app.hosts.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host.tabs.items.len);
+    try std.testing.expectEqual(@as(usize, 1), host.structural_undo_entries.items.len);
+    try std.testing.expect(host.destroy_after_structural_dispose);
 }
 
 test "win32 app undo redo replays last tab close without active surface" {
