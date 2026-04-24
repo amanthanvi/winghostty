@@ -101,6 +101,19 @@ Run with:
 powershell.exe -ExecutionPolicy Bypass -File .\interactive-win11-resize.ps1 -ResetState -TimeoutSeconds 15
 ```
 
+## interactive-win11-undo.ps1
+
+Interactive Win11 validation for the shipped undo/redo action set. It launches
+`winghostty`, exercises split creation, tab close/restore, last-tab recovery,
+and both palette- and keybinding-driven undo paths, then verifies the visible
+tab/surface counts after each replay step.
+
+Run with:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\interactive-win11-undo.ps1 -ResetState -TimeoutSeconds 35
+```
+
 ## ..\..\scripts\interactive-win11.ps1
 
 Generic repo-local Win11 launcher for ad hoc debugging. It uses the

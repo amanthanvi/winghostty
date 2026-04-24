@@ -40,6 +40,7 @@ This fork has removed the upstream `macos/` Xcode app and the
 
 ## Self-Correction Log
 
+- 2026-04-24: Win32 local terminal undo/redo replay cannot blindly roll the stack move back on generic replay errors; terminal restore/reset mutates before title/pwd/cache/repaint helpers can allocate, so replay-side UI sync must be best-effort and the stack move remains authoritative.
 - 2026-04-24: Win32 `windowDestroyed` close-history backup runs after `Surface.destroy` tears down the closing surface's local undo stack; do not call tab-wide redo invalidation that touches the closing surface there. Use a destroy-safe backup path that clears sibling redo + host structural history only.
 - 2026-04-23: Win32 structural undo/redo must roll a popped entry back to its source stack if replay fails before mutation (for example OOM while restoring a detached tab or re-splitting a pane); otherwise the entry moves to the opposite branch without the UI state changing.
 - 2026-04-23: Win32 local redo must preflight replay and roll back a moved redo entry if replay is blocked before mutation; `clear_screen` redo in alternate-screen state is unavailable, not a reason to consume redo history.

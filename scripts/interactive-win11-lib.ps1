@@ -254,15 +254,15 @@ function Invoke-InteractiveWin11Build {
         $normalizedLocalAppData = Get-InteractiveWin11NormalizedPath -Path $savedLocalAppData
         $sandboxPrefix = '{0}\' -f $repoSandboxRoot
         if ($normalizedLocalAppData.StartsWith($sandboxPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
-            $profile = if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+            $userProfilePath = if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
                 [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::UserProfile)
             }
             else {
                 $env:USERPROFILE
             }
 
-            if (-not [string]::IsNullOrWhiteSpace($profile)) {
-                $env:LOCALAPPDATA = Join-Path $profile 'AppData\Local'
+            if (-not [string]::IsNullOrWhiteSpace($userProfilePath)) {
+                $env:LOCALAPPDATA = Join-Path $userProfilePath 'AppData\Local'
                 $restoreLocalAppData = $true
             }
         }

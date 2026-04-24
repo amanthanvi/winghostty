@@ -234,10 +234,15 @@ function Wait-Until {
     param(
         [Parameter(Mandatory)] [scriptblock] $Condition,
         [Parameter(Mandatory)] [string] $Description,
-        [Parameter(Mandatory)] [DateTime] $Deadline
+        [Parameter(Mandatory)] [DateTime] $Deadline,
+        [System.Diagnostics.Process] $Process
     )
 
     while ([DateTime]::UtcNow -lt $Deadline) {
+        if ($null -ne $Process -and $Process.HasExited) {
+            throw "winghostty exited while waiting for ${Description} (exit code $($Process.ExitCode))"
+        }
+
         if (& $Condition) {
             return
         }
@@ -271,12 +276,13 @@ function Invoke-CommandPaletteAction {
     param(
         [Parameter(Mandatory)] [IntPtr] $HostHwnd,
         [Parameter(Mandatory)] [string] $Action,
-        [Parameter(Mandatory)] [DateTime] $Deadline
+        [Parameter(Mandatory)] [DateTime] $Deadline,
+        [System.Diagnostics.Process] $Process
     )
 
     Invoke-HostCommand -HostHwnd $HostHwnd -CommandId 1901
     $script:Win11UndoPaletteHostHwnd = $HostHwnd
-    Wait-Until -Deadline $Deadline -Description 'command palette edit control' -Condition {
+    Wait-Until -Deadline $Deadline -Description 'command palette edit control' -Process $Process -Condition {
         $null -ne (Get-VisibleChildById -Parent $script:Win11UndoPaletteHostHwnd -Id 2002)
     }
 
@@ -357,7 +363,7 @@ $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
 $hostHwnd = [IntPtr]::Zero
 
 try {
-    Wait-Until -Deadline $deadline -Description 'host window' -Condition {
+    Wait-Until -Deadline $deadline -Description 'host window' -Process $process -Condition {
         if ($process.HasExited) {
             throw "winghostty exited before host creation (exit code $($process.ExitCode))"
         }
@@ -367,88 +373,88 @@ try {
     }
     $hostHwnd = $script:Win11UndoHostHwnd
 
-    Wait-Until -Deadline $deadline -Description 'initial shell startup' -Condition {
+    Wait-Until -Deadline $deadline -Description 'initial shell startup' -Process $process -Condition {
         (Get-LogPatternCount -Path $stderrPath -Pattern $successPattern) -ge 1
     }
 
-    Wait-Until -Deadline $deadline -Description 'initial tab button' -Condition {
+    Wait-Until -Deadline $deadline -Description 'initial tab button' -Process $process -Condition {
         (Get-VisibleTabCount -Parent $hostHwnd) -eq 1
     }
     Assert-Equal (Get-VisibleTabCount -Parent $hostHwnd) 1 'initial tab count'
 
-    Wait-Until -Deadline $deadline -Description 'initial surface child' -Condition {
+    Wait-Until -Deadline $deadline -Description 'initial surface child' -Process $process -Condition {
         (Get-VisibleSurfaceCount -Parent $hostHwnd) -eq 1
     }
     Assert-Equal (Get-VisibleSurfaceCount -Parent $hostHwnd) 1 'initial visible surface count'
 
-    Invoke-CommandPaletteAction -HostHwnd $hostHwnd -Action 'new_split:down' -Deadline $deadline
-    Wait-Until -Deadline $deadline -Description 'split surface creation' -Condition {
+    Invoke-CommandPaletteAction -HostHwnd $hostHwnd -Action 'new_split:down' -Deadline $deadline -Process $process
+    Wait-Until -Deadline $deadline -Description 'split surface creation' -Process $process -Condition {
         (Get-VisibleSurfaceCount -Parent $hostHwnd) -eq 2
     }
-    Wait-Until -Deadline $deadline -Description 'split shell startup' -Condition {
+    Wait-Until -Deadline $deadline -Description 'split shell startup' -Process $process -Condition {
         (Get-LogPatternCount -Path $stderrPath -Pattern $successPattern) -ge 2
     }
     Assert-Equal (Get-VisibleSurfaceCount -Parent $hostHwnd) 2 'visible surface count after new_split:down'
 
-    Invoke-CommandPaletteAction -HostHwnd $hostHwnd -Action 'undo' -Deadline $deadline
-    Wait-Until -Deadline $deadline -Description 'undo removed split surface' -Condition {
+    Invoke-CommandPaletteAction -HostHwnd $hostHwnd -Action 'undo' -Deadline $deadline -Process $process
+    Wait-Until -Deadline $deadline -Description 'undo removed split surface' -Process $process -Condition {
         (Get-VisibleSurfaceCount -Parent $hostHwnd) -eq 1
     }
     Assert-Equal (Get-VisibleSurfaceCount -Parent $hostHwnd) 1 'visible surface count after split undo'
 
-    Invoke-CommandPaletteAction -HostHwnd $hostHwnd -Action 'redo' -Deadline $deadline
-    Wait-Until -Deadline $deadline -Description 'redo restored split surface' -Condition {
+    Invoke-CommandPaletteAction -HostHwnd $hostHwnd -Action 'redo' -Deadline $deadline -Process $process
+    Wait-Until -Deadline $deadline -Description 'redo restored split surface' -Process $process -Condition {
         (Get-VisibleSurfaceCount -Parent $hostHwnd) -eq 2
     }
     Assert-Equal (Get-VisibleSurfaceCount -Parent $hostHwnd) 2 'visible surface count after split redo'
 
-    Invoke-CommandPaletteAction -HostHwnd $hostHwnd -Action 'undo' -Deadline $deadline
-    Wait-Until -Deadline $deadline -Description 'second undo removed split surface' -Condition {
+    Invoke-CommandPaletteAction -HostHwnd $hostHwnd -Action 'undo' -Deadline $deadline -Process $process
+    Wait-Until -Deadline $deadline -Description 'second undo removed split surface' -Process $process -Condition {
         (Get-VisibleSurfaceCount -Parent $hostHwnd) -eq 1
     }
     Assert-Equal (Get-VisibleSurfaceCount -Parent $hostHwnd) 1 'visible surface count after second split undo'
 
     Invoke-HostCommand -HostHwnd $hostHwnd -CommandId 1904
-    Wait-Until -Deadline $deadline -Description 'second tab button' -Condition {
+    Wait-Until -Deadline $deadline -Description 'second tab button' -Process $process -Condition {
         (Get-VisibleTabCount -Parent $hostHwnd) -eq 2
     }
-    Wait-Until -Deadline $deadline -Description 'second shell startup' -Condition {
+    Wait-Until -Deadline $deadline -Description 'second shell startup' -Process $process -Condition {
         (Get-LogPatternCount -Path $stderrPath -Pattern $successPattern) -ge 3
     }
     Assert-Equal (Get-VisibleTabCount -Parent $hostHwnd) 2 'tab count after new_tab'
 
     Invoke-CloseSecondTab -HostHwnd $hostHwnd
-    Wait-Until -Deadline $deadline -Description 'second tab close' -Condition {
+    Wait-Until -Deadline $deadline -Description 'second tab close' -Process $process -Condition {
         (Get-VisibleTabCount -Parent $hostHwnd) -eq 1
     }
     Assert-Equal (Get-VisibleTabCount -Parent $hostHwnd) 1 'tab count after close_tab:this'
 
-    Invoke-CommandPaletteAction -HostHwnd $hostHwnd -Action 'undo' -Deadline $deadline
-    Wait-Until -Deadline $deadline -Description 'undo restored closed tab' -Condition {
+    Invoke-CommandPaletteAction -HostHwnd $hostHwnd -Action 'undo' -Deadline $deadline -Process $process
+    Wait-Until -Deadline $deadline -Description 'undo restored closed tab' -Process $process -Condition {
         (Get-VisibleTabCount -Parent $hostHwnd) -eq 2
     }
     Assert-Equal (Get-VisibleTabCount -Parent $hostHwnd) 2 'tab count after undo'
 
-    Invoke-CommandPaletteAction -HostHwnd $hostHwnd -Action 'redo' -Deadline $deadline
-    Wait-Until -Deadline $deadline -Description 'redo closed restored tab' -Condition {
+    Invoke-CommandPaletteAction -HostHwnd $hostHwnd -Action 'redo' -Deadline $deadline -Process $process
+    Wait-Until -Deadline $deadline -Description 'redo closed restored tab' -Process $process -Condition {
         (Get-VisibleTabCount -Parent $hostHwnd) -eq 1
     }
     Assert-Equal (Get-VisibleTabCount -Parent $hostHwnd) 1 'tab count after redo'
 
-    Invoke-CommandPaletteAction -HostHwnd $hostHwnd -Action 'close_tab:this' -Deadline $deadline
-    Wait-Until -Deadline $deadline -Description 'last tab close' -Condition {
+    Invoke-CommandPaletteAction -HostHwnd $hostHwnd -Action 'close_tab:this' -Deadline $deadline -Process $process
+    Wait-Until -Deadline $deadline -Description 'last tab close' -Process $process -Condition {
         (Get-VisibleTabCount -Parent $hostHwnd) -eq 0
     }
     Assert-Equal (Get-VisibleTabCount -Parent $hostHwnd) 0 'tab count after last close_tab:this'
 
     Invoke-HostKeyPress -HostHwnd $hostHwnd -VirtualKey 0x55
-    Wait-Until -Deadline $deadline -Description 'keybinding undo restored last tab' -Condition {
+    Wait-Until -Deadline $deadline -Description 'keybinding undo restored last tab' -Process $process -Condition {
         (Get-VisibleTabCount -Parent $hostHwnd) -eq 1
     }
     Assert-Equal (Get-VisibleTabCount -Parent $hostHwnd) 1 'tab count after last-tab keybinding undo'
 
-    Invoke-CommandPaletteAction -HostHwnd $hostHwnd -Action 'redo' -Deadline $deadline
-    Wait-Until -Deadline $deadline -Description 'command palette redo closed last tab' -Condition {
+    Invoke-CommandPaletteAction -HostHwnd $hostHwnd -Action 'redo' -Deadline $deadline -Process $process
+    Wait-Until -Deadline $deadline -Description 'command palette redo closed last tab' -Process $process -Condition {
         (Get-VisibleTabCount -Parent $hostHwnd) -eq 0
     }
     Assert-Equal (Get-VisibleTabCount -Parent $hostHwnd) 0 'tab count after last-tab command palette redo'

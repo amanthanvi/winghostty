@@ -5247,7 +5247,9 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
 
         .reset => {
             if (comptime @hasDecl(@TypeOf(self.rt_surface.*), "captureUndoReset")) {
-                try self.rt_surface.captureUndoReset();
+                self.rt_surface.captureUndoReset() catch |err| {
+                    log.warn("undo capture failed for reset err={}", .{err});
+                };
             }
             self.renderer_state.mutex.lock();
             defer self.renderer_state.mutex.unlock();
@@ -5476,7 +5478,9 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
             }
 
             if (comptime @hasDecl(@TypeOf(self.rt_surface.*), "captureUndoClearScreen")) {
-                try self.rt_surface.captureUndoClearScreen();
+                self.rt_surface.captureUndoClearScreen() catch |err| {
+                    log.warn("undo capture failed for clear_screen err={}", .{err});
+                };
             }
             self.queueIo(.{
                 .clear_screen = .{ .history = true },

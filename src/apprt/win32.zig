@@ -2651,6 +2651,7 @@ pub const App = struct {
                     } },
                 })) |_| {} else |err| {
                     log.warn("new_split undo snapshot failed err={}", .{err});
+                    tab_info.host.clearStructuralRedo();
                 }
                 self.activateSurface(surface);
                 return true;
@@ -3125,11 +3126,8 @@ pub const App = struct {
 
             .undo => {
                 self.pruneUndoHistoryNow();
-                const surface = self.findSurfaceForTarget(target) orelse {
-                    const host = switch (target) {
-                        .app => self.hostWithNewestStructuralUndo() orelse if (self.hosts.items.len > 0) self.hosts.items[0] else return false,
-                        .surface => return false,
-                    };
+                const surface = self.undoRedoSurfaceForTarget(target) orelse {
+                    const host = self.structuralUndoHostForTarget(target) orelse return false;
                     while (host.peekStructuralUndo() != null) {
                         const message = try host.applyLatestStructuralUndo() orelse continue;
                         try host.setBanner(.info, message);
@@ -3150,26 +3148,23 @@ pub const App = struct {
                     if (use_host) {
                         const host = surface.host orelse break;
                         const message = try host.applyLatestStructuralUndo() orelse continue;
-                        _ = try self.showHostBanner(target, .info, message);
+                        _ = try self.showHostBanner(.{ .surface = surface.core() }, .info, message);
                         return true;
                     }
 
                     const message = try surface.applyLatestLocalUndo() orelse continue;
-                    _ = try self.showHostBanner(target, .info, message);
+                    _ = try self.showHostBanner(.{ .surface = surface.core() }, .info, message);
                     return true;
                 }
 
-                _ = try self.showHostBanner(target, .info, "Nothing to undo.");
+                _ = try self.showHostBanner(.{ .surface = surface.core() }, .info, "Nothing to undo.");
                 return true;
             },
 
             .redo => {
                 self.pruneUndoHistoryNow();
-                const surface = self.findSurfaceForTarget(target) orelse {
-                    const host = switch (target) {
-                        .app => self.hostWithNewestStructuralRedo() orelse if (self.hosts.items.len > 0) self.hosts.items[0] else return false,
-                        .surface => return false,
-                    };
+                const surface = self.undoRedoSurfaceForTarget(target) orelse {
+                    const host = self.structuralRedoHostForTarget(target) orelse return false;
                     while (host.peekStructuralRedo() != null) {
                         const message = try host.applyLatestStructuralRedo() orelse continue;
                         try host.setBanner(.info, message);
@@ -3190,16 +3185,16 @@ pub const App = struct {
                     if (use_host) {
                         const host = surface.host orelse break;
                         const message = try host.applyLatestStructuralRedo() orelse continue;
-                        _ = try self.showHostBanner(target, .info, message);
+                        _ = try self.showHostBanner(.{ .surface = surface.core() }, .info, message);
                         return true;
                     }
 
                     const message = try surface.applyLatestLocalRedo() orelse continue;
-                    _ = try self.showHostBanner(target, .info, message);
+                    _ = try self.showHostBanner(.{ .surface = surface.core() }, .info, message);
                     return true;
                 }
 
-                _ = try self.showHostBanner(target, .info, "Nothing to redo.");
+                _ = try self.showHostBanner(.{ .surface = surface.core() }, .info, "Nothing to redo.");
                 return true;
             },
 
@@ -3711,6 +3706,49 @@ pub const App = struct {
         };
     }
 
+    fn focusedSurfaceForUndoRedo(self: *App) ?*Surface {
+        for (self.hosts.items) |host| {
+            if (host.activeSurface()) |surface| {
+                if (surface.window_focused) return surface;
+            }
+        }
+
+        for (self.windows.items) |surface| {
+            if (surface.window_focused) return surface;
+        }
+
+        return null;
+    }
+
+    fn undoRedoSurfaceForTarget(self: *App, target: apprt.Target) ?*Surface {
+        return switch (target) {
+            .app => self.focusedSurfaceForUndoRedo() orelse self.primarySurface(),
+            .surface => |core_surface| self.findSurfaceByCore(core_surface),
+        };
+    }
+
+    fn structuralUndoHostForTarget(self: *App, target: apprt.Target) ?*Host {
+        if (self.undoRedoSurfaceForTarget(target)) |surface| {
+            if (surface.host) |host| return host;
+        }
+
+        return switch (target) {
+            .app => self.hostWithNewestStructuralUndo() orelse if (self.hosts.items.len > 0) self.hosts.items[0] else null,
+            .surface => null,
+        };
+    }
+
+    fn structuralRedoHostForTarget(self: *App, target: apprt.Target) ?*Host {
+        if (self.undoRedoSurfaceForTarget(target)) |surface| {
+            if (surface.host) |host| return host;
+        }
+
+        return switch (target) {
+            .app => self.hostWithNewestStructuralRedo() orelse if (self.hosts.items.len > 0) self.hosts.items[0] else null,
+            .surface => null,
+        };
+    }
+
     fn primarySurface(self: *App) ?*Surface {
         if (self.hosts.items.len == 0) return null;
         return self.activeSurfaceForHost(self.hosts.items[0].id);
@@ -3743,8 +3781,7 @@ pub const App = struct {
     }
 
     fn undoCutoffTimestampMs(self: *const App) u64 {
-        const timeout_ms = self.config.@"undo-timeout".duration / std.time.ns_per_ms;
-        return GetTickCount64() -| timeout_ms;
+        return GetTickCount64() -| self.undoTimeoutMs();
     }
 
     fn findSurfaceByCore(self: *App, core_surface: *CoreSurface) ?*Surface {
@@ -4170,6 +4207,7 @@ pub const App = struct {
                 const stored_entry = host.pushStructuralUndo(entry) catch |err| {
                     log.warn("close_tab undo snapshot failed err={}", .{err});
                     var failed = entry;
+                    errdefer failed.dispose(host, .normal);
                     _ = try host.restoreClosedTabEntry(&failed.payload.close_tab);
                     if (host.activeSurface()) |restored| self.activateSurface(restored);
                     return err;
@@ -11791,15 +11829,9 @@ fn commitSplitSurfaceAttach(split_rollback: *?SplitSurfaceAttachRollback) void {
 }
 
 const RestoredTerminalUndoState = struct {
-    title: ?[:0]u8 = null,
-    pwd: ?[:0]u8 = null,
+    title: ?[]const u8 = null,
+    pwd: ?[]const u8 = null,
     scrollbar: terminal.Scrollbar = .zero,
-
-    fn deinit(self: *RestoredTerminalUndoState, alloc: Allocator) void {
-        if (self.title) |value| alloc.free(value);
-        if (self.pwd) |value| alloc.free(value);
-        self.* = .{};
-    }
 };
 
 const undo_snapshot_magic = "WUH1";
@@ -11837,10 +11869,9 @@ fn captureTerminalUndoStateBytes(
 }
 
 fn restoreTerminalUndoState(
-    alloc: Allocator,
     terminal_state: *terminal.Terminal,
     state_bytes: []const u8,
-) !RestoredTerminalUndoState {
+) RestoredTerminalUndoState {
     var title_bytes: []const u8 = "";
     var pwd_bytes: []const u8 = "";
     var vt_bytes = state_bytes;
@@ -11861,20 +11892,22 @@ fn restoreTerminalUndoState(
     var stream = terminal_state.vtStream();
     defer stream.deinit();
     stream.nextSlice(vt_bytes);
-    if (title_bytes.len > 0) try terminal_state.setTitle(title_bytes);
-    if (pwd_bytes.len > 0) try terminal_state.setPwd(pwd_bytes);
+    if (title_bytes.len > 0) {
+        terminal_state.setTitle(title_bytes) catch |err| {
+            log.warn("undo snapshot title restore failed err={}", .{err});
+        };
+    }
+    if (pwd_bytes.len > 0) {
+        terminal_state.setPwd(pwd_bytes) catch |err| {
+            log.warn("undo snapshot pwd restore failed err={}", .{err});
+        };
+    }
 
-    var result: RestoredTerminalUndoState = .{
+    return .{
+        .title = terminal_state.getTitle(),
+        .pwd = terminal_state.getPwd(),
         .scrollbar = terminal_state.screens.active.pages.scrollbar(),
     };
-    errdefer result.deinit(alloc);
-    if (terminal_state.getTitle()) |value| {
-        result.title = try alloc.dupeZ(u8, value);
-    }
-    if (terminal_state.getPwd()) |value| {
-        result.pwd = try alloc.dupeZ(u8, value);
-    }
-    return result;
 }
 
 const HostBannerKind = enum {
@@ -18242,41 +18275,48 @@ pub const Surface = struct {
         );
     }
 
-    fn restoreUndoSnapshot(self: *Surface, entry: *const win32_undo.Entry) !void {
+    fn restoreUndoSnapshot(self: *Surface, entry: *const win32_undo.Entry) void {
         const alloc = self.app.core_app.alloc;
         const state_bytes = switch (entry.snapshot) {
             .clear_screen => |value| value.state_bytes,
             .reset => |value| value.state_bytes,
         };
         var restored: RestoredTerminalUndoState = .{};
-        errdefer restored.deinit(alloc);
 
         {
             self.core_surface.renderer_state.mutex.lock();
             defer self.core_surface.renderer_state.mutex.unlock();
-            restored = try restoreTerminalUndoState(
-                alloc,
+            restored = restoreTerminalUndoState(
                 self.core_surface.renderer_state.terminal,
                 state_bytes,
             );
         }
 
-        defer restored.deinit(alloc);
-        try appendOwnedString(alloc, &self.title, restored.title);
-        try appendOwnedString(alloc, &self.pwd, restored.pwd);
-        try self.setScrollbar(restored.scrollbar);
-        try self.refreshWindowTitle();
-        try self.requestRepaint();
+        appendOwnedString(alloc, &self.title, restored.title) catch |err| {
+            log.warn("undo snapshot title cache sync failed err={}", .{err});
+        };
+        appendOwnedString(alloc, &self.pwd, restored.pwd) catch |err| {
+            log.warn("undo snapshot pwd cache sync failed err={}", .{err});
+        };
+        self.setScrollbar(restored.scrollbar) catch |err| {
+            log.warn("undo snapshot scrollbar sync failed err={}", .{err});
+        };
+        self.refreshWindowTitle() catch |err| {
+            log.warn("undo snapshot window title refresh failed err={}", .{err});
+        };
+        self.requestRepaint() catch |err| {
+            log.warn("undo snapshot repaint request failed err={}", .{err});
+        };
     }
 
     fn applyLocalUndoEntry(
         self: *Surface,
         entry: *const win32_undo.Entry,
         mode: enum { undo, redo },
-    ) !?[]const u8 {
+    ) ?[]const u8 {
         switch (mode) {
             .undo => {
-                try self.restoreUndoSnapshot(entry);
+                self.restoreUndoSnapshot(entry);
                 return switch (entry.kind) {
                     .clear_screen => "Clear screen undone.",
                     .reset => "Terminal reset undone.",
@@ -18287,7 +18327,7 @@ pub const Surface = struct {
                 self.undo_capture_suspended = true;
                 defer self.undo_capture_suspended = false;
 
-                if (!(try self.reapplyUndoableAction(entry.kind))) return null;
+                if (!self.reapplyUndoableAction(entry.kind)) return null;
                 return switch (entry.kind) {
                     .clear_screen => "Clear screen redone.",
                     .reset => "Terminal reset redone.",
@@ -18296,7 +18336,7 @@ pub const Surface = struct {
         }
     }
 
-    fn reapplyUndoableAction(self: *Surface, kind: win32_undo.Kind) !bool {
+    fn reapplyUndoableAction(self: *Surface, kind: win32_undo.Kind) bool {
         switch (kind) {
             .clear_screen => {
                 {
@@ -18320,11 +18360,21 @@ pub const Surface = struct {
                     scrollbar = self.core_surface.renderer_state.terminal.screens.active.pages.scrollbar();
                 }
 
-                try appendOwnedString(self.app.core_app.alloc, &self.title, null);
-                try appendOwnedString(self.app.core_app.alloc, &self.pwd, null);
-                try self.setScrollbar(scrollbar);
-                try self.refreshWindowTitle();
-                try self.requestRepaint();
+                appendOwnedString(self.app.core_app.alloc, &self.title, null) catch |err| {
+                    log.warn("redo reset title cache clear failed err={}", .{err});
+                };
+                appendOwnedString(self.app.core_app.alloc, &self.pwd, null) catch |err| {
+                    log.warn("redo reset pwd cache clear failed err={}", .{err});
+                };
+                self.setScrollbar(scrollbar) catch |err| {
+                    log.warn("redo reset scrollbar sync failed err={}", .{err});
+                };
+                self.refreshWindowTitle() catch |err| {
+                    log.warn("redo reset window title refresh failed err={}", .{err});
+                };
+                self.requestRepaint() catch |err| {
+                    log.warn("redo reset repaint request failed err={}", .{err});
+                };
                 return true;
             },
         }
@@ -18350,7 +18400,7 @@ pub const Surface = struct {
 
     fn applyLatestLocalUndo(self: *Surface) !?[]const u8 {
         const entry = (try self.undo_stack.popForUndo()) orelse return null;
-        return try self.applyLocalUndoEntry(entry, .undo);
+        return self.applyLocalUndoEntry(entry, .undo);
     }
 
     fn applyLatestLocalRedo(self: *Surface) !?[]const u8 {
@@ -18359,7 +18409,7 @@ pub const Surface = struct {
 
         const entry = (try self.undo_stack.popForRedo()) orelse return null;
         const kind = entry.kind;
-        const message = try self.applyLocalUndoEntry(entry, .redo);
+        const message = self.applyLocalUndoEntry(entry, .redo);
         if (message == null) {
             self.undo_stack.restoreLastRedoPop();
             return localRedoUnavailableMessage(kind);
@@ -22693,6 +22743,136 @@ test "win32 app undo redo replays last tab close without active surface" {
     try std.testing.expect(!surface.window_visible);
 }
 
+test "win32 app undo redo uses focused host" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = .{
+        .core_app = &core_app,
+        .config = try configpkg.Config.default(std.testing.allocator),
+        .hinstance = GetModuleHandleW(null),
+        .hosts = .empty,
+        .windows = .empty,
+    };
+    defer {
+        app.config.deinit();
+        app.hosts.deinit(std.testing.allocator);
+        app.windows.deinit(std.testing.allocator);
+    }
+
+    var host_a: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host_a.setBanner(.none, null) catch {};
+        host_a.clearStructuralHistory(.normal);
+        host_a.structural_undo_entries.deinit(std.testing.allocator);
+        host_a.structural_redo_entries.deinit(std.testing.allocator);
+        for (host_a.tabs.items) |*tab| tab.deinit();
+        host_a.tabs.deinit(std.testing.allocator);
+    }
+
+    var host_b: Host = .{
+        .app = &app,
+        .id = 2,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host_b.setBanner(.none, null) catch {};
+        host_b.clearStructuralHistory(.normal);
+        host_b.structural_undo_entries.deinit(std.testing.allocator);
+        host_b.structural_redo_entries.deinit(std.testing.allocator);
+        for (host_b.tabs.items) |*tab| tab.deinit();
+        host_b.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.app = &app;
+    surface_a.host = &host_a;
+    surface_a.host_id = host_a.id;
+    surface_a.hwnd = null;
+    surface_a.core_initialized = false;
+    surface_a.window_visible = true;
+    surface_a.window_focused = false;
+    surface_a.host_active = true;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.app = &app;
+    surface_b.host = &host_b;
+    surface_b.host_id = host_b.id;
+    surface_b.hwnd = null;
+    surface_b.core_initialized = false;
+    surface_b.window_visible = true;
+    surface_b.window_focused = true;
+    surface_b.host_active = true;
+    surface_b.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_b.undo_stack.deinit();
+
+    try host_a.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 11, &surface_a));
+    try host_b.tabs.append(std.testing.allocator, try Tab.init(std.testing.allocator, 22, &surface_b));
+    try app.hosts.append(std.testing.allocator, &host_a);
+    try app.hosts.append(std.testing.allocator, &host_b);
+    try app.windows.append(std.testing.allocator, &surface_a);
+    try app.windows.append(std.testing.allocator, &surface_b);
+
+    const now = GetTickCount64();
+    try host_a.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = now,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 0,
+            .tab_id = 11,
+        } },
+    });
+    try host_b.structural_undo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = now + 1,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 0,
+            .tab_id = 22,
+        } },
+    });
+
+    try std.testing.expect(try app.performAction(.app, .undo, {}));
+    try std.testing.expectEqual(@as(usize, 1), host_a.structural_undo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host_b.structural_undo_entries.items.len);
+
+    try host_a.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = now + 2,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 0,
+            .tab_id = 11,
+        } },
+    });
+    try host_b.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .close_tab,
+        .timestamp_ms = now + 3,
+        .payload = .{ .close_tab = .{
+            .tab = null,
+            .index = 0,
+            .tab_id = 22,
+        } },
+    });
+
+    try std.testing.expect(try app.performAction(.app, .redo, {}));
+    try std.testing.expectEqual(@as(usize, 1), host_a.structural_redo_entries.items.len);
+    try std.testing.expectEqual(@as(usize, 0), host_b.structural_redo_entries.items.len);
+}
+
 test "win32 structural undo OOM rolls close_tab entry back to undo" {
     if (builtin.os.tag != .windows) return error.SkipZigTest;
 
@@ -23941,8 +24121,7 @@ test "win32 terminal undo snapshot restores terminal state" {
 
     t.fullReset();
 
-    var restored = try restoreTerminalUndoState(alloc, &t, snapshot);
-    defer restored.deinit(alloc);
+    const restored = restoreTerminalUndoState(&t, snapshot);
 
     const plain = try t.plainString(alloc);
     defer alloc.free(plain);

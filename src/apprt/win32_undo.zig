@@ -78,9 +78,13 @@ pub const UndoStack = struct {
     }
 
     /// Push a new entry, taking ownership of its snapshot allocations.
-    /// Clears the redo branch and evicts oldest undo entries until both
-    /// caps (count + bytes) are satisfied.
+    /// Reserves append capacity first so an allocation failure leaves the
+    /// existing undo/redo history untouched, then clears the redo branch
+    /// and evicts oldest undo entries until both caps (count + bytes) are
+    /// satisfied.
     pub fn push(self: *UndoStack, entry: Entry) Allocator.Error!void {
+        try self.entries.ensureUnusedCapacity(self.alloc, 1);
+
         // New action invalidates the redo branch.
         self.clearRedoBranch();
 
@@ -96,14 +100,17 @@ pub const UndoStack = struct {
             self.evictOldest();
         }
 
-        try self.entries.append(self.alloc, entry);
+        self.entries.appendAssumeCapacity(entry);
         self.total_bytes += incoming;
     }
 
     /// Move the newest undo entry to the redo stack and return a
     /// borrowed pointer into the redo list so the caller can replay
-    /// its snapshot. The pointer is only valid until the next mutation
-    /// of `redo_entries`; callers must consume it synchronously.
+    /// its snapshot. Returns `error.OutOfMemory` only if the redo append
+    /// fails, and in that case restores the entry to the undo stack so
+    /// replay state is unchanged. The pointer is only valid until the
+    /// next mutation of `redo_entries`; callers must consume it
+    /// synchronously.
     pub fn popForUndo(self: *UndoStack) Allocator.Error!?*const Entry {
         const entry = self.entries.pop() orelse return null;
         self.total_bytes -= entry.byteSize();
@@ -116,8 +123,10 @@ pub const UndoStack = struct {
     }
 
     /// Move the newest redo entry back onto the undo stack and return
-    /// a borrowed pointer into the undo list. Same lifetime rules as
-    /// `popForUndo`.
+    /// a borrowed pointer into the undo list. Returns `error.OutOfMemory`
+    /// only if the undo append fails, and in that case restores the
+    /// entry to the redo stack so replay state is unchanged. Same
+    /// lifetime rules as `popForUndo`.
     pub fn popForRedo(self: *UndoStack) Allocator.Error!?*const Entry {
         const entry = self.redo_entries.pop() orelse return null;
         self.entries.append(self.alloc, entry) catch |err| {
@@ -316,6 +325,39 @@ test "push after undo does not underflow total_bytes" {
     try stack.push(b);
     try std.testing.expectEqual(b_size, stack.total_bytes);
     try std.testing.expectEqual(@as(usize, 0), stack.redoDepth());
+}
+
+test "push allocation failure preserves undo and redo history" {
+    const alloc = std.testing.allocator;
+    var stack = UndoStack.init(alloc);
+    defer stack.deinit();
+
+    try stack.push(try makeSmallEntry(alloc, 1));
+    try stack.push(try makeSmallEntry(alloc, 2));
+    _ = try stack.popForUndo();
+    stack.entries.shrinkAndFree(alloc, stack.entries.items.len);
+
+    var failing = std.testing.FailingAllocator.init(alloc, .{ .fail_index = 0 });
+    const original_alloc = stack.alloc;
+    stack.alloc = failing.allocator();
+    defer stack.alloc = original_alloc;
+
+    var entry = try makeSmallEntry(alloc, 3);
+    var push_owned_entry = false;
+    defer if (!push_owned_entry) entry.deinit(alloc);
+
+    if (stack.push(entry)) {
+        push_owned_entry = true;
+        return error.TestUnexpectedResult;
+    } else |err| {
+        try std.testing.expectEqual(error.OutOfMemory, err);
+    }
+
+    try std.testing.expectEqual(@as(usize, 1), stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 1), stack.redoDepth());
+    try std.testing.expectEqual(@as(u64, 1), stack.peekUndo().?.timestamp_ms);
+    try std.testing.expectEqual(@as(u64, 2), stack.peekRedo().?.timestamp_ms);
+    try std.testing.expectEqual(@as(usize, 4), stack.total_bytes);
 }
 
 test "clearRedo clears redo branch without touching undo history" {
