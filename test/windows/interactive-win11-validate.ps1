@@ -148,6 +148,8 @@ function Get-HarnessSummary {
 Invoke-Harness -ScriptName 'interactive-win11.ps1'
 Invoke-SuiteBuildIfNeeded
 Invoke-Harness -ScriptName 'interactive-win11-smoke.ps1' -TimeoutSeconds 10 -PassResetState
+Invoke-Harness -ScriptName 'interactive-win11-resize.ps1' -TimeoutSeconds 15 -PassResetState
+Invoke-Harness -ScriptName 'interactive-win11-undo.ps1' -TimeoutSeconds 35 -PassResetState
 
 [InteractiveWin11HarnessRun[]] $parallelRuns = @(
     Start-Harness -ScriptName 'interactive-win11-command-finish.ps1' -TimeoutSeconds 12

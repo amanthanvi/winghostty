@@ -133,7 +133,7 @@ pub const RootProvider = struct {
         _: i32,
         out: *?*com.IUnknown,
     ) callconv(.winapi) com.HRESULT {
-        // P1 skeleton exposes no patterns. Per the UIA contract, return
+        // No control patterns are exposed. Per the UIA contract, return
         // S_OK with out=null rather than E_NOTIMPL.
         out.* = null;
         return com.S_OK;

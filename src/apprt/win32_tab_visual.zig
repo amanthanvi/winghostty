@@ -1,7 +1,7 @@
 //! Per-tab visual polish: close-button fade and focused-tab underline slide.
 //!
-//! This module holds **pure state machines + interpolation math** for two
-//! tab-chrome animations introduced in the P5.8 visual polish pass:
+//! This module holds pure state machines and interpolation math for two
+//! tab-chrome animations:
 //!
 //!   1. **Close-button reveal** -- each tab's close button is invisible at
 //!      rest (alpha 0). On hover-enter the alpha fades to 1 over

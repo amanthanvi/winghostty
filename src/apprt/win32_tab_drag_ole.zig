@@ -20,8 +20,8 @@ const log = std.log.scoped(.win32_tab_drag_ole);
 
 // ── Win32 type aliases ─────────────────────────────────────────────────
 
-const HRESULT = windows.HRESULT;
-const GUID = windows.GUID;
+const HRESULT = ole_types.HRESULT;
+const GUID = ole_types.GUID;
 const BOOL = win32_types.BOOL;
 const DWORD = ole_types.DWORD;
 const ULONG = ole_types.ULONG;
@@ -65,10 +65,10 @@ const GMEM_MOVEABLE: UINT = 0x0002;
 
 // ── IIDs ───────────────────────────────────────────────────────────────
 
-const IID_IUnknown = GUID.parse("{00000000-0000-0000-C000-000000000046}");
-const IID_IDropSource = GUID.parse("{00000121-0000-0000-C000-000000000046}");
-const IID_IDataObject = GUID.parse("{0000010E-0000-0000-C000-000000000046}");
-const IID_IEnumFORMATETC = GUID.parse("{00000103-0000-0000-C000-000000000046}");
+const IID_IUnknown = ole_types.IID_IUnknown;
+const IID_IDropSource = ole_types.IID_IDropSource;
+const IID_IDataObject = ole_types.IID_IDataObject;
+const IID_IEnumFORMATETC = ole_types.IID_IEnumFORMATETC;
 
 // ── FORMATETC / STGMEDIUM ──────────────────────────────────────────────
 

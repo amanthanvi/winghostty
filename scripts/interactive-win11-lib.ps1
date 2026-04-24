@@ -247,6 +247,27 @@ function Invoke-InteractiveWin11Build {
     )
 
     $devWindowsCmd = Join-Path $RepoRoot 'scripts\dev-windows.cmd'
+    $repoSandboxRoot = Get-InteractiveWin11NormalizedPath -Path (Join-Path $RepoRoot '.sandbox\win11')
+    $savedLocalAppData = $env:LOCALAPPDATA
+    $restoreLocalAppData = $false
+    if (-not [string]::IsNullOrWhiteSpace($savedLocalAppData)) {
+        $normalizedLocalAppData = Get-InteractiveWin11NormalizedPath -Path $savedLocalAppData
+        $sandboxPrefix = '{0}\' -f $repoSandboxRoot
+        if ($normalizedLocalAppData.StartsWith($sandboxPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+            $profile = if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+                [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::UserProfile)
+            }
+            else {
+                $env:USERPROFILE
+            }
+
+            if (-not [string]::IsNullOrWhiteSpace($profile)) {
+                $env:LOCALAPPDATA = Join-Path $profile 'AppData\Local'
+                $restoreLocalAppData = $true
+            }
+        }
+    }
+
     Push-Location $RepoRoot
     try {
         & cmd /c $devWindowsCmd zig build -Demit-exe=true
@@ -256,6 +277,9 @@ function Invoke-InteractiveWin11Build {
     }
     finally {
         Pop-Location
+        if ($restoreLocalAppData) {
+            $env:LOCALAPPDATA = $savedLocalAppData
+        }
     }
 }
 

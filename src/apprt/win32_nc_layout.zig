@@ -455,3 +455,22 @@ test "maximized hit test follows shifted caption buttons" {
     try std.testing.expectEqual(HitTest.maxbutton, hitTest(win, .{ .x = max_x, .y = max_y }, m, .maximized));
     try std.testing.expectEqual(HitTest.minbutton, hitTest(win, .{ .x = min_x, .y = min_y }, m, .maximized));
 }
+
+test "maximized caption row starts below invisible top margin at 150% dpi" {
+    const m = metricsDefault(144);
+    const win = Rect{ .left = 100, .top = 50, .right = 1380, .bottom = 850 };
+    const caption_top = win.top + m.size_frame_y + m.padded_border;
+
+    try std.testing.expectEqual(HitTest.client, hitTest(win, .{ .x = 420, .y = caption_top - 1 }, m, .maximized));
+    try std.testing.expectEqual(HitTest.caption, hitTest(win, .{ .x = 420, .y = caption_top + 1 }, m, .maximized));
+}
+
+test "max button hit test scales at 150% dpi for snap hover" {
+    const m = metricsDefault(144);
+    const win = Rect{ .left = 40, .top = 20, .right = 1480, .bottom = 920 };
+    const btns = captionButtonsRect(win, m, .normal);
+    const max_x = @divTrunc(btns.max.left + btns.max.right, 2);
+    const max_y = @divTrunc(btns.max.top + btns.max.bottom, 2);
+
+    try std.testing.expectEqual(HitTest.maxbutton, hitTest(win, .{ .x = max_x, .y = max_y }, m, .normal));
+}

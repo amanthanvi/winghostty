@@ -428,4 +428,3 @@ test "shadertoy to glsl" {
 
 const test_crt = @embedFile("shaders/test_shadertoy_crt.glsl");
 const test_invalid = @embedFile("shaders/test_shadertoy_invalid.glsl");
-const test_focus = @embedFile("shaders/test_shadertoy_focus.glsl");

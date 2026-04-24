@@ -87,6 +87,20 @@ Run with:
 powershell.exe -ExecutionPolicy Bypass -File .\interactive-win11-progress.ps1 -ResetState -TimeoutSeconds 20
 ```
 
+## interactive-win11-resize.ps1
+
+Interactive Win11 validation for resize repaint coverage. It launches
+`winghostty` with a light terminal background, synthesizes a live resize
+growth, exits the resize loop, captures the settled enlarged window, and fails
+if the newly exposed right or bottom content bands are mostly near-black or
+unpainted neutral gray.
+
+Run with:
+
+```powershell
+powershell.exe -ExecutionPolicy Bypass -File .\interactive-win11-resize.ps1 -ResetState -TimeoutSeconds 15
+```
+
 ## ..\..\scripts\interactive-win11.ps1
 
 Generic repo-local Win11 launcher for ad hoc debugging. It uses the
