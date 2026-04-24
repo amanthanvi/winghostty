@@ -40,6 +40,9 @@ This fork has removed the upstream `macos/` Xcode app and the
 
 ## Self-Correction Log
 
+- 2026-04-24: winghostty release tags should stay on plain semver with `major.minor` tracking the Ghostty upstream line and `patch` owned by the fork (`1.3.100`, `1.3.101`, ...); keep the exact upstream base in `dist/windows/release-metadata.json` instead of leaking it into the public tag.
+- 2026-04-24: Installing `wingetcreate` from the MSIX bundle on a clean Windows runner also requires the `Microsoft.VCLibs.x64.14.00.Desktop.appx` framework package first; skipping that dependency makes the WinGet publish path flaky.
+- 2026-04-24: Win32 host-structural and per-surface local undo entries can share the same `GetTickCount64()` millisecond; cross-stack undo/redo selection needs a monotonic sequence tie-breaker or same-tick actions replay out of LIFO order.
 - 2026-04-24: In Win32 local undo capture, once terminal snapshot bytes are wrapped into a `win32_undo.Entry`, do not keep a second outer `errdefer free(state_bytes)` guard; a later push OOM will run `entry.deinit()` and double-free the same snapshot buffer.
 - 2026-04-24: If a Win32 local destructive action (`reset` / `clear_screen`) proceeds after best-effort undo snapshot capture fails, it must still clear that surface's local redo plus host structural redo; otherwise stale redo survives onto the wrong branch.
 - 2026-04-24: Win32 empty-host prune must not destroy a zero-tab Host just because `destroy_after_structural_dispose` is set; if structural undo/redo still exists, the Host must stay alive so last-tab undo remains reachable.
