@@ -18201,6 +18201,11 @@ pub const Surface = struct {
         try self.captureUndoTerminalState(.reset);
     }
 
+    pub fn invalidateRedoForSnapshotlessLocalAction(self: *Surface) void {
+        self.undo_stack.clearRedo();
+        self.invalidateRedoForNewLocalAction();
+    }
+
     fn invalidateRedoForNewLocalAction(self: *Surface) void {
         if (self.host) |host| host.clearStructuralRedo();
     }
@@ -21587,6 +21592,54 @@ test "win32 local undo capture invalidates host structural redo only" {
     try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
     try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
     try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.redoDepth());
+}
+
+test "win32 snapshotless local action invalidates local redo and host structural redo" {
+    if (builtin.os.tag != .windows) return error.SkipZigTest;
+
+    var core_app: CoreApp = undefined;
+    core_app.alloc = std.testing.allocator;
+
+    var app: App = undefined;
+    app.core_app = &core_app;
+
+    var host: Host = .{
+        .app = &app,
+        .id = 1,
+        .tabs = .empty,
+        .structural_undo_entries = .empty,
+        .structural_redo_entries = .empty,
+    };
+    defer {
+        host.clearStructuralHistory(.normal);
+        host.structural_undo_entries.deinit(std.testing.allocator);
+        host.structural_redo_entries.deinit(std.testing.allocator);
+        host.tabs.deinit(std.testing.allocator);
+    }
+
+    var surface_a: Surface = undefined;
+    surface_a.host = &host;
+    surface_a.undo_stack = win32_undo.UndoStack.init(std.testing.allocator);
+    defer surface_a.undo_stack.deinit();
+
+    var surface_b: Surface = undefined;
+    surface_b.host = &host;
+
+    try pushUndoAndRedoBranch(&surface_a.undo_stack, std.testing.allocator, 11);
+    try host.structural_redo_entries.append(std.testing.allocator, .{
+        .kind = .split_create,
+        .timestamp_ms = 111,
+        .payload = .{ .split_create = .{
+            .source_surface = &surface_a,
+            .created_surface = &surface_b,
+        } },
+    });
+
+    surface_a.invalidateRedoForSnapshotlessLocalAction();
+
+    try std.testing.expectEqual(@as(usize, 1), surface_a.undo_stack.undoDepth());
+    try std.testing.expectEqual(@as(usize, 0), surface_a.undo_stack.redoDepth());
+    try std.testing.expectEqual(@as(usize, 0), host.structural_redo_entries.items.len);
 }
 
 test "win32 unsupported structural action invalidates local redo and host structural redo only" {

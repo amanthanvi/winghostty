@@ -5249,6 +5249,9 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
             if (comptime @hasDecl(@TypeOf(self.rt_surface.*), "captureUndoReset")) {
                 self.rt_surface.captureUndoReset() catch |err| {
                     log.warn("undo capture failed for reset err={}", .{err});
+                    if (comptime @hasDecl(@TypeOf(self.rt_surface.*), "invalidateRedoForSnapshotlessLocalAction")) {
+                        self.rt_surface.invalidateRedoForSnapshotlessLocalAction();
+                    }
                 };
             }
             self.renderer_state.mutex.lock();
@@ -5480,6 +5483,9 @@ pub fn performBindingAction(self: *Surface, action: input.Binding.Action) !bool 
             if (comptime @hasDecl(@TypeOf(self.rt_surface.*), "captureUndoClearScreen")) {
                 self.rt_surface.captureUndoClearScreen() catch |err| {
                     log.warn("undo capture failed for clear_screen err={}", .{err});
+                    if (comptime @hasDecl(@TypeOf(self.rt_surface.*), "invalidateRedoForSnapshotlessLocalAction")) {
+                        self.rt_surface.invalidateRedoForSnapshotlessLocalAction();
+                    }
                 };
             }
             self.queueIo(.{

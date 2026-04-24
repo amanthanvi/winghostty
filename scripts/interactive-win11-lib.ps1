@@ -343,6 +343,7 @@ function Stop-InteractiveWin11Process {
             $Process.Refresh()
         }
         catch {
+            Write-Warning "Process refresh failed during interactive Win11 cleanup: $($_.Exception.Message)"
         }
         if (-not $Process.HasExited) {
             Stop-Process -Id $Process.Id -Force -ErrorAction SilentlyContinue
