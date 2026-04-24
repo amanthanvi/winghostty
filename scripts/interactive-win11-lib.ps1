@@ -257,15 +257,24 @@ function Invoke-InteractiveWin11Build {
             $normalizedLocalAppData.Equals($repoSandboxRoot, [System.StringComparison]::OrdinalIgnoreCase) -or
             $normalizedLocalAppData.StartsWith($sandboxPrefix, [System.StringComparison]::OrdinalIgnoreCase)
         ) {
-            $userProfilePath = if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
-                [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::UserProfile)
-            }
-            else {
-                $env:USERPROFILE
+            $hostLocalAppData = [System.Environment]::GetFolderPath(
+                [System.Environment+SpecialFolder]::LocalApplicationData
+            )
+            if ([string]::IsNullOrWhiteSpace($hostLocalAppData)) {
+                $userProfilePath = if ([string]::IsNullOrWhiteSpace($env:USERPROFILE)) {
+                    [System.Environment]::GetFolderPath([System.Environment+SpecialFolder]::UserProfile)
+                }
+                else {
+                    $env:USERPROFILE
+                }
+
+                if (-not [string]::IsNullOrWhiteSpace($userProfilePath)) {
+                    $hostLocalAppData = Join-Path $userProfilePath 'AppData\Local'
+                }
             }
 
-            if (-not [string]::IsNullOrWhiteSpace($userProfilePath)) {
-                $env:LOCALAPPDATA = Join-Path $userProfilePath 'AppData\Local'
+            if (-not [string]::IsNullOrWhiteSpace($hostLocalAppData)) {
+                $env:LOCALAPPDATA = Get-InteractiveWin11NormalizedPath -Path $hostLocalAppData
                 $restoreLocalAppData = $true
             }
         }
