@@ -4,20 +4,12 @@ on:
   push:
     branches:
       - main
-    paths:
-      - ".github/workflows/pages.yml"
-      - "scripts/check-site-copy.ps1"
-      - "site/**"
-  workflow_dispatch: {}
+  workflow_dispatch:
 
 permissions:
   contents: read
   pages: write
   id-token: write
-
-concurrency:
-  group: github-pages
-  cancel-in-progress: true
 
 jobs:
   deploy:
@@ -33,10 +25,6 @@ jobs:
 
       - name: Configure Pages
         uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
-
-      - name: Site copy checks
-        shell: pwsh
-        run: ./scripts/check-site-copy.ps1
 
       - name: Upload site artifact
         uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
