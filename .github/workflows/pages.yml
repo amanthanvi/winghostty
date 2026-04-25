@@ -5,9 +5,9 @@ on:
     branches:
       - main
     paths:
-      - .github/workflows/pages.yml
-      - scripts/check-site-copy.ps1
-      - site/**
+      - ".github/workflows/pages.yml"
+      - "scripts/check-site-copy.ps1"
+      - "site/**"
   workflow_dispatch: {}
 
 permissions:
