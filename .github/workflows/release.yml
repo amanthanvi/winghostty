@@ -33,6 +33,9 @@ jobs:
       SCOOP_BUCKET_REPO: ${{ vars.SCOOP_BUCKET_REPO }}
       SCOOP_BUCKET_BRANCH: ${{ vars.SCOOP_BUCKET_BRANCH }}
       SCOOP_BUCKET_MANIFEST_PATH: ${{ vars.SCOOP_BUCKET_MANIFEST_PATH }}
+      WINDOWS_CODESIGN_PFX_BASE64: ${{ secrets.WINDOWS_CODESIGN_PFX_BASE64 }}
+      WINDOWS_CODESIGN_PFX_PASSWORD: ${{ secrets.WINDOWS_CODESIGN_PFX_PASSWORD }}
+      WINDOWS_CODESIGN_TIMESTAMP_URL: ${{ secrets.WINDOWS_CODESIGN_TIMESTAMP_URL }}
 
     steps:
       - name: Checkout code
@@ -111,6 +114,7 @@ jobs:
           powershell -ExecutionPolicy Bypass -File scripts/package-windows.ps1
           -Version ${{ steps.meta.outputs.version }}
           -RequireInstaller
+          -RequireSigning
 
       - name: Generate package manager metadata
         shell: pwsh

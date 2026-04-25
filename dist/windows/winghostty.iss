@@ -36,6 +36,14 @@ ArchitecturesInstallIn64BitMode=x64compatible
 ChangesAssociations=no
 UninstallDisplayIcon={app}\winghostty.exe
 SetupIconFile={#SourceDir}\dist\windows\winghostty.ico
+VersionInfoVersion={#MyAppVersion}
+VersionInfoTextVersion={#MyAppVersion}
+VersionInfoProductVersion={#MyAppVersion}
+VersionInfoProductTextVersion={#MyAppVersion}
+VersionInfoCompany=Aman Thanvi
+VersionInfoDescription=winghostty Setup
+VersionInfoProductName=winghostty
+VersionInfoOriginalFileName=winghostty-{#MyAppVersion}-windows-x64-setup.exe
 
 [Tasks]
 Name: "desktopicon"; Description: "Create a desktop shortcut"; Flags: unchecked

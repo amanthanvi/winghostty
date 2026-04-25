@@ -40,6 +40,7 @@ This fork has removed the upstream `macos/` Xcode app and the
 
 ## Self-Correction Log
 
+- 2026-04-25: Defender `Trojan:Win32/Wacatac.C!ml` on winghostty releases can target the unsigned Inno setup wrapper while the unpacked `winghostty.exe` still scans clean. Validate installer and raw exe separately before touching runtime code, and fail release packaging closed if Authenticode signing is absent.
 - 2026-04-24: `wingetcreate new` still prompts for required fields such as `PackageIdentifier` and crashes in non-interactive shells when they are missing; keep WinGet CI on the truthful `update --submit` path until bootstrap can be supplied non-interactively.
 - 2026-04-24: winghostty release tags should stay on plain semver with `major.minor` tracking the Ghostty upstream line and `patch` owned by the fork (`1.3.100`, `1.3.101`, ...); keep the exact upstream base in `dist/windows/release-metadata.json` instead of leaking it into the public tag.
 - 2026-04-24: Installing `wingetcreate` from the MSIX bundle on a clean Windows runner also requires the `Microsoft.VCLibs.x64.14.00.Desktop.appx` framework package first; skipping that dependency makes the WinGet publish path flaky.
