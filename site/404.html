@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>winghostty | Not found</title>
+  <meta name="robots" content="noindex">
+  <link rel="icon" href="assets/winghostty-app-icon.svg" type="image/svg+xml">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preload" as="style" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+  <link
+    rel="stylesheet"
+    href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap"
+    media="print"
+    onload="this.media='all'"
+  >
+  <noscript>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Instrument+Serif:ital@0;1&display=swap">
+  </noscript>
+
+  <link rel="stylesheet" href="styles.css">
+  <script>
+    (function () {
+      try {
+        var theme = localStorage.getItem("wg-theme") || "dark";
+        var root = document.documentElement;
+        root.setAttribute("data-theme", theme);
+        root.style.background = theme === "dark" ? "#0a0a0b" : "#fafaf9";
+        root.style.color = theme === "dark" ? "#e5e5e5" : "#0a0a0a";
+      } catch (error) {}
+    })();
+  </script>
+</head>
+<body>
+  <main class="wg-hero">
+    <div class="wg-container">
+      <div class="wg-hero__badge" aria-label="404">
+        <span class="wg-color-dots" aria-hidden="true">
+          <span></span>
+          <span></span>
+          <span></span>
+          <span></span>
+        </span>
+        <span>404</span>
+      </div>
+
+      <h1 class="wg-hero__title">
+        That page<span class="wg-accent-red">,</span><br>
+        does not ship<span class="wg-accent-blue">.</span>
+      </h1>
+
+      <p class="wg-hero__lede">
+        winghostty.com stays deliberately small so the claims can stay accurate.
+        Head back to the landing page, the latest release, or the repo docs.
+      </p>
+
+      <div class="wg-hero__actions">
+        <a class="wg-button wg-button--primary" href="/">Home</a>
+        <a class="wg-button wg-button--secondary" href="https://github.com/amanthanvi/winghostty/releases/latest" target="_blank" rel="noreferrer">Latest release</a>
+        <a class="wg-button wg-button--secondary" href="https://github.com/amanthanvi/winghostty/blob/main/docs/status.md" target="_blank" rel="noreferrer">Status</a>
+      </div>
+    </div>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

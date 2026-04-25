@@ -1,0 +1,118 @@
+// Winghostty mark — real icon with Microsoft 4-color flag and terminal-glyph eyes.
+// Theme-aware: inner ghost fill is white on dark bg, near-black on light bg.
+// Inner-face / outline / glyph use CSS color transitions so the mark animates
+// smoothly when theme flips.
+
+function WinghosttyMark({ size = 28, theme = 'dark', animated = false }) {
+  const ghostFill = theme === 'dark' ? '#ffffff' : '#0a0a0a';
+  const outline   = theme === 'dark' ? '#0a0a0a' : '#ffffff';
+  const glyph     = theme === 'dark' ? '#0a0a0a' : '#ffffff';
+  const transition = animated ? 'fill 0.5s cubic-bezier(0.45, 0, 0.15, 1)' : undefined;
+
+  return (
+    <svg width={size} height={(size * 32) / 27} viewBox="0 0 27 32" fill="none" aria-hidden="true">
+      <defs>
+        <clipPath id={`wg-tl-${size}`}><rect x="0" y="0" width="13.36" height="16" /></clipPath>
+        <clipPath id={`wg-tr-${size}`}><rect x="13.36" y="0" width="13.64" height="16" /></clipPath>
+        <clipPath id={`wg-bl-${size}`}><rect x="0" y="16" width="13.36" height="16" /></clipPath>
+        <clipPath id={`wg-br-${size}`}><rect x="13.36" y="16" width="13.64" height="16" /></clipPath>
+      </defs>
+      {/* MS 4-color ghost body (outer) */}
+      <path d="M20.3955 32C19.1436 32 17.9152 31.6249 16.879 30.9333C15.8428 31.6249 14.6121 32 13.3625 32C12.113 32 10.8822 31.6249 9.84606 30.9333C8.8169 31.6249 7.62598 31.9906 6.37177 32H6.33426C4.63228 32 3.0358 31.3225 1.83316 30.0941C0.64928 28.8844 -0.00244141 27.2926 -0.00244141 25.6117V13.3626C-9.70841e-05 5.99443 5.99433 0 13.3625 0C20.7307 0 26.7252 5.99443 26.7252 13.3626V25.6164C26.7252 29.0086 24.0995 31.8078 20.7472 31.9906C20.6299 31.9977 20.5127 32 20.3955 32Z" fill="#F25022" clipPath={`url(#wg-tl-${size})`} />
+      <path d="M20.3955 32C19.1436 32 17.9152 31.6249 16.879 30.9333C15.8428 31.6249 14.6121 32 13.3625 32C12.113 32 10.8822 31.6249 9.84606 30.9333C8.8169 31.6249 7.62598 31.9906 6.37177 32H6.33426C4.63228 32 3.0358 31.3225 1.83316 30.0941C0.64928 28.8844 -0.00244141 27.2926 -0.00244141 25.6117V13.3626C-9.70841e-05 5.99443 5.99433 0 13.3625 0C20.7307 0 26.7252 5.99443 26.7252 13.3626V25.6164C26.7252 29.0086 24.0995 31.8078 20.7472 31.9906C20.6299 31.9977 20.5127 32 20.3955 32Z" fill="#7FBA00" clipPath={`url(#wg-tr-${size})`} />
+      <path d="M20.3955 32C19.1436 32 17.9152 31.6249 16.879 30.9333C15.8428 31.6249 14.6121 32 13.3625 32C12.113 32 10.8822 31.6249 9.84606 30.9333C8.8169 31.6249 7.62598 31.9906 6.37177 32H6.33426C4.63228 32 3.0358 31.3225 1.83316 30.0941C0.64928 28.8844 -0.00244141 27.2926 -0.00244141 25.6117V13.3626C-9.70841e-05 5.99443 5.99433 0 13.3625 0C20.7307 0 26.7252 5.99443 26.7252 13.3626V25.6164C26.7252 29.0086 24.0995 31.8078 20.7472 31.9906C20.6299 31.9977 20.5127 32 20.3955 32Z" fill="#00A4EF" clipPath={`url(#wg-bl-${size})`} />
+      <path d="M20.3955 32C19.1436 32 17.9152 31.6249 16.879 30.9333C15.8428 31.6249 14.6121 32 13.3625 32C12.113 32 10.8822 31.6249 9.84606 30.9333C8.8169 31.6249 7.62598 31.9906 6.37177 32H6.33426C4.63228 32 3.0358 31.3225 1.83316 30.0941C0.64928 28.8844 -0.00244141 27.2926 -0.00244141 25.6117V13.3626C-9.70841e-05 5.99443 5.99433 0 13.3625 0C20.7307 0 26.7252 5.99443 26.7252 13.3626V25.6164C26.7252 29.0086 24.0995 31.8078 20.7472 31.9906C20.6299 31.9977 20.5127 32 20.3955 32Z" fill="#FFB900" clipPath={`url(#wg-br-${size})`} />
+      {/* outline ring */}
+      <path style={{ transition }} d="M20.3955 30.5934C19.2773 30.5934 18.1848 30.209 17.3151 29.5104C17.165 29.3884 17.0033 29.365 16.8954 29.365C16.7243 29.365 16.5508 29.426 16.4078 29.5408C15.5451 30.2207 14.4644 30.5958 13.3625 30.5958C12.2607 30.5958 11.18 30.2207 10.3173 29.5408C10.1789 29.4306 10.0148 29.3744 9.84605 29.3744C9.67726 29.3744 9.51316 29.433 9.37485 29.5408C8.50979 30.223 7.46891 30.5864 6.36474 30.5958H6.33192C5.01675 30.5958 3.7766 30.0706 2.84122 29.1142C1.91756 28.1694 1.40649 26.9269 1.40649 25.6164V13.3673C1.40649 6.77043 6.7703 1.40662 13.3625 1.40662C19.9548 1.40662 25.3186 6.77043 25.3186 13.3627V25.6164C25.3186 28.2608 23.2767 30.4434 20.6698 30.5864C20.5784 30.5911 20.4869 30.5934 20.3955 30.5934Z" fill={outline} />
+      {/* inner ghost face */}
+      <path style={{ transition }} d="M23.9119 13.3627V25.6165C23.9119 27.4919 22.4654 29.079 20.5923 29.1822C19.6827 29.2314 18.8435 28.936 18.1941 28.4132C17.4158 27.7873 16.321 27.8154 15.5356 28.4343C14.9378 28.9055 14.183 29.1869 13.3601 29.1869C12.5372 29.1869 11.7847 28.9055 11.1869 28.4343C10.3922 27.8084 9.29738 27.8084 8.50266 28.4343C7.90954 28.9009 7.16405 29.1822 6.35291 29.1869C4.40478 29.2009 2.81299 27.5599 2.81299 25.6118V13.3627C2.81299 7.53704 7.5368 2.81323 13.3624 2.81323C19.1881 2.81323 23.9119 7.53704 23.9119 13.3627Z" fill={ghostFill} />
+      {/* terminal glyphs: < and = */}
+      <path style={{ transition }} d="M11.2808 12.4366L7.3494 10.1673C6.83833 9.87192 6.18192 10.0477 5.88654 10.5588C5.59115 11.0699 5.76698 11.7263 6.27804 12.0217L8.60361 13.365L6.27804 14.7083C5.76698 15.0036 5.59115 15.6577 5.88654 16.1711C6.18192 16.6822 6.83599 16.858 7.3494 16.5626L11.2808 14.2933C11.9935 13.8807 11.9935 12.8516 11.2808 12.4389V12.4366Z" fill={glyph} />
+      <path style={{ transition }} d="M20.1822 12.2913H15.0176C14.4269 12.2913 13.9463 12.7695 13.9463 13.3626C13.9463 13.9557 14.4245 14.434 15.0176 14.434H20.1822C20.773 14.434 21.2535 13.9557 21.2535 13.3626C21.2535 12.7695 20.7753 12.2913 20.1822 12.2913Z" fill={glyph} />
+    </svg>
+  );
+}
+
+// Wordmark: icon + "Winghostty" text, theme-aware.
+function WinghosttyWordmark({ size = 28, theme = 'dark' }) {
+  const textColor = theme === 'dark' ? '#ffffff' : '#0a0a0a';
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 10 }}>
+      <WinghosttyMark size={size} theme={theme} />
+      <span style={{
+        color: textColor,
+        fontWeight: 700,
+        fontSize: size * 0.78,
+        letterSpacing: '-0.02em',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, system-ui, sans-serif',
+      }}>Winghostty</span>
+    </span>
+  );
+}
+
+// Animated theme toggle — uses the real Winghostty ghost silhouette (same
+// path as the brand mark) but rendered in a minimal black & white style
+// specific to this control. The terminal-glyph "eyes" (< and =) squeeze
+// vertically to blink; theme flips at the closed-eye midpoint.
+function WinghosttyToggle({ theme, onToggle, size = 22 }) {
+  const [blinking, setBlinking] = React.useState(false);
+  const [hover, setHover] = React.useState(false);
+
+  const C = theme === 'dark'
+    ? { bg: '#101012', bgHover: '#17171a', border: '#26262a', ghost: '#e5e5e5', glyph: '#0a0a0b' }
+    : { bg: '#ffffff', bgHover: '#f3f3f1', border: '#d8d8d6', ghost: '#0a0a0a', glyph: '#fafaf9' };
+
+  const triggerBlink = () => {
+    if (blinking) return;
+    setBlinking(true);
+    onToggle();
+    setTimeout(() => setBlinking(false), 220);
+  };
+
+  return (
+    <button
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onClick={triggerBlink}
+      aria-label={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+      title={`Switch to ${theme === 'dark' ? 'light' : 'dark'} mode`}
+      style={{
+        width: 36, height: 36, borderRadius: 9,
+        background: hover ? C.bgHover : C.bg,
+        border: `1px solid ${C.border}`,
+        cursor: 'pointer',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: 0,
+        transition: 'background 0.18s, border-color 0.18s',
+      }}
+    >
+      <svg width={size} height={(size * 32) / 27} viewBox="0 0 27 32" fill="none" aria-hidden="true">
+        {/* Real ghost silhouette path (same as brand mark) — solid mono fill */}
+        <path
+          d="M20.3955 30.5934C19.2773 30.5934 18.1848 30.209 17.3151 29.5104C17.165 29.3884 17.0033 29.365 16.8954 29.365C16.7243 29.365 16.5508 29.426 16.4078 29.5408C15.5451 30.2207 14.4644 30.5958 13.3625 30.5958C12.2607 30.5958 11.18 30.2207 10.3173 29.5408C10.1789 29.4306 10.0148 29.3744 9.84605 29.3744C9.67726 29.3744 9.51316 29.433 9.37485 29.5408C8.50979 30.223 7.46891 30.5864 6.36474 30.5958H6.33192C5.01675 30.5958 3.7766 30.0706 2.84122 29.1142C1.91756 28.1694 1.40649 26.9269 1.40649 25.6164V13.3673C1.40649 6.77043 6.7703 1.40662 13.3625 1.40662C19.9548 1.40662 25.3186 6.77043 25.3186 13.3627V25.6164C25.3186 28.2608 23.2767 30.4434 20.6698 30.5864C20.5784 30.5911 20.4869 30.5934 20.3955 30.5934Z"
+          fill={C.ghost}
+          style={{ transition: 'fill 0.2s ease' }}
+        />
+        {/* Eyes: real <  and  =  glyphs from brand mark — blink by squeezing scaleY */}
+        <g style={{
+          transform: blinking ? 'scaleY(0.06)' : 'scaleY(1)',
+          transformOrigin: '13.36px 13.36px',
+          transition: 'transform 0.14s cubic-bezier(0.45, 0, 0.55, 1)',
+        }}>
+          <path
+            d="M11.2808 12.4366L7.3494 10.1673C6.83833 9.87192 6.18192 10.0477 5.88654 10.5588C5.59115 11.0699 5.76698 11.7263 6.27804 12.0217L8.60361 13.365L6.27804 14.7083C5.76698 15.0036 5.59115 15.6577 5.88654 16.1711C6.18192 16.6822 6.83599 16.858 7.3494 16.5626L11.2808 14.2933C11.9935 13.8807 11.9935 12.8516 11.2808 12.4389V12.4366Z"
+            fill={C.glyph}
+            style={{ transition: 'fill 0.2s ease' }}
+          />
+          <path
+            d="M20.1822 12.2913H15.0176C14.4269 12.2913 13.9463 12.7695 13.9463 13.3626C13.9463 13.9557 14.4245 14.434 15.0176 14.434H20.1822C20.773 14.434 21.2535 13.9557 21.2535 13.3626C21.2535 12.7695 20.7753 12.2913 20.1822 12.2913Z"
+            fill={C.glyph}
+            style={{ transition: 'fill 0.2s ease' }}
+          />
+        </g>
+      </svg>
+    </button>
+  );
+}
+
+Object.assign(window, { WinghosttyMark, WinghosttyWordmark, WinghosttyToggle });
