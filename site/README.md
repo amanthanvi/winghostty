@@ -1,6 +1,6 @@
 # winghostty site
 
-This directory is the GitHub Pages payload for `winghostty.com`.
+This directory is the Cloudflare Pages payload for `winghostty.com`.
 
 The landing page intentionally follows the original `Winghostty Marketing Site.zip`
 runtime shape:
@@ -11,7 +11,7 @@ runtime shape:
 - `components/` - archive JSX references kept for design/source parity
 - `assets/` - SVG brand assets carried over from the archive
 - `404.html`, `styles.css`, `app.js` - standalone static extras already present in this repo
-- `_redirects` - legacy Cloudflare redirect file; not used by GitHub Pages
+- `_redirects` - canonical host redirect for `www` to apex
 
 ## Source of truth
 
@@ -43,29 +43,16 @@ React UMD, Google Fonts, and the GitHub Releases version fetch are currently
 intentional because the landing page was restored to the archive's original
 runtime shape per user direction.
 
-## GitHub Pages
+## Cloudflare Pages
 
 Project settings for v1:
 
-- Publishing source branch: `gh-pages`
-- Publishing source path: `/`
-- Custom domain: `winghostty.com`
+- Production branch: `main`
+- Build command: `exit 0`
+- Build output directory: `site`
+- Custom domains: `winghostty.com` and `www.winghostty.com`
 
-Required DNS shape:
+Recommended follow-up in Pages:
 
-- Apex `A` records for `winghostty.com`:
-  - `185.199.108.153`
-  - `185.199.109.153`
-  - `185.199.110.153`
-  - `185.199.111.153`
-- Optional apex `AAAA` records for IPv6:
-  - `2606:50c0:8000::153`
-  - `2606:50c0:8001::153`
-  - `2606:50c0:8002::153`
-  - `2606:50c0:8003::153`
-- `www.winghostty.com` `CNAME` -> `amanthanvi.github.io`
-
-Notes:
-
-- `site/CNAME` and `site/.nojekyll` are included so the exported `gh-pages` branch stays Pages-safe.
-- GitHub Pages will redirect `www.winghostty.com` to `winghostty.com` once both domains are configured correctly.
+- Keep preview deployments enabled for PRs.
+- Set build watch paths to `site/*` so app-only changes do not redeploy the marketing site.
