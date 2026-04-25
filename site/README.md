@@ -47,9 +47,8 @@ runtime shape per user direction.
 
 Project settings for v1:
 
-- Production branch: `main`
-- Source: custom GitHub Actions workflow
-- Artifact path: `site`
+- Publishing source branch: `gh-pages`
+- Publishing source path: `/`
 - Custom domain: `winghostty.com`
 
 Required DNS shape:
@@ -68,5 +67,5 @@ Required DNS shape:
 
 Notes:
 
-- With a custom GitHub Actions workflow, GitHub Pages ignores any `CNAME` file in the artifact. The custom domain is set in repository Pages settings or via the Pages API.
+- `site/CNAME` and `site/.nojekyll` are included so the exported `gh-pages` branch stays Pages-safe.
 - GitHub Pages will redirect `www.winghostty.com` to `winghostty.com` once both domains are configured correctly.
